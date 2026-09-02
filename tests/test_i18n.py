@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import json
+import sys
 import pathlib
 import tempfile
 import unittest
@@ -385,6 +386,26 @@ class StatListKeyTests(unittest.TestCase):
         self.assertFalse(hasattr(i18n, "display_skill"))
         page = (SOURCE / "features" / "battle_report" / "page.py").read_text(encoding="utf-8")
         self.assertIn("str(skill.name)", page)
+
+    def test_no_chinese_reaches_a_widget_unwrapped(self) -> None:
+        """The catalogue test cannot see text that was never wrapped at all.
+
+        An upstream merge can add hardcoded Chinese that renders untranslated in
+        English; this is the gate that fails on it.
+        """
+        sys.path.insert(0, str(ROOT / "tools" / "quality"))
+        try:
+            import i18n_coverage
+        finally:
+            sys.path.pop(0)
+
+        findings = i18n_coverage.collect(i18n_coverage.UI_ROOTS, i18n_coverage.scan_ui)
+        report = [
+            f"{name}:{lineno} {text[:40]}"
+            for name, hits in findings.items()
+            for lineno, text in hits
+        ]
+        self.assertEqual([], report)
 
     def test_first_launch_asks_once_and_records_the_answer(self) -> None:
         """Absent is not the same as zh_CN: only the former should ask."""

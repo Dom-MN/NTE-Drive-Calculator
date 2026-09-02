@@ -1,62 +1,82 @@
-# NTE Drive Calc 仓库开发契约
+# NTE Drive Calc repository development contract
 
-本文件约束整个仓库，只保留仍有效的产品硬契约、架构边界和工程门禁。系统原理、功能细节、外部集成、
-未完成事项和实机验收分别以 [`docs/README.md`](docs/README.md) 下的文档为准。
+This file governs the whole repository and keeps only the product hard contracts, architectural
+boundaries and engineering gates that still hold. System principles, feature detail, external
+integrations, unfinished work and real-hardware acceptance live in the documents under
+[`docs/README.md`](docs/README.md).
 
-本文必须可公开：不得写入账号、Token、CDK、私有地址、真实 UID、用户绝对路径、完整抓包、OCR 全文、
-截图内容或未脱敏日志。
+This file must stay publishable: never write an account, token, CDK, private address, real UID,
+absolute user path, complete packet capture, full OCR text, screenshot content or unredacted log
+into it.
 
-## 1. 事实源与维护方式
+> This is a **fork** of `hxwd94666/NTE-Drive-Calculator` that adds Simplified Chinese / English
+> localisation. Upstream declined the localisation, so the fork is maintained indefinitely. Section 14
+> defines how to take upstream changes.
 
-冲突时依次采用：
+## 1. Source of truth and how to maintain it
 
-1. 已通过的公共行为测试和数据库约束；
-2. 本文件的产品硬契约与工程门禁；
-3. `docs/architecture.md`、`docs/features.md`、`docs/integrations.md`、`docs/reference/`；
-4. 公开 Service/DAO/Integration contract；
-5. 当前 UI 和存量兼容实现。
+On conflict, prefer in order:
 
-未实现能力只写 `docs/roadmap.md`。UI 文案、颜色、间距等局部表现由代码和测试表达，不堆入本契约。
+1. Passing public behaviour tests and database constraints;
+2. The product hard contracts and engineering gates in this file;
+3. `docs/architecture.md`, `docs/features.md`, `docs/integrations.md`, `docs/reference/`;
+4. Public Service/DAO/Integration contracts;
+5. The current UI and legacy compatibility implementations.
 
-维护契约和功能文档时必须先审视相关章节并**覆盖式更新**：直接重写失效段落，合并重复事实，删除历史、
-临时结论和已完成计划。禁止在文末追加“本次修改”“兼容到某版”或同义补丁段落；一个事实只保留一个
-权威位置，其他文档使用链接引用。
+Unimplemented capabilities go only in `docs/roadmap.md`. Local presentation such as UI copy, colours
+and spacing is expressed by code and tests, not piled into this contract.
 
-## 2. 开发流程与完成定义
+When maintaining the contract and feature documents, review the relevant sections first and **update
+by overwriting**: rewrite the stale passage directly, merge duplicated facts, and delete history,
+temporary conclusions and completed plans. Never append "changes in this revision", "compatible up to
+version X" or equivalent patch paragraphs at the end. One fact keeps one authoritative location; other
+documents reference it by link.
 
-开始修改前明确：
+## 2. Development flow and definition of done
 
-- 输入和输出属于发行静态、本机共享、应用全局、当前账号、内存结果还是外部 Integration；
-- 任务冻结的账号、用户库路径、`AppContext.generation`、`snapshot_id`、静态 dataset、profile/配置版本、
-  `slot_id`、锁快照、token 和输出目录；
-- Page/View、Controller、Service、Domain/Optimizer、DAO/Integration 各自拥有的状态；
-- 取消、账号切换、旧回调、失败回滚和外部副作用确认方式；
-- 固定上游输入、下游保存、失败路径和兼容入口的公共行为测试。
+Before changing anything, establish:
 
-产品语义变化按以下顺序完成：
+- Whether the inputs and outputs belong to release static data, the local shared database, application
+  global state, the current account, an in-memory result or an external integration;
+- Which account, user database path, `AppContext.generation`, `snapshot_id`, static dataset,
+  profile/config version, `slot_id`, lock snapshot, token and output directory the task freezes;
+- What state Page/View, Controller, Service, Domain/Optimizer and DAO/Integration each own;
+- How cancellation, account switching, stale callbacks, failure rollback and external side-effect
+  confirmation are handled;
+- Which public behaviour tests pin the upstream inputs, downstream saves, failure paths and
+  compatibility entry points.
+
+Product semantic changes are completed in this order:
 
 ```text
-公共行为测试 → contract/文档 → Domain/Service → DAO/Integration
-→ Controller/UI → 迁移调用方并删除旧入口 → 专项验证 → core/full 与静态检查
+public behaviour tests → contract/docs → Domain/Service → DAO/Integration
+→ Controller/UI → migrate callers and delete the old entry point → targeted verification
+→ core/full plus static checks
 ```
 
-缺陷修复先复现，再做最小业务范围修复；架构迁移与评分、OCR、伤害、配装、倒带或 schema 语义变化分开。
-新旧语义不得长期双写、双读或由 UI 条件分流。schema、payload、错误码或外部协议变化必须覆盖旧数据升级、
-事务回滚和重试。
+Reproduce a defect before fixing it, then fix it within the smallest business scope. Keep
+architectural migration separate from changes to scoring, OCR, damage, loadouts, rewind or schema
+semantics. Old and new semantics must not dual-write, dual-read or be branched in the UI for any
+length of time. A change to schema, payload, error codes or an external protocol must cover old-data
+upgrade, transaction rollback and retry.
 
-完成时必须满足：行为和生命周期有测试；文档只描述当前事实；无新增兼容门面、动态注入、跨 feature 私有
-调用或 TODO 双入口；外部动作有操作前基线、提交记录和最终确认；专项、静态、core/full 结果中新增失败与
-存量失败分开报告。
+Done means: behaviour and lifecycle are tested; the documents describe only current facts; no new
+compatibility façade, dynamic injection, cross-feature private call or TODO dual entry point; external
+actions have a pre-operation baseline, a submission record and a final confirmation; and newly
+introduced failures are reported separately from pre-existing ones across targeted, static and
+core/full runs.
 
-## 3. 技术基线与分层
+## 3. Technical baseline and layering
 
-- Windows 10/11、Python 3.11、PySide6；入口 `main.py`，GUI 组合根 `src/ui/app.py`。
-- 依赖唯一来源为 `pyproject.toml`，锁文件为 `uv.lock`；版本唯一来源为
-  `src/app/version.py::__version__`。
-- 当前 schema：发行静态 v16、公共共享 v2、账号私有 v22。升级时同步常量、追加迁移、测试和本文件。
-- 质量入口：`tools/quality/run_tests.py`；`core` 覆盖关键边界，`full` 执行全量 unittest 发现。
+- Windows 10/11, Python 3.11, PySide6; entry point `main.py`, GUI composition root `src/ui/app.py`.
+- Dependencies come only from `pyproject.toml`, locked by `uv.lock`; the version comes only from
+  `src/app/version.py::__version__`.
+- Current schemas: release static v16, public shared v2, account private v22. When upgrading, update
+  the constants, append a migration, and update the tests and this file together.
+- Quality entry point: `tools/quality/run_tests.py`; `core` covers the critical boundaries, `full`
+  runs the whole unittest discovery.
 
-依赖方向：
+Dependency direction:
 
 ```text
 UI Page/View
@@ -67,286 +87,405 @@ Application Service
   ↙                 ↘
 Domain/Optimizer       DAO/Integration
                            ↓
-                 SQLite / nte-core / 文件 / OCR / 游戏输入
+                 SQLite / nte-core / files / OCR / game input
 ```
 
-- **UI**：只拥有控件值、选择和可丢弃展示状态；不写 SQL、不解析协议、不持有算法或其他页面状态。
-- **Controller**：拥有 worker、取消 token、忙碌态和结果投影；依赖窄 Service/Integration，不代理其他
-  Controller。
-- **Service**：冻结请求并编排规则、事务和副作用；返回 Qt 无关结果，不查找 MainWindow 或当前页面。
-- **Domain/Optimizer/Solver**：只在完整不可变输入上纯计算；不访问 SQLite、Qt、日志、账号或进程。
-- **DAO**：独占 schema、迁移、SQL 和事务。
-- **Integration**：独占 nte-core、插件、OCR、鼠标/手柄、外部进程和文件格式；不决定评分和保存策略。
-- **Observability**：负责 sink、脱敏和操作关联，不依赖 feature、Service、DAO 或 UI。
+- **UI** owns only widget values, selections and discardable display state; it writes no SQL, parses no
+  protocol, and holds no algorithm or other page's state.
+- **Controller** owns workers, cancellation tokens, busy state and result projection; it depends on
+  narrow Services/Integrations and never proxies another controller.
+- **Service** freezes the request and orchestrates rules, transactions and side effects; it returns
+  Qt-free results and never looks up MainWindow or the current page.
+- **Domain/Optimizer/Solver** compute purely over complete immutable inputs; no SQLite, Qt, logging,
+  account or process access.
+- **DAO** exclusively owns schema, migrations, SQL and transactions.
+- **Integration** exclusively owns nte-core, the plugin, OCR, mouse/gamepad, external processes and
+  file formats; it never decides scoring or saving policy.
+- **Observability** owns sinks, redaction and operation correlation, and depends on no feature,
+  Service, DAO or UI.
 
-`AppContext`、`EquipmentPresentation` 和 `GlobalHotkeyManager` 只在组合根创建并显式注入。跨层关系使用
-官方 `character_id`、`item_id`、`suit_id`、`shape_id`、`property_id`、正式装备 UID 与 `slot_id`；中文名
-和 `slot_name` 仅展示。导航使用 key/`parent_key`，不使用堆叠页数字或 MainWindow 字段扫描寻找服务。
+`AppContext`, `EquipmentPresentation` and `GlobalHotkeyManager` are created only in the composition
+root and injected explicitly. Cross-layer relationships use the official `character_id`, `item_id`,
+`suit_id`, `shape_id`, `property_id`, real equipment UIDs and `slot_id`; Chinese names and `slot_name`
+are display only. Navigation uses key/`parent_key`, never a stacked-page number or a scan of
+MainWindow fields to locate a service.
 
-允许维护但禁止复制的存量边界：
+Legacy boundaries that may be maintained but must not be copied:
 
-- `ScoringEngine` 未注入目录时仍可回退读取 SQLite；新调用由 Service 注入不可变评分输入。
-- `src.features.inventory.page` 的旧 MainWindow 动态导出只维持现有 `__all__`。
-- `UserDataDao` 是多个窄 DAO mixin 的兼容门面；新业务优先建立窄 DAO/Service。
-- 部分计算、配装和扫描 Controller 仍直接打开 DAO；局部修复可沿原路径，新能力不得扩大该模式。
-- `NAV_ITEMS` 绑定按钮属性仅限组合根导航 mixin；feature 不仿照动态注入业务字段。
+- `ScoringEngine` can still fall back to reading SQLite when no catalogue is injected; new callers have
+  immutable scoring input injected by a Service.
+- The legacy MainWindow dynamic exports in `src.features.inventory.page` keep only the existing
+  `__all__`.
+- `UserDataDao` is a compatibility façade over several narrow DAO mixins; new work creates a narrow
+  DAO/Service instead.
+- Some calculation, loadout and scanning controllers still open a DAO directly; local fixes may follow
+  the existing path, but new capabilities must not widen that pattern.
+- `NAV_ITEMS` binding button properties is limited to the composition-root navigation mixin; features
+  must not imitate it to inject business fields.
 
-## 4. AppContext、账号与异步生命周期
+## 4. AppContext, accounts and async lifecycle
 
-`src.app.context` 是路径和账号状态的唯一组合根：`ApplicationPaths` 管发行资源与全局路径，
-`AccountContext` 管当前账号数据库、配置、截图和日志目录，`AppContext.generation` 标识账号代次，
-`AccountLifecycle` 管后台能力的停止、重建和恢复。
+`src.app.context` is the single composition root for paths and account state: `ApplicationPaths` owns
+release resources and global paths, `AccountContext` owns the current account's database, config,
+screenshot and log directories, `AppContext.generation` identifies the account generation, and
+`AccountLifecycle` owns stopping, rebuilding and resuming background capabilities.
 
-长任务创建时冻结第 2 节列出的全部上下文，回调和写入前再次核对；任一值过期即静默丢弃，不投影到新
-账号，也不写入新账号或新槽位。账号切换顺序固定为：停止账号任务 → 替换上下文并递增 generation →
-重建窄服务 → 清除页面账号缓存 → 恢复允许自动运行的服务。
+A long task freezes everything listed in section 2 at creation and re-checks it before callbacks and
+writes; if any value is stale it is discarded silently, never projected onto a new account and never
+written to a new account or slot. Account switching always follows: stop account tasks → replace the
+context and increment the generation → rebuild narrow services → clear per-page account caches →
+resume the services allowed to run automatically.
 
-- worker 在创建前和释放后都可能为 `None`；使用局部引用检查运行状态。
-- 取消只使本次 token 失效，后台回调仍执行代次、路径、快照和槽位复核。
-- 应用退出调用 feature 的公开 `close/stop`，不修改 worker 私有状态。
-- 背包同步、战报捕获、扫描、鉴定和游戏输入通过公开生命周期协调独占资源，不能只靠按钮禁用。
+- A worker may be `None` both before creation and after release; check run state through a local
+  reference.
+- Cancellation only invalidates the current token; background callbacks still re-check generation,
+  path, snapshot and slot.
+- Application exit calls each feature's public `close`/`stop` and never mutates worker private state.
+- Inventory sync, battle-report capture, scanning, appraisal and game input coordinate exclusive
+  resources through the public lifecycle, not by disabling a button.
 
-## 5. 数据所有权、迁移与快照
+## 5. Data ownership, migration and snapshots
 
-| 数据域 | 路径 | 所有权 |
+| Data domain | Path | Ownership |
 | --- | --- | --- |
-| 发行静态 | `data/game_static.sqlite3` | 官方目录、成长、技能、敌人、推荐权重、毕业模板；运行时只读 |
-| 公共共享 | `data/app_shared.sqlite3` | 官方角色额外形状的发行基线与跨账号公共覆盖 |
-| 应用全局 | `config/global_ui_preferences.json` | 跨账号主题 |
-| 账号私有 | `accounts/<account_id>/user_data.sqlite3` | 快照、角色实例、权重、偏好、自建角色、槽位、方案、锁、任务、战报 |
+| Release static | `data/game_static.sqlite3` | Official catalogue, growth, skills, enemies, recommended weights, graduation templates; read-only at runtime |
+| Public shared | `data/app_shared.sqlite3` | Release baseline and cross-account public overrides for official characters' extra shapes |
+| Application global | `config/global_ui_preferences.json` | Cross-account theme and interface language |
+| Account private | `accounts/<account_id>/user_data.sqlite3` | Snapshots, character instances, weights, preferences, custom characters, slots, plans, locks, jobs, battle reports |
 
-读取优先级为账号显式配置 → 允许共享的公共覆盖 → 发行默认。官方额外形状可公共覆盖；自建角色、基础
-权重、计算/倒带偏好、配装、锁和任务只属于当前账号。主题只属应用全局，账号切换不重新加载账号主题。
-账号导入导出必须以完整账号数据为迁移单元，保留结构化偏好、槽位/方案关系和引用完整性。
+Read priority is the account's explicit config → public overrides that permit sharing → release
+defaults. Official extra shapes may be overridden publicly; custom characters, base weights,
+calculation/rewind preferences, loadouts, locks and jobs belong to the current account only. Theme and
+language are application-global, and an account switch does not reload a per-account theme. Account
+import/export must migrate a complete account as one unit, preserving structured preferences,
+slot/plan relationships and referential integrity.
 
-运行时只读静态库。生成或替换静态库时同步更新 `data/manifest.json` 的 dataset、schema、importer 和
-SHA-256，并把数据库与 manifest 作为原子变更验证。账号和共享迁移只追加；已发布 SQL 不改名、不重排、
-不修改含义。迁移测试覆盖新库创建、受影响旧版本升级、失败回滚、修复后重试、外键/唯一索引/视图。
-Page 和 Service 不拼 SQL，DAO 事务是最终一致性防线。
+The static database is read-only at runtime. When generating or replacing it, update the dataset,
+schema, importer and SHA-256 in `data/manifest.json` together, and verify the database and manifest as
+one atomic change. Account and shared migrations are append-only; published SQL is never renamed,
+reordered or changed in meaning. Migration tests cover new-database creation, upgrade from each
+affected old version, failure rollback, retry after repair, and foreign keys/unique indexes/views.
+Pages and Services never assemble SQL; the DAO transaction is the final consistency guard.
 
-库存快照不可变，当前指针只指向完整稳定快照。下游开始时解析一次 `snapshot_id`，运行中不追随最新指针；
-活动方案始终按自己的 `source_snapshot_id` 读取。快照清理保护当前快照、所有活动/锁定方案与槽位、未完成
-任务引用，保证历史方案可复现。`InventorySnapshotStabilizer` 以完整内容指纹和安静窗口判稳，不使用历史
-最大数量；`inventory.get_latest` 只读最近捕获，不代表强制刷新。
+Inventory snapshots are immutable and the current pointer only ever points at a complete stable
+snapshot. Downstream work resolves `snapshot_id` once at the start and does not follow the latest
+pointer while running; an active plan is always read against its own `source_snapshot_id`. Snapshot
+cleanup protects the current snapshot, every active/locked plan and slot, and references held by
+unfinished jobs, so historical plans stay reproducible. `InventorySnapshotStabilizer` judges stability
+by a complete content fingerprint plus a quiet window, never by the historical maximum count;
+`inventory.get_latest` only reads the most recent capture and does not force a refresh.
 
-来源能力必须通过公开 capability helper 判断：
+Source capability must be decided through the public capability helper:
 
-- `nte_core` 提供正式 UID、角色实例、可靠装备状态、仓库 RPC 和极速装配。
-- `vision`/旧 `gamepad` 提供临时 UID，可用于分析、仓库展示、计算、倒带和游戏界面自动装配；不进入极速
-  装配，也不提供可靠角色归属。
-- 运行时状态增量只覆盖固定原生完整快照中已知 UID 的锁定、弃置、装备状态；残缺事件不得新增物品、
-  替换库存集合或推进当前指针。
+- `nte_core` provides real UIDs, character instances, reliable equipment state, warehouse RPC and fast
+  assembly.
+- `vision` / legacy `gamepad` provide temporary UIDs usable for analysis, warehouse display,
+  calculation, rewind and in-game automatic assembly; they never enter fast assembly and never provide
+  reliable character ownership.
+- Runtime state deltas only overlay the locked, discarded and equipped state of UIDs already known in
+  the pinned native full snapshot; a partial event must not add items, replace the inventory set or
+  advance the current pointer.
 
-## 6. 计算、角色与评分
+## 6. Calculation, characters and scoring
 
-计算冻结账号、generation、快照、静态 dataset、profile、角色顺序/平级组、目标槽位、锁快照和全部角色
-配置，返回不可变 `WeightedAllocationPreview`。保存只消费该 preview，不重新读取最新状态补齐；保存前再次
-复核账号、generation、快照、profile、`slot_id` 和锁。单角色、批量、加权及所有分配策略共用同一槽位和
-候选 contract。
+A calculation freezes the account, generation, snapshot, static dataset, profile, character
+order/equal-priority groups, target slot, lock snapshot and all character configuration, and returns
+an immutable `WeightedAllocationPreview`. Saving consumes only that preview and never re-reads the
+latest state to fill gaps; before saving it re-checks the account, generation, snapshot, profile,
+`slot_id` and locks. Single-character, bulk, weighted and every allocation strategy share the same slot
+and candidate contract.
 
-候选规则：
+Candidate rules:
 
-1. `AllocationLockSnapshot` 在候选构造前联合剔除锁定真实 UID；失效锁阻止计算。
-2. 账号“筛选设置”默认类型和品质均未选。选择卡带或驱动后必须选择至少一种品质；已选类型只让已选品质
-   进入角色管理筛选，未选类型沿用默认规则。角色优先、全局最优和增量更新共用筛选结果。
-3. 驱动副词条黑名单默认先做硬过滤；开启“黑名单为零权重”后不淘汰命中驱动，只在 Top-K 评分时将命中
-   词条权重视为 0。副词条自选不是硬过滤；顺序模式优先最深前缀，一致模式优先最多命中，组合无解时逐层
-   放宽，最终回到完整候选池。
-4. 卡带先做套装和主词条硬过滤，再做同一副词条分层回退；主词条优先。默认套装为四件套，仅显式修改覆盖。
-5. “不限制评分等级”只取消副词条自选门槛，不取消套装、卡带主词条或黑名单当前语义。
-6. 平级组暴击恢复固定为：只换卡带 → 冻结必需套装件并重选额外件 → 仅失败角色从零重配；最后阶段不
-   释放已成功同级角色。
-7. 前序角色已分配真实 UID 不进入后续候选；虚拟占位评分为 0，不可锁定或极速装配。
-8. 角色拖拽跨过 `>>` 时，每个被跨边界反向移动一格；后往前拖拽形成新边界后，将上一 `>>`（无则首项）
-   到新边界前归并为 `=`。
+1. `AllocationLockSnapshot` excludes locked real UIDs together before candidates are built; an invalid
+   lock blocks the calculation.
+2. The account "filter settings" select no type and no rarity by default. Once Cartridge or Module is
+   selected, at least one rarity must be selected; for a selected type only the selected rarities reach
+   the character-management filter, while unselected types follow the default rules. Character-priority,
+   global-optimum and incremental-update modes share the filter result.
+3. The Module sub-stat blacklist is a hard filter by default; with "blacklist means zero weight" on,
+   matching Modules are not eliminated and the matched stats are weighted 0 in the Top-K scoring.
+   Custom sub-stat selection is not a hard filter: ordered mode prefers the deepest prefix, consistent
+   mode prefers the most hits, and when no combination works the pool widens step by step, finally
+   returning to the full candidate pool.
+4. Cartridges apply the set and main-stat hard filter first, then the same layered sub-stat fallback;
+   the main stat takes precedence. The default set is 4-piece, overridden only explicitly.
+5. "No grade restriction" only removes the custom sub-stat threshold; it does not remove the set, the
+   Cartridge main stat, or the blacklist's current semantics.
+6. Equal-priority group CRIT recovery is fixed as: swap the Cartridge only → freeze the required set
+   pieces and re-pick the extra pieces → rebuild only the failed characters from scratch. The final
+   stage does not release same-tier characters that already succeeded.
+7. Real UIDs already assigned to an earlier character do not enter later candidate pools; virtual
+   placeholders score 0 and can be neither locked nor fast-assembled.
+8. When a character is dragged across a `>>`, every crossed boundary moves back one place; when
+   dragging back-to-front forms a new boundary, everything from the previous `>>` (or the first item)
+   up to the new boundary is merged into `=`.
 
-角色与评分：
+Characters and scoring:
 
-- 官方角色未显式覆盖时使用静态毕业模板的默认套装和专武；所有角色默认卡带主词条、副词条优先级未选。
-  公开有效配置读取器合并模板默认和账号覆盖，全局最优只接受显式全局覆盖。升级不得覆盖账号显式配置；
-  有效暴击率上限为 `100 - 满级默认专武暴击率`。
-- 自建角色拥有账号内正式自建 ID、权重、额外形状、默认套装和 5×5 底盘；底盘固定启用 20 格且支持单格
-  锁定。它可参加视觉库存计算和游戏界面自动装配，不进入官方详情、nte-core 角色实例、游戏配装导入或
-  极速装配。
-- 账号基础权重是持久计算输入；动态最终权重来自当前面板直伤边际归一化，只用于分析和替换排序，不写库。
-- 计算忽略快照中的一级卡带值，统一使用 `StatCatalog` 满级值：金/橙 1.0、紫 0.8、蓝 0.6。
-- 单件卡带/驱动按 `得分 ÷（面积 × 10）` 比例评级；完整方案总评使用固定区间：D `<160`、C `>=160`、
-  B `>=180`、A `>=200`、S `>=220`、SS `>=240`、SSS `>=260`、ACE `>=280`。官方、自建及各槽位均独立
-  使用该总评，不改变单件评分。
-- 新方案写入 `payload.assignment_scores` 和 `payload.tape_main_values`；仅旧方案缺字段时调用统一 helper
-  回退。
+- Unless explicitly overridden, official characters use the static graduation template's default set
+  and signature weapon; every character defaults to no Cartridge main stat and no sub-stat priority.
+  The public effective-config reader merges template defaults with account overrides, and global
+  optimum accepts only an explicit global override. An upgrade must never overwrite explicit account
+  config; the effective CRIT Rate cap is `100 - the max-level default signature weapon's CRIT Rate`.
+- A custom character owns an account-scoped real custom ID, weights, extra shapes, default set and a
+  5×5 chassis; the chassis enables a fixed 20 cells and supports per-cell locking. It can take part in
+  vision-inventory calculation and in-game automatic assembly, but never enters official details,
+  nte-core character instances, in-game loadout import or fast assembly.
+- Account base weights are a persistent calculation input; the dynamic final weights come from
+  normalising the current panel's direct-damage margin and are used only for analysis and replacement
+  ordering, never written to the database.
+- Calculation ignores level-1 Cartridge values in the snapshot and uniformly uses the `StatCatalog`
+  max-level values: gold/orange 1.0, purple 0.8, blue 0.6.
+- A single Cartridge/Module is graded on the ratio `score ÷ (area × 10)`; a complete plan's overall
+  grade uses fixed bands: D `<160`, C `>=160`, B `>=180`, A `>=200`, S `>=220`, SS `>=240`,
+  SSS `>=260`, ACE `>=280`. Official characters, custom characters and each slot use that overall grade
+  independently, and it never changes an individual item's score.
+- New plans write `payload.assignment_scores` and `payload.tape_main_values`; the unified helper
+  fallback is called only when an older plan lacks those fields.
 
-## 7. 配装槽位、方案与锁
+## 7. Loadout slots, plans and locks
 
-- 每个角色使用稳定 `slot_id` 管多个配装槽位；`primary` 是兼容默认槽位，`slot_name` 只展示。新增、
-  重命名、归档和选择通过 `LoadoutSlotSelectionService`/DAO。
-- 同角色多槽位是备选方案，可复用同一真实 UID；只有不同角色的当前槽位引用同一 UID 才构成冲突。角色
-  优先、全局最优、增量更新和全部分配策略遵守该边界。
-- 计算结果只提示本次第二步已选角色中“全部槽位锁定”的角色；未选角色不进入提示。
-- 活动方案保存角色、槽位、来源快照、assignment、payload、来源类型和锁；
-  `role_loadout_slot.current_plan_id` 与活动方案事务一致。
-- 游戏配装视图是原生稳定快照的只读投影；玩家显式导入后才保存 `game-observed-loadout-v1`。视觉来源不
-  用于游戏配装导入；完整驱动但缺卡带可保存为 `incomplete/missing_tape`。
-- 计算方案和导入方案共同参与锁、删除、替换、装配和倒带推荐。
+- Each character manages several loadout slots keyed by a stable `slot_id`; `primary` is the
+  compatibility default slot and `slot_name` is display only. Creation, rename, archiving and selection
+  go through `LoadoutSlotSelectionService`/DAO.
+- Several slots on one character are alternatives and may reuse the same real UID; only different
+  characters' current slots referencing one UID is a conflict. Character-priority, global-optimum,
+  incremental-update and every allocation strategy respect that boundary.
+- Calculation results warn only about characters selected in step two whose slots are all locked;
+  unselected characters produce no warning.
+- An active plan stores the character, slot, source snapshot, assignments, payload, source type and
+  lock; `role_loadout_slot.current_plan_id` is transactionally consistent with the active plan.
+- The in-game loadout view is a read-only projection of a native stable snapshot; only an explicit
+  player import saves it as `game-observed-loadout-v1`. Vision sources are not used for in-game loadout
+  import; complete Modules with no Cartridge may be saved as `incomplete/missing_tape`.
+- Calculated plans and imported plans both take part in locking, deletion, replacement, assembly and
+  rewind recommendation.
 
-计算保留锁属于当前账号的具体槽位方案，不调用游戏锁 RPC。至少一个真实装备即可锁定，允许缺卡带；空
-方案或含虚拟占位不可锁。锁定方案不得删除、覆盖、归档当前槽位或单件替换；批量清空跳过并报告。其他
-角色不得借用其 UID，DAO 保存事务再次检查。批量槽位要求 `slot_id` 不重复、角色一致、原生来源且跨角色
-UID 无冲突。
+A calculation lock belongs to a specific slot plan in the current account and never calls the game's
+lock RPC. One real item is enough to lock, a missing Cartridge is allowed; an empty plan or one holding
+a virtual placeholder cannot be locked. A locked plan's current slot must not be deleted, overwritten
+or archived, and no single item in it may be replaced; a bulk clear skips it and reports. No other
+character may borrow its UIDs, and the DAO save transaction checks again. Bulk slots require unique
+`slot_id`, a consistent character, a native source and no cross-character UID conflict.
 
-`EquipmentPresentation` 是装备卡片、评级、属性收益、差异和结果区域的唯一公共展示组件；它不写 SQLite、
-不选择快照、不启动 worker。计算、配装、仓库和鉴定只通过公开接口复用。
+`EquipmentPresentation` is the single shared display component for equipment cards, grades, attribute
+gains, differences and result areas; it writes no SQLite, selects no snapshot and starts no worker.
+Calculation, loadouts, warehouse and appraisal reuse it only through its public interface.
 
-## 8. 仓库、扫描、鉴定与热键
+## 8. Warehouse, scanning, appraisal and hotkeys
 
-仓库读取固定快照。`WarehouseInventoryService` 生成投影，状态管理 Service 固定 `snapshot_id` 和正式 UID
-生成计划，Integration 执行动作。命令接受可立即投影目标状态，但不等于最终成功；后续递增完整快照或正式
-范围事件负责确认。范围事件必须覆盖全部目标 UID 才可替换库存集合；只有动作会话收到明确数量减少时提示
-重新同步，后台监听不单独替换集合。
+The warehouse reads a pinned snapshot. `WarehouseInventoryService` builds the projection, the
+state-management Service pins `snapshot_id` and real UIDs to build the plan, and the Integration
+performs the action. An accepted command may immediately project the target state, but that is not
+final success; a later increasing full snapshot or an official scoped event confirms it. A scoped event
+may replace the inventory set only when it covers every target UID; only an action session receiving an
+explicit count reduction prompts a re-sync, and background listening never replaces the set on its own.
 
-仓库筛选使用正式 `suit_id`、`shape_id`、`property_id`，同组“或”、跨组“且”；状态为已装备、已锁定、
-已弃置和其他。重置清除全部条件，不以页签作隐含条件。评估角色范围只影响仓库状态规则评分，与计算角色、
-活动配装和倒带偏好隔离。视觉仓库只读；即时写回仅属于同一次鼠标扫描会话。
+Warehouse filters use the real `suit_id`, `shape_id` and `property_id`, OR within a group and AND
+across groups; states are equipped, locked, discarded and other. Reset clears every condition and never
+uses a tab as an implicit condition. The evaluation character scope affects warehouse state-rule
+scoring only, isolated from calculation characters, the active loadout and rewind preferences. The
+vision warehouse is read-only; immediate write-back belongs to the same mouse-scan session only.
 
-视觉扫描契约：
+Vision scanning contract:
 
-- 启动时创建不可变 dependencies，冻结账号、generation、目录、用户库、管理配置和热键；OCR/视觉
-  Integration 只解析，文件生命周期由独立组件管理。
-- 只有完整结果一次提交快照；取消、异常或数量不一致不提交半成品。缺失卡带值按统一满级规则补全。
-- 鼠标与虚拟手柄全量扫描在原导航前执行一次从上向下长按滑动以复位列表。鼠标末页按填写的库存总数映射
-  到底部对齐视窗，兼容双线程和异常兼容模式；虚拟手柄保留既有分页/定位流程。
-- 扫描后管理按冻结索引倒序定位，每件复核详情身份、操作前状态和操作后状态。操作前状态与固定计划不一致
-  时不点击该件，记录后继续并在最终弹窗汇总；定位、身份、确认弹窗或操作后复核失败仍停止后续输入。
-  诊断写 `mouse_state_sync_last_report.json`，不把临时 UID 升级为后续可写 UID。
+- Immutable dependencies are created at start, freezing the account, generation, directories, user
+  database, management configuration and hotkeys; the OCR/vision Integration only parses, and file
+  lifecycle is owned by a separate component.
+- Only a complete result commits a snapshot in one transaction; cancellation, an exception or a count
+  mismatch commits nothing half-finished. Missing Cartridge values are filled by the unified max-level
+  rule.
+- Mouse and virtual-gamepad full scans both perform one long top-to-bottom drag before their existing
+  navigation to reset the list. The mouse final page maps the entered inventory total onto a
+  bottom-aligned viewport and works in both dual-thread and compatibility modes; the virtual gamepad
+  keeps its existing pagination/positioning flow.
+- Post-scan management positions in reverse frozen-index order and re-checks each item's detail
+  identity, pre-operation state and post-operation state. When the pre-operation state disagrees with
+  the pinned plan the item is not clicked — it is recorded, the rest continues, and the final dialog
+  summarises it; a positioning, identity, confirmation-dialog or post-operation check failure still
+  stops all further input. Diagnostics go to `mouse_state_sync_last_report.json`, and a temporary UID is
+  never promoted into a writable UID.
 
-鉴定把截图、剪贴板、手工输入和仓库单件入口投影为统一装备，只调用公共评分与展示，不写库存、基础权重
-或配装。扫描、鉴定、自动配装和倒带输入接入设置中的应用级全局停止键；运行任务冻结启动时绑定，owner
-只停止自己的会话，任何停止路径都释放鼠标/手柄状态。
+Appraisal projects screenshots, the clipboard, manual input and the warehouse single-item entry point
+into one unified equipment object, calls only the shared scoring and display, and writes no inventory,
+base weights or loadouts. Scanning, appraisal, automatic assembly and rewind input all use the
+application-level global stop key from Settings; a running task freezes the binding at start, an owner
+stops only its own session, and every stop path releases mouse/gamepad state.
 
-## 9. 倒带推荐与执行
+## 9. Rewind recommendation and execution
 
-倒带分析只读固定库存、当前账号 `rewind_recommendation` 和各槽位活动方案。偏好字段包括
-`target_character_ids`、`main_character_ids`、`strategy`、`target_grade`、`target_threshold_mode`、
-`target_custom_percent`。打开页面或改选项不自动求解，显式“生成推荐”才运行。
+Rewind analysis reads only the pinned inventory, the current account's `rewind_recommendation` and each
+slot's active plan. The preference fields are `target_character_ids`, `main_character_ids`, `strategy`,
+`target_grade`, `target_threshold_mode` and `target_custom_percent`. Opening the page or changing an
+option does not solve automatically; only an explicit "generate recommendation" runs it.
 
 ```text
-标准阈值 = grade_ratio × max(1, drive_area) × 10
-自选阈值 = custom_percent × max(1, drive_area) × 10
-缺口 = max(0, threshold - saved_assignment_score)
+standard threshold = grade_ratio × max(1, drive_area) × 10
+custom threshold   = custom_percent × max(1, drive_area) × 10
+shortfall          = max(0, threshold - saved_assignment_score)
 grade_ratio: D=0, C=.2, B=.3, A=.4, S=.5, SS=.6, SSS=.7, ACE=.8
 ```
 
-自选范围 1.0%–100.0%，精度 0.1%；每件按自身面积计算，等于阈值无缺口。高分不抵消其他驱动缺口；阈值
-只影响倒带缺口，不改变底层单件评分或方案总评。逐件分优先读取保存的 `assignment_scores`，旧方案缺失时
-统一补算；自建角色和同角色各活动槽位独立统计。
+The custom range is 1.0%–100.0% at 0.1% precision; each item is computed against its own area, and
+matching the threshold produces no shortfall. A high score does not offset another Module's shortfall,
+and the threshold affects only the rewind shortfall — never the underlying per-item score or the plan's
+overall grade. Per-item scores prefer the saved `assignment_scores` and are recomputed uniformly when an
+older plan lacks them; custom characters and each active slot of the same character count independently.
 
-- 全面均衡：每种正缺分形状先保留一槽，余位按 `形状缺口 / max(1, 形状库存)` 分配。
-- 少角冲分：只看冲分角色，每种正缺分形状先保留一槽，余位按缺口比例分配，不除库存。
-- 超过八种正缺分形状时提示“所需驱动超过 8 个，建议降低评分等级或使用随机倒带抽取。”
-- 奖池固定八槽，每槽 12.5%；形状重复 `q` 次时每槽价 `10 + 5 × (q - 1)`，总价为 `q × 每槽价`。
-  难度只决定蓝/紫/金品质，不参与形状、概率和价格。
+- Balanced: every shape with a positive shortfall keeps one slot first, and the remaining slots are
+  distributed by `shape shortfall / max(1, shape inventory)`.
+- Focused push: only push characters count; every shape with a positive shortfall keeps one slot first,
+  and the remaining slots are distributed by shortfall alone, without dividing by inventory.
+- More than eight shapes with a positive shortfall shows "所需驱动超过 8 个，建议降低评分等级或使用随机
+  倒带抽取。"
+- The pool is a fixed eight slots at 12.5% each; when a shape repeats `q` times each slot costs
+  `10 + 5 × (q - 1)` and the total is `q × per-slot price`. Difficulty determines only blue/purple/gold
+  rarity and never affects shape, probability or price.
 
-显式“进行倒带”后冻结品质、定制模式和八槽方案。各品质先切难度再读取自身余额；初级随机十连固定 600，
-紫/金定制读取右侧十连价格。“不做更改”保留现有候选，“应用方案”完成八槽配置。前置点击后等待 1 秒，
-十连循环固定为：点击投币 10 次 → 1 秒 → Esc → 1 秒 → Esc → 0.5 秒。执行受全局停止键控制；真实输入
-仍属 `docs/roadmap.md` 中的实验能力。
+An explicit "start rewind" freezes rarity, custom mode and the eight-slot plan. Each rarity switches
+difficulty first and then reads its own balance; the beginner random ten-pull is fixed at 600, and
+purple/gold custom reads the ten-pull price on the right. "No changes" keeps the existing candidates and
+"apply plan" completes the eight-slot configuration. After the prerequisite click it waits 1 second, and
+the ten-pull loop is fixed as: click insert-coin 10 times → 1s → Esc → 1s → Esc → 0.5s. Execution obeys
+the global stop key; real input remains an experimental capability in `docs/roadmap.md`.
 
-## 10. 装配、战报、设置与更新
+## 10. Assembly, battle reports, settings and updates
 
-极速装配只消费原生正式 UID、角色实例和已保存槽位方案；游戏界面自动装配消费视觉投影，可支持自建角色。
-两条链冻结账号、generation、来源快照、目标槽位、角色项和 token，执行期间阻止账号切换并持久化进度。
+Fast assembly consumes only native real UIDs, character instances and saved slot plans; in-game
+automatic assembly consumes the vision projection and can support custom characters. Both chains freeze
+the account, generation, source snapshot, target slot, character items and token, block account
+switching while running, and persist progress.
 
-极速装配每个角色最多三次完整请求。下发后先等待 10 秒递增完整快照；已接受指令可立即投影目标角色和
-格位，但投影不是确认。完整快照优先核对角色、实例和装备全集，不因驱动格位差异复装；范围事件只在目标
-装备明确出现但未装备时触发重试。没有新快照或范围事件时本轮结束，不把无证据当遗漏，也不替换库存集合。
-第一、二次明确不一致时卸空重装，第三次仍不一致才报告最终错误。游戏界面自动装配的普通鼠标路径为公开
-能力；云模式由 Controller 固定关闭，边界见路线图。
+Fast assembly makes at most three full requests per character. After dispatch it waits 10 seconds for an
+increasing full snapshot; an accepted command may immediately project the target character and cells,
+but a projection is not a confirmation. A full snapshot is preferred and verifies the character,
+instance and complete equipment set, and a Module cell difference alone does not trigger re-assembly; a
+scoped event triggers a retry only when the target equipment clearly appears but is not equipped. With
+neither a new snapshot nor a scoped event the round simply ends — absence of evidence is not an
+omission, and the inventory set is not replaced. A clear mismatch on the first or second attempt
+triggers unequip-and-reassemble; only a third mismatch reports a final error. The regular mouse path of
+in-game automatic assembly is the public capability; cloud mode is pinned off by the controller, and its
+boundaries are in the roadmap.
 
-战报只使用 nte-core combat 聚合事件与摘要并写当前账号历史；背包同步和战报不争抢 capture 会话。不得从
-聚合摘要推测逐击、Buff/Debuff 区间、队伍、敌人实例或场景。实时悬浮窗只在当前采集会话且设置启用时显示；
-结束并生成战报、错误、历史查看和停止状态均隐藏，下次显式开始才重新显示。
+Battle reports use only nte-core combat aggregate events and summaries and write history to the current
+account; inventory sync and battle reports never compete for the capture session. Per-hit data,
+buff/debuff intervals, teams, enemy instances and scenes must never be inferred from an aggregate
+summary. The live overlay is shown only during the current capture session and only when enabled in
+settings; finishing and generating a report, an error, viewing history and a stopped state all hide it,
+and only an explicit next start shows it again.
 
-设置页只接收 `AppContext`；主题写应用全局，其余偏好写当前账号或明确的应用级路径。Mirror
-Controller/Integration 负责版本检查、下载、取消和安装器启动；远端版本低于当前版本时按已是最新版本处理，
-不下载历史版本。Mirror 失败提示提供可点击项目页，日志不记录 CDK、Token 或鉴权 URL。
+The settings page receives only `AppContext`; the theme and language are written application-global and
+every other preference to the current account or an explicit application-level path. The Mirror
+controller/integration owns version checking, downloading, cancellation and launching the installer; a
+remote version lower than the current one is treated as already up to date and is never downloaded. A
+Mirror failure message offers a clickable project page, and logs never record a CDK, token or
+authentication URL.
 
-## 11. UI、本地化、外部集成与日志
+## 11. UI, localisation, external integrations and logging
 
-一级导航固定为工作台、计算、配装、角色、仓库、鉴定、战报、工具、设置；角色图纸和基础权重是角色子页，
-通过 `parent_key` 保持父导航高亮。MainWindow 只负责组合、导航、账号切换、页面生命周期和退出。
+Top-level navigation is fixed as Dashboard, Calculate, Loadout, Characters, Warehouse, Appraisal,
+Battle report, Toolbox and Settings; character blueprints and base weights are character sub-pages that
+keep the parent navigation highlighted through `parent_key`. MainWindow owns only composition,
+navigation, account switching, page lifecycle and exit.
 
-新弹窗和修改过的弹窗使用 `src.app.window_geometry` 按当前屏幕可用区域限制尺寸并相对 owner/当前屏幕居中，
-覆盖常见 DPI 缩放和混合 DPI，不只针对 125%。自定义颜色、选中态和控件状态必须同时兼容原色、黑色、
-白色主题；滚轮浏览不得制造未发生的数据变更。
+New and modified dialogs use `src.app.window_geometry` to bound their size by the current screen's
+available area and centre them relative to the owner/current screen, covering common and mixed DPI
+scaling rather than only 125%. Custom colours, selected states and widget states must work in the
+original, black and white themes alike; scroll-wheel browsing must never produce a data change that did
+not happen.
 
-新增或修改的界面文案一律走 `src/i18n`，并区分两类文本：
+All new or modified UI copy goes through `src/i18n`, distinguishing two kinds of text:
 
-- **界面文案**用 `tr("中文源串")`，f-string 改写为 `tr("...{name}...", name=value)`，同时把该中文源串
-  作为键补进 `locales/en.json`。目录以源串为键，缺翻译回落中文而不是键名。
-- **游戏术语**用 `display_term()`。中文键同时是 OCR 匹配值和 `game_static.sqlite3` 查询键，禁止就地
-  翻译、改写或加工；只有即将写入控件时才替换显示名，权重、评分、排序、筛选键和状态判断继续使用中文键。
-  百分号后缀从中文键推导，不得判断显示名是否含 `%`。
-- nte-core 已经给出 `names`/`suit_names`（`en`/`ja`/`zh_cn`）的字段用 `display_localized()`，不再补词表。
+- **UI copy** uses `tr("Chinese source string")`, with f-strings rewritten as
+  `tr("...{name}...", name=value)`, and that Chinese source string added as a key in `locales/en.json`.
+  The catalogue is keyed by the source string, so a missing translation degrades to Chinese rather than
+  to a key name.
+- **Game terms** use `display_term()`. The Chinese key is simultaneously an OCR match value and a
+  `game_static.sqlite3` lookup key, so translating, rewriting or processing it in place is forbidden;
+  the display name is substituted only when it is about to be written into a widget, while weights,
+  scoring, sorting, filter keys and state checks keep using the Chinese key. The percent suffix is
+  derived from the Chinese key and never by testing whether the display name contains `%`.
+- Fields for which nte-core already supplies `names`/`suit_names` (`en`/`ja`/`zh_cn`) use
+  `display_localized()` instead of a glossary entry.
 
-日志文本保持中文：`logger.*`、`log_event` 和 `operation_scope(message=)` 不进 `tr()`。Service 与
-Integration 中**会显示给用户**的异常消息走 `tr()`；纯参数契约检查（`timeout 必须大于 0` 一类）保持中文。
+Logging text stays Chinese: `logger.*`, `log_event` and `operation_scope(message=)` never go through
+`tr()`. Exception messages in Services and Integrations that **are shown to a user** go through `tr()`;
+pure argument contracts (the `timeout 必须大于 0` kind) stay Chinese.
 
-首次启动（偏好文件没有 `language` 键）弹一次双语选择框并记录结果；询问发生在 `set_language()` 之前，
-由 `NTE_GUI_LAUNCH` 把关，只有 `main.py` 设置该变量——测试会导入 `src.ui.app`，弹窗会让测试挂起。
+On first launch — no `language` key in the preferences file — a bilingual chooser is shown once and the
+answer is recorded. The question is asked before `set_language()` and is gated on `NTE_GUI_LAUNCH`,
+which only `main.py` sets: tests import `src.ui.app`, and a dialog there would hang the suite.
 
-语言在 `src/ui/app.py` 导入期激活，模块级文案必须保持“先 `set_language()` 再导入界面模块”的顺序；
-测试由 `NTE_UI_LANGUAGE` 固定源语言，断言不得依赖本机偏好文件。英文单复数用兄弟键
-`"<源串>::one::<字段>"`，字段名必须写明，避免同句中的第二个整数误触发。细则见
-`docs/reference/localization.md`。
+The language is activated while `src/ui/app.py` is imported, so module-level copy must preserve the
+order "`set_language()` first, then import UI modules". Tests pin the source language with
+`NTE_UI_LANGUAGE`, and assertions must not depend on the local preferences file. English singular forms
+use a sibling key `"<source>::one::<field>"`, and the field name must be stated so a second integer in
+the same sentence cannot trigger it. Details are in `docs/reference/localization.md`.
 
-nte-core、Npcap、dwmapi、mods、OCR 和游戏输入都属于 Integration。根目录本机二进制保持忽略；只有记录
-上游 commit/版本/许可/SHA-256，并通过协议、打包和真实 Windows 验证后，才更新 `third_party` 发行组件。
-Windows 验证器只供维护，不进入安装包。
+nte-core, Npcap, dwmapi, mods, OCR and game input are all Integrations. Local binaries in the root
+directory stay ignored; a `third_party` release component is updated only after recording the upstream
+commit/version/licence/SHA-256 and passing protocol, packaging and real Windows verification. The
+Windows validator is for maintenance only and never enters the installer.
 
-日志分层：Infrastructure 管 sink，Controller 记操作生命周期，Service 记业务阶段，DAO/Integration 记
-存储与外部交互，Domain 返回 diagnostics。禁止记录完整 RPC/背包、UID 列表、账号显示名、绝对路径、OCR
-全文、截图、CDK、Token、鉴权 URL 或可复原 payload；字段规范见 `docs/reference/logging-events.md`。
+Logging layers: Infrastructure owns sinks, Controller records the operation lifecycle, Service records
+business stages, DAO/Integration record storage and external interaction, and Domain returns
+diagnostics. Never log a complete RPC/inventory, UID list, account display name, absolute path, full OCR
+text, screenshot, CDK, token, authentication URL or recoverable payload; the field specification is in
+`docs/reference/logging-events.md`.
 
-## 12. 代码、仓库与文档门禁
+## 12. Code, repository and documentation gates
 
-- 新增或修改后的 `src/`、`tools/`、`tests/` Python 文件不得超过 800 行；存量超限文件只许收缩，触及时
-  按状态所有权拆分，不通过压缩排版规避。
-- 新 `type: ignore` 必须含错误码和原因。Ruff `E9/F63/F7/F821/F401` 是全仓硬门禁。
-- 新增界面文案必须通过 `tests.test_i18n`：`test_every_tr_key_resolves` 会解析 `src/` 中每个 `tr()` 键，
-  未补进 `locales/en.json` 即失败；单复数兄弟键必须对应真实源串和真实占位符。
-- 新依赖同步更新 `pyproject.toml` 与 `uv.lock`；测试不依赖开发机偶然安装包。
-- feature 只复用公开组件和 contract，不跨 feature 调下划线私有实现或访问其他页面 widget/worker。
-- 不新增 `setattr(MainWindow, ...)`、`globals()` 动态导出、模块全局扫描、页面索引跳转或服务定位器。
-- Release 由维护者本地构建并用 `gh` 手工发布，不建立自动发布工作流。
-- `accounts/`、WAL/SHM、日志、截图、PCAP、OCR 临时文件、构建/安装器输出、本机 SDK/转储、绝对路径和
-  未审计二进制不得进入 Git。
+- A new or modified Python file under `src/`, `tools/` or `tests/` must not exceed 800 lines; existing
+  oversized files may only shrink, and when touched are split by state ownership rather than evaded by
+  compressing the formatting.
+- A new `type: ignore` must carry the error code and a reason. Ruff `E9/F63/F7/F821/F401` is a
+  repository-wide hard gate.
+- New UI copy must pass `tests.test_i18n`: `test_every_tr_key_resolves` parses every `tr()` key under
+  `src/` and fails when one is missing from `locales/en.json`; a singular sibling key must correspond to
+  a real source string and a real placeholder.
+- New UI copy must also pass `python tools/quality/i18n_coverage.py --scope ui`, which finds Chinese
+  handed to a widget that was never wrapped — the test suite cannot see those.
+- A new dependency updates `pyproject.toml` and `uv.lock` together; tests never rely on a package that
+  happens to be installed on a developer machine.
+- Features reuse only public components and contracts, never calling another feature's underscore-private
+  implementation or touching another page's widget/worker.
+- Do not add `setattr(MainWindow, ...)`, `globals()` dynamic exports, module-global scanning, page-index
+  navigation or a service locator.
+- Releases are built locally by the maintainer and published by hand with `gh`; no automated release
+  workflow.
+- `accounts/`, WAL/SHM, logs, screenshots, PCAP, OCR temporary files, build/installer output, local
+  SDK/dumps, absolute paths and unaudited binaries must never enter Git.
 
-文档入口固定为：`docs/README.md`（索引）、`architecture.md`（边界与数据流）、`features.md`（当前功能）、
-`integrations.md`（外部能力）、`roadmap.md`（未完成事项）、`reference/`（公式与字段）、`validation/`（实机
-证据）。修改时遵守第 1 节覆盖式维护规则，并检查全部相对链接。
+The documentation entry points are fixed: `docs/README.md` (index), `architecture.md` (boundaries and
+data flow), `features.md` (current features), `integrations.md` (external capabilities), `roadmap.md`
+(unfinished work), `reference/` (formulas and fields), `validation/` (real-hardware evidence). Follow
+the overwrite rule in section 1 when changing them, and check every relative link.
 
-`docs/en/` 与 `README.en.md` 是英文镜像，中文为权威版本：先改中文，再同步镜像，不在镜像里新增中文
-没有的事实。本文件（`AGENTS.md`）只维护中文，不做镜像。
+The Chinese documents under `docs/` are authoritative and `docs/en/` plus `README.en.md` mirror them:
+change the Chinese first, then sync the mirror, and never add a fact to the mirror that the Chinese
+lacks. This file is maintained in English only, because the fork's maintainers work in English; see
+section 14 for what that costs at merge time.
 
-## 13. 验证要求
+## 13. Verification requirements
 
-按改动范围选择专项测试：
+Choose the targeted tests by change scope:
 
-| 范围 | 至少覆盖 |
+| Scope | At least covers |
 | --- | --- |
-| AppContext、账号、worker | app-context、account-user-database、settings-context |
-| 同步、快照、扫描 | inventory-sync、stabilizer、vision/streaming、mouse/gamepad、OCR golden |
-| 计算、候选、替换 | allocation、weighted-allocation、role-selector、crit、replacement |
-| 自建角色、权重、图纸 | custom-role、character-weight、blueprint、graduation |
-| 槽位、方案、锁 | loadout-slot/DAO、lock、game-loadout、equipment display |
-| 仓库、鉴定、热键 | warehouse、state-management、identification、hotkey boundary |
-| 倒带 | rewind recommendation、shape detection、toolbox、saved scores |
-| 极速/自动装配 | equipment-apply、verification、bulk、drive-assembly |
-| 战报 | DAO、persistence、capture 生命周期 |
-| SQLite/静态数据 | migration、static/shared data、manifest、catalog |
-| 文档、依赖、打包 | Markdown links、module boundaries、repository hygiene、packaging |
+| AppContext, accounts, workers | app-context, account-user-database, settings-context |
+| Sync, snapshots, scanning | inventory-sync, stabilizer, vision/streaming, mouse/gamepad, OCR golden |
+| Calculation, candidates, replacement | allocation, weighted-allocation, role-selector, crit, replacement |
+| Custom characters, weights, blueprints | custom-role, character-weight, blueprint, graduation |
+| Slots, plans, locks | loadout-slot/DAO, lock, game-loadout, equipment display |
+| Warehouse, appraisal, hotkeys | warehouse, state-management, identification, hotkey boundary |
+| Rewind | rewind recommendation, shape detection, toolbox, saved scores |
+| Fast/automatic assembly | equipment-apply, verification, bulk, drive-assembly |
+| Battle reports | DAO, persistence, capture lifecycle |
+| SQLite/static data | migration, static/shared data, manifest, catalog |
+| Docs, dependencies, packaging | Markdown links, module boundaries, repository hygiene, packaging |
 
-权威命令：
+Authoritative commands:
 
 ```powershell
 python tools/quality/run_tests.py core
@@ -354,11 +493,64 @@ python tools/quality/run_tests.py full
 $mypyFiles = Get-Content tools/quality/mypy_allowlist.txt
 python -m mypy $mypyFiles
 python -m ruff check .
+python tools/quality/i18n_coverage.py --scope ui
 python -X pycache_prefix=build/compile-cache -m compileall -q src tests tools
 uv lock --check
 git diff --check
 ```
 
-涉及真实游戏、驱动、插件或更新时，再执行 `tools/windows_validation` 和 `docs/validation/windows.md`。完成前
-确认静态库与 manifest 仅含预期变更、迁移可重试、文档链接有效、本机数据未入库，且上游输入、失败路径、
-下游保存、最终确认和回滚均有测试或人工验收证据。
+When real game, driver, plugin or update behaviour is involved, additionally run
+`tools/windows_validation` and `docs/validation/windows.md`. Before finishing, confirm that the static
+database and manifest contain only the expected changes, migrations are retryable, documentation links
+resolve, no local data entered Git, and that upstream inputs, failure paths, downstream saves, final
+confirmation and rollback all have test or manual acceptance evidence.
+
+## 14. Upstream synchronisation
+
+This fork adds localisation on top of `hxwd94666/NTE-Drive-Calculator`. Upstream declined the change,
+so the divergence is permanent and must be managed rather than resolved.
+
+Branch roles:
+
+- `main` is a pristine mirror of `upstream/main`. Never commit to it — that is what keeps `--ff-only`
+  working and makes upstream's changes readable on their own.
+- The fork trunk carries the localisation and is the branch that gets built and released.
+
+Per upstream release:
+
+```bash
+git fetch upstream
+git checkout main && git merge --ff-only upstream/main
+git checkout <fork trunk> && git merge main
+```
+
+**Merge, never rebase.** Rebasing the fork's commits over a moving upstream re-resolves the same
+conflicts every time; merging resolves them once. Enable `git config --global rerere.enabled true` so a
+resolution is recorded and replayed the next time the same conflict appears — it pays for itself on the
+second sync.
+
+Expect conflicts, and budget for them. 96% of the files this fork modifies are files upstream actively
+edits, and one measured release produced 21 conflicting files across 38 hunks. Almost every hunk has the
+same shape — upstream changed a line the fork had wrapped:
+
+```text
+ours   (upstream): self.btn_run.setText("⏳  扫描中... (F12 停止)")
+theirs (the fork): self.btn_run.setText(tr("⏳  扫描中... ({key} 停止)", key=...))
+```
+
+Resolve by keeping upstream's logic and re-applying the `tr()` wrapper.
+
+After every sync, run the gates in section 13 **and**:
+
+```bash
+python tools/quality/i18n_coverage.py --scope ui
+```
+
+The test suite fails when a `tr()` key is missing from the catalogue, but it cannot fail on Chinese that
+upstream added and nobody wrapped — that just renders untranslated. `i18n_coverage.py` is what finds it.
+Its blind spot is text assembled through a helper before reaching a widget, which no static analysis
+sees, so a clean report is not proof of full coverage.
+
+`AGENTS.md` is maintained in English, so upstream's edits to it always conflict as whole sections and
+need re-translating rather than merging. That is a deliberate trade: the file is read constantly by the
+fork's maintainers and merged a few times a year.
