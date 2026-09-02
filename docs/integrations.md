@@ -45,8 +45,9 @@ Service 负责 OCR、归一化和装备字段。Integration 返回截图、索�
 根目录 `nte-core.exe`、`dwmapi.dll` 和插件副本是本机文件。`third_party` 只保存明确晋升的发行组件；
 晋升前记录上游 commit、版本、许可和 SHA-256，并完成协议、打包和真实 Windows 验证。
 
-mods 插件运行时 SDK 缓存位于可写工作区，不进入 Git 或发行模板。游戏更新后的 presence、IPC 管道、
-动态 SDK 和 Hook 排查见 [装配插件版本适配](reference/mods-plugin-version-adaptation.md)。
+mods 插件运行时 SDK 缓存位于可写工作区，不进入 Git 或发行模板。游戏更新会改变 `HTGame.exe` 的 PE
+映像身份：presence 事件存在不代表 IPC 管道已建立，签名命中也不代表 Hook 已安装。分层定位顺序为
+presence → 工作区 → pipe → Hook，实机步骤见 [Windows 验收](validation/windows.md) 第 10 节。
 
 ## 4. 静态数据与资源
 

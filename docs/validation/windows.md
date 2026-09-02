@@ -201,8 +201,11 @@ python tools/windows_validation/run_validation.py --profile vision `
 
 - [ ] 环境诊断分别显示 Npcap、nte-core、dwmapi、插件 presence、SDK 缓存和 IPC 管道状态。
 - [ ] 在测试环境执行插件部署、备份和还原；失败保留原 DLL 和运行时 SDK 缓存。
-- [ ] 游戏更新后按 [插件适配文档](../reference/mods-plugin-version-adaptation.md) 验证 DLL 哈希、工作区、
-  SDK 重建、presence、pipe 和一次受控装配。
+- [ ] 游戏更新后按顺序验证：记录 `SizeOfImage`、PE CheckSum、游戏版本和插件哈希；分别确认 nte-core
+  抓包、presence event、工作区和 pipe 以定位故障层；重新运行签名解析并记录候选数量，不沿用旧偏移；
+  确认 Viewport Tick Hook 已安装（presence 存在但 pipe 缺失即为未安装）；最后完成一次受控装配。
+- [ ] 新插件 profile 必须有原生断言、实机 pipe 证据和至少一次协议/状态确认；保留原 DLL、修复 DLL、
+  源码 diff 和可运行回滚，并更新 `third_party/mods-plugin/COMPONENT.md` 与 `SOURCE.md` 的来源与哈希。
 - [ ] 执行 Mirror 更新检查、取消、失败重试和安装器启动；日志无 CDK、Token 和鉴权 URL。
 - [ ] 运行打包测试，确认 Windows 验证器、本机数据库、日志、截图、SDK 缓存和安装器旧输出不进入安装包。
 - [ ] 检查发行静态库与 manifest SHA-256，确认 unresolved 资源仍显式记录。

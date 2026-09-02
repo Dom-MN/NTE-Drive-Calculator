@@ -269,8 +269,14 @@ capability until the real-hardware threshold is met.
   pipe status.
 - [ ] Perform plugin deployment, backup and restore in a test environment; a failure preserves the
   original DLL and the runtime SDK cache.
-- [ ] After a game update, verify the DLL hash, workspace, SDK rebuild, presence, pipe and one controlled
-  assembly per the plugin adaptation reference.
+- [ ] After a game update, verify in order: record `SizeOfImage`, the PE checksum, the game version and the
+  plugin hash; confirm nte-core capture, the presence event, the workspace and the pipe separately to
+  locate the failing layer; re-run signature resolution and record the candidate count rather than reusing
+  old offsets; confirm the Viewport Tick hook is installed (presence present but pipe missing means it is
+  not); finish with one controlled assembly.
+- [ ] A new plugin profile needs a native assertion, real-device pipe evidence and at least one
+  protocol/state confirmation; keep the original DLL, the fixed DLL, the source diff and a working
+  rollback, and update the origin and hashes in `third_party/mods-plugin/COMPONENT.md` and `SOURCE.md`.
 - [ ] Run the Mirror update check, cancel, failure retry and installer launch; logs contain no CDK, token
   or authentication URL.
 - [ ] Run the packaging tests and confirm the Windows validator, local database, logs, screenshots, SDK

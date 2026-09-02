@@ -58,8 +58,10 @@ holds only release components that were explicitly promoted; before promotion, r
 commit, version, licence and SHA-256, and complete protocol, packaging and real Windows verification.
 
 The mods plugin's runtime SDK cache lives in a writable workspace and never enters Git or the release
-template. Presence, IPC pipe, dynamic SDK and hook troubleshooting after a game update is covered by the
-assembly-plugin version adaptation reference.
+template. A game update changes `HTGame.exe`'s PE image identity: a present presence event does not mean
+the IPC pipe was created, and a signature match does not mean the hook was installed. Diagnose in the
+order presence → workspace → pipe → hook; the real-device steps are in
+[Windows acceptance](validation/windows.md), section 10.
 
 ## 4. Static data and assets
 
