@@ -32,6 +32,8 @@ def main() -> None:
     if args.cli:
         parser.error("旧 JSON 命令行分配器已移除，请直接启动桌面 GUI。")
 
+    # 标记为真实 GUI 启动：src.ui.app 在导入期据此决定是否询问语言。
+    os.environ.setdefault("NTE_GUI_LAUNCH", "1")
     from src.ui.app import run_gui
 
     run_gui()

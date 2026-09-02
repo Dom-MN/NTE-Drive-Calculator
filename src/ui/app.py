@@ -77,7 +77,17 @@ GLOBAL_LANGUAGE_SETTINGS = GlobalLanguageSettingsService(
     APPLICATION_PATHS.global_ui_preferences_file
 )
 # 测试与命令行可用 NTE_UI_LANGUAGE 固定语言，避免依赖本机偏好文件。
-set_language(os.environ.get("NTE_UI_LANGUAGE") or GLOBAL_LANGUAGE_SETTINGS.load())
+_FORCED_LANGUAGE = os.environ.get("NTE_UI_LANGUAGE")
+# 首次启动询问语言。只有真正启动 GUI 时才问：测试会导入本模块，不能弹窗。
+if not _FORCED_LANGUAGE and os.environ.get("NTE_GUI_LAUNCH"):
+    from src.services.global_theme_settings_service import GlobalThemeSettingsService
+    from src.ui.first_run_language import ensure_language_choice
+
+    ensure_language_choice(
+        GLOBAL_LANGUAGE_SETTINGS,
+        GlobalThemeSettingsService(APPLICATION_PATHS.global_ui_preferences_file).load(),
+    )
+set_language(_FORCED_LANGUAGE or GLOBAL_LANGUAGE_SETTINGS.load())
 
 
 def _initialize_accounts():
@@ -735,7 +745,8 @@ def run_gui():
     )
     if hasattr(Qt, "AA_DontUseNativeDialogs"):
         QApplication.setAttribute(Qt.AA_DontUseNativeDialogs, True)
-    app = QApplication(sys.argv)
+    # 首次启动的语言选择可能已经创建过实例，Qt 只允许一个。
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setStyle("Fusion")
     account_settings = APP_CONTEXT.account_settings
     legacy_theme = account_settings.legacy_theme_preference()

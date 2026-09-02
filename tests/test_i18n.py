@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import json
+import pathlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -384,6 +385,70 @@ class StatListKeyTests(unittest.TestCase):
         self.assertFalse(hasattr(i18n, "display_skill"))
         page = (SOURCE / "features" / "battle_report" / "page.py").read_text(encoding="utf-8")
         self.assertIn("str(skill.name)", page)
+
+    def test_first_launch_asks_once_and_records_the_answer(self) -> None:
+        """Absent is not the same as zh_CN: only the former should ask."""
+        from src.services.global_language_settings_service import (
+            GlobalLanguageSettingsService,
+        )
+        from src.ui import first_run_language
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "global_ui_preferences.json"
+            path.write_text(json.dumps({"theme": "black"}), encoding="utf-8")
+            settings = GlobalLanguageSettingsService(path)
+            self.assertFalse(settings.has_stored_choice())
+
+            asked = []
+            original = first_run_language.prompt_for_language
+            first_run_language.prompt_for_language = lambda theme=None: (
+                asked.append(theme) or "en"
+            )
+            try:
+                self.assertEqual("en", first_run_language.ensure_language_choice(settings))
+                self.assertEqual(1, len(asked))
+                # A recorded answer must not be asked for again.
+                self.assertTrue(settings.has_stored_choice())
+                self.assertEqual("en", first_run_language.ensure_language_choice(settings))
+                self.assertEqual(1, len(asked))
+            finally:
+                first_run_language.prompt_for_language = original
+
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual("en", payload["language"])
+            self.assertEqual("black", payload["theme"], "the theme must survive the write")
+
+    def test_choosing_the_source_language_is_still_a_choice(self) -> None:
+        """Picking 简体中文 must stop the prompt, not look like 'never answered'."""
+        from src.services.global_language_settings_service import (
+            GlobalLanguageSettingsService,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "global_ui_preferences.json"
+            settings = GlobalLanguageSettingsService(path)
+            settings.save("zh_CN")
+            self.assertTrue(settings.has_stored_choice())
+
+    def test_importing_the_ui_never_prompts(self) -> None:
+        """Tests import src.ui.app; a dialog there would hang the suite."""
+        source = (SOURCE / "ui" / "app.py").read_text(encoding="utf-8")
+        guard = source.index("ensure_language_choice(")
+        prelude = source[:guard]
+        self.assertIn('os.environ.get("NTE_GUI_LAUNCH")', prelude)
+        self.assertLess(
+            prelude.rindex('os.environ.get("NTE_GUI_LAUNCH")'),
+            guard,
+            "the GUI-launch guard must gate the prompt",
+        )
+        # main.py is the only place that may set it.
+        main_source = (ROOT / "main.py").read_text(encoding="utf-8")
+        self.assertIn('os.environ.setdefault("NTE_GUI_LAUNCH", "1")', main_source)
+        self.assertLess(
+            main_source.index('os.environ.setdefault("NTE_GUI_LAUNCH", "1")'),
+            main_source.index("from src.ui.app import run_gui"),
+            "the flag must be set before the UI module is imported",
+        )
 
     def test_language_is_activated_before_any_ui_or_feature_import(self) -> None:
         source = (ROOT / "src" / "ui" / "app.py").read_text(encoding="utf-8")

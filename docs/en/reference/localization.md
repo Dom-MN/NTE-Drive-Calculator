@@ -44,6 +44,22 @@ local preference file. Test assertions are written against source-language strin
 `tools/quality/run_tests.py` sets `NTE_UI_LANGUAGE=zh_CN`; `app.py` reads that environment variable
 first, and test results no longer depend on local preferences.
 
+## The first-launch prompt
+
+No `language` key in the preferences file means "never chosen", so the first launch shows a bilingual
+chooser once — the reader has not picked a language yet, so both have to be on screen. The answer is
+written to the preferences and the question is not asked again. Explicitly choosing `zh_CN` counts as an
+answer and does not re-prompt.
+
+The question must be asked before `set_language()`, which means before any UI module is imported.
+`src/ui/first_run_language.py` therefore depends only on PySide6 and the preference service and imports
+no feature module. It creates the QApplication, and `run_gui()` reuses it via
+`QApplication.instance() or ...`.
+
+Tests import `src.ui.app` too, and a dialog there would hang the suite, so the prompt is gated on
+`NTE_GUI_LAUNCH` — only `main.py` sets it, immediately before importing the UI. `NTE_UI_LANGUAGE` takes
+precedence and skips the prompt entirely.
+
 ## Multilingual names that nte-core already supplies
 
 nte-core inventory items carry `names`/`suit_names` (`en`/`ja`/`zh_cn`) alongside a stable

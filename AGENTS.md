@@ -291,6 +291,9 @@ Controller/Integration 负责版本检查、下载、取消和安装器启动；
 日志文本保持中文：`logger.*`、`log_event` 和 `operation_scope(message=)` 不进 `tr()`。Service 与
 Integration 中**会显示给用户**的异常消息走 `tr()`；纯参数契约检查（`timeout 必须大于 0` 一类）保持中文。
 
+首次启动（偏好文件没有 `language` 键）弹一次双语选择框并记录结果；询问发生在 `set_language()` 之前，
+由 `NTE_GUI_LAUNCH` 把关，只有 `main.py` 设置该变量——测试会导入 `src.ui.app`，弹窗会让测试挂起。
+
 语言在 `src/ui/app.py` 导入期激活，模块级文案必须保持“先 `set_language()` 再导入界面模块”的顺序；
 测试由 `NTE_UI_LANGUAGE` 固定源语言，断言不得依赖本机偏好文件。英文单复数用兄弟键
 `"<源串>::one::<字段>"`，字段名必须写明，避免同句中的第二个整数误触发。细则见

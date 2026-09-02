@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.i18n import DEFAULT_LANGUAGE, normalized_language
+from src.i18n import DEFAULT_LANGUAGE, LANGUAGES, normalized_language
 from src.services.global_ui_preferences_store import GlobalUiPreferencesStore
 
 
@@ -24,6 +24,18 @@ class GlobalLanguageSettingsService:
         if value is None:
             return DEFAULT_LANGUAGE
         return normalized_language(value.get("language"))
+
+    def has_stored_choice(self) -> bool:
+        """Whether a language was explicitly recorded.
+
+        Absent is not the same as ``zh_CN``: the first launch has to tell the two
+        apart to know whether to ask.
+        """
+        value = self._store.read()
+        if value is None:
+            return False
+        stored = value.get("language")
+        return isinstance(stored, str) and stored in LANGUAGES
 
     def save(self, language: object) -> str:
         normalized = normalized_language(language)

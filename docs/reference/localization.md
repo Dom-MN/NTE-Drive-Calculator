@@ -39,6 +39,19 @@
 测试断言写的是源语言字符串，所以 `tools/quality/run_tests.py` 会设置
 `NTE_UI_LANGUAGE=zh_CN`；`app.py` 优先读取该环境变量，测试结果不再受本机偏好影响。
 
+## 首次启动询问
+
+偏好文件里没有 `language` 键时视为“从未选择”，首次启动弹一次双语选择框（用户此时还没
+选语言，所以两种语言都要显示）；选中后写入偏好，之后不再询问。显式选择 `zh_CN` 也算已选择，
+不会重复弹窗。
+
+询问必须发生在 `set_language()` 之前，也就是导入界面模块之前，因此
+`src/ui/first_run_language.py` 只依赖 PySide6 和偏好服务，不导入任何 feature 模块。
+弹窗会创建 QApplication，`run_gui()` 用 `QApplication.instance() or ...` 复用它。
+
+测试也会导入 `src.ui.app`，弹窗会让测试挂起，所以询问由 `NTE_GUI_LAUNCH` 把关：只有
+`main.py` 在导入界面模块之前设置该变量。`NTE_UI_LANGUAGE` 优先级更高，设置后完全跳过询问。
+
 ## nte-core 自带的多语言名称
 
 nte-core 的库存条目同时带 `names`/`suit_names`（`en`/`ja`/`zh_cn`）与稳定
