@@ -31,8 +31,13 @@ from PySide6.QtWidgets import (
 from src.i18n import tr, display_term
 from src.app.theme import themed_style
 from src.app.workers import WorkerThread
+from src.features.toolbox.cultivation_entry import (
+    build_cultivation_calculator_entry,
+    show_cultivation_calculator,
+)
 from src.integrations.bundled_resources import bundled_game_ui_asset_root
 from src.services.game_ui_asset_catalog import GameUiAssetCatalog
+from src.services.cultivation_planner_service import CultivationPlannerService
 from src.services.rewind_shape_recommendation_service import (
     RewindShapeAnalysis,
     RewindShapeRecommendationService,
@@ -40,7 +45,11 @@ from src.services.rewind_shape_recommendation_service import (
 )
 from src.features.toolbox.rewind_execution_dialog import RewindExecutionOptions
 from src.features.toolbox.rewind_execution_ui import RewindExecutionUiMixin
+from src.features.toolbox.rewind_role_selection import (
+    configure_rewind_role_score_card,
+)
 from src.features.toolbox.rewind_slot_ui import RewindSlotUiMixin
+from src.features.toolbox.static_catalog_entry import build_static_catalog_entry
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +57,8 @@ class ToolboxDependencies:
     """Narrow account-bound dependencies assembled by ``src.ui.app``."""
 
     rewind_service_factory: Callable[[], RewindShapeRecommendationService]
+    cultivation_service_factory: Callable[[], CultivationPlannerService]
+    navigate_static_catalog: Callable[[], None]
 
     def rewind_service(self) -> RewindShapeRecommendationService:
         return self.rewind_service_factory()
@@ -126,6 +137,17 @@ class ToolboxPage:
         row_layout.addWidget(use_button, 0, Qt.AlignVCenter)
 
         layout.addWidget(tool_row)
+        layout.addWidget(build_cultivation_calculator_entry(
+            page,
+            open_calculator=lambda: show_cultivation_calculator(
+                self._dialog_parent,
+                service_factory=self._dependencies.cultivation_service_factory,
+            ),
+        ))
+        layout.addWidget(build_static_catalog_entry(
+            page,
+            navigate=self._dependencies.navigate_static_catalog,
+        ))
         layout.addStretch()
         self._page = page
         return page
@@ -137,14 +159,11 @@ class ToolboxPage:
         try:
             service = self._dependencies.rewind_service()
         except Exception as exc:
-            QMessageBox.warning(
-                self._dialog_parent,
-                tr("倒带推荐"),
-                tr("读取倒带分析数据失败：{error}", error=exc),
-            )
+            QMessageBox.warning(self._dialog_parent, tr("倒带推荐"), tr("读取倒带分析数据失败：{error}", error=exc))
             return
         dialog = _RewindRecommendationDialog(service, self._dialog_parent)
         dialog.exec()
+
 
 
 class _RoleSelectionDialog(QDialog):
@@ -205,22 +224,19 @@ class _RoleSelectionDialog(QDialog):
             card.setObjectName("rewindRoleSelectionCard")
             card.setCheckable(True)
             card.setChecked(role.character_id in selected)
-            card.setText(display_term(role.name))
-            card.setToolTip(role.name)
+            configure_rewind_role_score_card(card, role)
             avatar_path = catalog.character_icon(role.character_id)
             if avatar_path is not None:
                 card.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
                 card.setIconSize(QSize(76, 76))
-                card.setFixedSize(116, 116)
                 card.setIcon(QIcon(str(avatar_path)))
             else:
                 # Account-defined roles have no game portrait; show their name
                 # directly instead of reserving a misleading empty image card.
                 card.setToolButtonStyle(Qt.ToolButtonTextOnly)
-                card.setFixedSize(116, 44)
             card.setStyleSheet(themed_style(
                 "QToolButton{background:#161b22;color:#c9d1d9;border:1px solid #30363d;"
-                "border-radius:8px;padding:6px;font-size:12px;font-weight:700;}"
+                "border-radius:8px;padding:6px 6px 24px 6px;font-size:12px;font-weight:700;}"
                 "QToolButton:hover{border-color:#58a6ff;background:#1f6feb22;}"
                 "QToolButton:checked{border:2px solid #58a6ff;background:#1f6feb;color:#fff;}"
             ))
@@ -489,7 +505,7 @@ class _RewindRecommendationDialog(RewindExecutionUiMixin, RewindSlotUiMixin, QDi
         summary.setWordWrap(False)
         summary.setStyleSheet(themed_style("color:#c9d1d9"))
         selection_row.addWidget(summary, 1)
-        button = QPushButton(tr("选择冲分角色") if main else tr("选择角色"))
+        button = QPushButton("选择角色")
         button.setObjectName("btnAction")
         button.setEnabled(False)
         button.clicked.connect(self._choose_main_roles if main else self._choose_target_roles)
@@ -642,11 +658,8 @@ class _RewindRecommendationDialog(RewindExecutionUiMixin, RewindSlotUiMixin, QDi
         self._main_summary.setText(self._role_summary(self._main_character_ids, tr("未选择，请选择角色")))
 
     def _role_summary(self, character_ids: set[int], empty_text: str) -> str:
-        names = [
-            display_term(self._role_names[identifier])
-            for identifier in sorted(character_ids)
-            if identifier in self._role_names
-        ]
+        names = [display_term(self._role_names[i])
+                 for i in sorted(character_ids) if i in self._role_names]
         if not names:
             return empty_text
         shown = tr("、").join(names[:3])

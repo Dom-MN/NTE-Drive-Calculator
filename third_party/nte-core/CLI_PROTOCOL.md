@@ -389,8 +389,10 @@ content are never sent to stdout.
 
 `subtract_time_stop` is required and selects the same timing calculation used by
 the GUI. The result is null before any combat or abyss data exists. Otherwise it
-contains total duration, damage, DPS, damage taken, hit count, character rows,
-skill rows, both abyss halves, and the redacted parse-quality counters. Stable
+contains total duration, damage, maximum-HP reduction, DPS, damage taken, hit
+count, character rows, skill rows, both abyss halves, and the redacted
+parse-quality counters. `max_hp_reduction` is the authoritative aggregate of
+maximum-HP reduction and remains separate from `total_damage`. Stable
 `dps_time_mode` values are `subtract_time_stop` and `wall_clock`; quality source
 values are `live`, `pcapng_replay`, `json_replay`, and `unknown`. Each skill row's
 `name` prefers a stable ability or GameplayEffect grouping key over a localized
@@ -427,13 +429,30 @@ Core shuts down; `battle.reset` ends its availability and the next battle gets
 a new ID. Passing a no-longer-available or unknown ID returns
 `BATTLE_RECORD_NOT_FOUND` instead of silently switching to the current battle.
 
-The response contract is version 1. It includes the shared `generation`,
+The response contract is version 5. Version 5 adds nullable
+`pause_type_mask` to each `time_stop_intervals` item; version 4 added aggregate
+summary and per-hit `max_hp_reduction`, and version 3 added authoritative
+per-hit `overkill_damage`.
+The response includes the shared `generation`,
 capture operation ID, state/source, battle bounds, clipped time-stop intervals,
 abyss markers, aggregate summary, quality counters, and axis completeness.
+Known masks use `EPausedGameType` bits: types 2, 3, and 4 are `0x1c` and type 6
+(`PG_LinkoEffect`) is `0x40`. A nonzero-to-different-nonzero transition closes
+the old segment and opens the new segment at the same timestamp, so consumers
+can anchor ordinary Q pauses with `pause_type_mask & 0x1c != 0` without treating
+the beginning of a Linko-only segment as a Q start. Adjacent or overlapping
+segments still form one global time union for DPS subtraction. A null mask
+means an old compacted interval no longer has lossless type attribution; it
+must not be treated as zero or assigned to a pause type.
 `generation`, `axis_first_sequence`, and `axis_total_hits` are decimal strings
 so JavaScript clients do not lose 64-bit integer precision. The generation
 advances only when an exposed battle read model changes or the record is
 finalized.
+
+While capture is live, battle read methods process a bounded batch of queued
+engine events before responding; remaining events stay ordered for the core
+loop or a later read. After capture stops, the stop path still joins producers
+and drains every already-produced event before the record becomes finalized.
 
 ### `battle.get_axis`
 
@@ -452,9 +471,14 @@ string returned by `next_cursor`. Sequence/cursor/total values are strings;
 the page also carries the same battle `generation`. Each row contains the
 bounded, redacted combat facts already held by Core, including its record ID,
 source, attribution status/reason, direction, damage/follow-up, target
-projection, skill identifiers, and abyss half; it never contains packet bytes,
-endpoints, or PCAP data. `team_snapshot_id` is explicitly null until a stable
-team snapshot is available instead of being inferred from current UI state.
+projection, skill identifiers, and abyss half. `overkill_damage` is the portion
+of primary `damage` beyond a valid `target_hp_before`; it excludes follow-up
+damage and is zero when Core has no valid target HP snapshot. Rows never contain
+packet bytes, endpoints, or PCAP data. `max_hp_reduction` is the additional
+maximum-HP loss attributed to that hit and remains separate from `total_damage`.
+`team_snapshot_id` is explicitly null
+until a stable team snapshot is available instead of being inferred from current
+UI state.
 
 Core retains a bounded hit window. Once earlier rows have been trimmed,
 `complete` becomes false and `first_available_cursor` identifies the first
@@ -480,8 +504,9 @@ beyond `total_hits + 1` returns `BATTLE_AXIS_CURSOR_INVALID`.
 `scope` is `all`, `upper`, or `lower`. `bucket_seconds` is required, finite,
 and from 0.2 through 10 seconds. The response reuses Core's authoritative
 timeline projection and includes characters, buckets, per-character DPS rows,
-markers, time-stop intervals, and simplified segments. It carries contract
-version 1, the shared battle generation, and `complete:false` if the underlying
+markers, time-stop intervals, and simplified segments. Timeline interval items
+use the same nullable `pause_type_mask` semantics as battle records. It carries
+contract version 5, the shared battle generation, and `complete:false` if the underlying
 axis was trimmed.
 
 Core checks the response budget before allocating the timeline and caps it at

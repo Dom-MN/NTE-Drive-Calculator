@@ -159,7 +159,15 @@ def _score_drive_dict(self, sub_stats, shape_id, weights, quality="Gold"):
     )
 
 
-def _score_tape_dict(self, main_stats, sub_stats, weights, quality="Gold", main_weights=None):
+def _score_tape_dict(
+    self,
+    main_stats,
+    sub_stats,
+    weights,
+    quality="Gold",
+    main_weights=None,
+    main_value=None,
+):
     if not self.scoring_engine:
         return 0.0
     return score_tape_stats(
@@ -169,6 +177,7 @@ def _score_tape_dict(self, main_stats, sub_stats, weights, quality="Gold", main_
         weights=weights,
         quality=quality,
         main_weights=main_weights if isinstance(main_weights, dict) else None,
+        main_value=main_value,
     )
 
 
@@ -519,6 +528,16 @@ class EquipmentPresentation(EquipmentLoadoutComparisonPresentationMixin):
 
     def role_stat_priority_stats(self, role_name: str):
         return self._role_stat_priority_stats(role_name)
+
+    def attribute_summary_weight(
+        self, role_name: str, stat: str, mode: str = "equipment"
+    ) -> float:
+        weight = float(self._bonus_stat_weight(role_name, stat, mode))
+        weights = ((self.roles_db.get(role_name, {}) or {}).get("weights", {}) or {})
+        flexible_weight = getattr(self.scoring_engine, "flexible_weight", None)
+        if callable(flexible_weight):
+            weight = max(weight, float(flexible_weight(stat, weights)))
+        return weight
 
     def score_drive(self, *args, **kwargs) -> float:
         return float(self._score_drive_dict(*args, **kwargs))

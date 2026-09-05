@@ -17,6 +17,8 @@
 
 [下载安装](#download) · [功能亮点](#features) · [快速开始](#quick-start) · [反馈问题](#feedback)
 
+🐧QQ交流群：1029030672
+
 </div>
 
 <a id="intro"></a>
@@ -96,11 +98,11 @@
 
 推荐下载最新版安装包：
 
-- GitHub Release: <https://github.com/hxwd94666/NTE-Drive-Calc/releases>
+- GitHub Release: <https://github.com/hxwd94666/NTE-Drive-Calculator/releases>
 - Mirror酱（付费）: <https://mirrorchyan.com/zh/projects?rid=NTE-Drive-Calc&channel=stable>
 - 夸克网盘（免费）: <https://pan.quark.cn/s/82f16b845aec>
 - 百度网盘（免费）: <https://pan.baidu.com/s/1sPVqCpzmkQwKYCGstcZuIQ?pwd=ygke>
-- B站主页: <https://b23.tv/nXJGdh3>
+- 迅雷网盘（免费）: <https://pan.xunlei.com/s/VP0W_ptzSZwkVamy2UvF_CliA1?pwd=2hb6#>
 > 每次更新使用网盘转存本人会有一定收益，手机转存收益更高，可将此当做无消费支持。
 
 安装时建议保留 `Install ViGEmBus virtual gamepad driver` 勾选。扫描功能需要虚拟手柄驱动来模拟背包翻页操作。
@@ -154,36 +156,47 @@
 
 ## 🧑‍💻本地开发
 
-`2.0.0` 已使用 SQLite 作为运行数据边界，并以游戏官方 ID 驱动角色、库存和配装服务。详细设计见
-[系统架构](docs/architecture.md) 与 [外部集成](docs/integrations.md)；开发者和
-编码代理从 [开发文档入口](docs/README.md) 进入。
+> [!IMPORTANT]
+> 准备 Fork 开发前，请先加入 QQ 交流群 `1029030672` 并私聊群主。主仓库持续开发，提交通常按版本发布或开发交接整理；Fork 的 HEAD 可能不是当前协作基线。请先确认当前基线与合并方式，再开始开发。
+
+项目使用 Python 3.11、SQLite 与 PySide6。详细设计见 [系统架构](docs/architecture.md) 与 [外部集成](docs/integrations.md)；开发文档从 [开发文档入口](docs/README.md) 进入。
+
+安装 [uv](https://docs.astral.sh/uv/) 后，在仓库根目录执行：
 
 ```powershell
-uv sync --group build --group dev
+uv sync --locked --group build --group dev
 uv run python main.py
 ```
 
-未安装 `uv` 时，可直接让 pip 从 `pyproject.toml` 安装运行依赖：
+未使用 `uv` 时，创建虚拟环境并安装运行、测试与打包依赖：
 
 ```powershell
-python -m pip install .
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e . coverage mypy pytest ruff pyinstaller
+```
+
+执行测试：
+
+```powershell
+uv run python tools/quality/run_tests.py core -j 3
+uv run python tools/quality/run_tests.py full
 ```
 
 打包桌面程序：
 
 ```powershell
-.\.venv\Scripts\python.exe .\build_exe.py
+uv run python build_exe.py
 ```
 
 生成安装包：
 
 ```powershell
-.\.venv\Scripts\python.exe .\build_installer.py
+uv run python build_installer.py
 ```
 
 ## 📑许可证与第三方组件
 
-项目自有源代码以 [AGPL-3.0](LICENSE) 发布。随程序分发的 `nte-core.exe`、`nte-mods-plugin` 的 `dwmapi.dll` 与 ViGEmBus 是独立组件，其来源、适用条款和通知见 [NOTICE](NOTICE) 及 `third_party/`；根许可证不会改写它们各自的许可证或授权。
+项目自有源代码以 [AGPL-3.0](LICENSE) 发布。随程序分发的 `nte-core.exe`、`nte-mods-plugin` 的 `dwmapi.dll`、备用 `nte-mod-loader.exe` 与 ViGEmBus 是独立组件，其来源、适用条款和通知见 [NOTICE](NOTICE) 及 `third_party/`；根许可证不会改写它们各自的许可证或授权。
 
 本工具为非官方玩家工具。游戏名称、角色、素材及相关权利归各自权利人所有；使用抓包、插件或自动化功能前，请自行确认适用的游戏规则、服务条款和当地法律。
 

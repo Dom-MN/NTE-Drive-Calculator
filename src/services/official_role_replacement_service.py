@@ -110,6 +110,17 @@ def replacement_candidates_for_official_role(
         return []
     if bool((context.get("plan") or {}).get("allocation_locked")):
         return []
+    return replacement_candidates_for_frozen_context(detail, context_key, target)
+
+
+def replacement_candidates_for_frozen_context(
+    detail: Mapping[str, Any],
+    context_key: str,
+    target: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Rank compatible replacements without assuming or mutating a saved plan."""
+
+    context = (detail.get("equipment_contexts") or {}).get(context_key) or {}
     raw_items = tuple(context.get("items") or ())
     if not raw_items:
         return []
@@ -262,13 +273,16 @@ def save_official_role_replacement(
     plan = context.get("plan")
     if not isinstance(plan, Mapping) or plan.get("source_snapshot_id") is None:
         raise ValueError("请先保存一套 SQLite 配装方案，再使用替换优化")
+    original_assignments = []
     assignments = []
     replaced = False
     replacement_uid = (
         int(replacement.get("uid_serial") or 0), int(replacement.get("uid_slot") or 0)
     )
     for source in plan.get("assignments") or ():
-        assignment = dict(source.get("raw_assignment") or source)
+        original_assignment = dict(source.get("raw_assignment") or source)
+        original_assignments.append(original_assignment)
+        assignment = dict(original_assignment)
         source_uid = (int(source.get("uid_serial") or 0), int(source.get("uid_slot") or 0))
         target_uid = (int(target.get("uid_serial") or 0), int(target.get("uid_slot") or 0))
         if source_uid == target_uid:
@@ -296,13 +310,26 @@ def save_official_role_replacement(
         f"nte-{replacement_kind}-{replacement.get('uid_slot')}-{replacement.get('uid_serial')}"
     )
     payload = dict(plan.get("payload") or {})
-    assignment_scores = (
+    persisted_assignment_scores = {
+        str(uid): float(score)
+        for uid, score in (payload.get("assignment_scores") or {}).items()
+    }
+    persisted_total = exact_assignment_score_total(
+        original_assignments,
+        persisted_assignment_scores,
+    )
+    rebuilt_assignment_scores = (
         {
             str(uid): float(score)
             for uid, score in current_assignment_scores.items()
         }
         if current_assignment_scores is not None
-        else dict(payload.get("assignment_scores") or {})
+        else persisted_assignment_scores
+    )
+    assignment_scores = (
+        persisted_assignment_scores
+        if persisted_total is not None and not is_virtual_equipment_assignment(target)
+        else rebuilt_assignment_scores
     )
     previous_assignment_score = assignment_scores.pop(target_display_uid, None)
     if replacement_score is not None:
@@ -311,10 +338,7 @@ def save_official_role_replacement(
         previous_assignment_score = current_score
     plan_score = plan.get("score")
     exact_score = exact_assignment_score_total(assignments, assignment_scores)
-    if (
-        current_assignment_scores is not None
-        or is_virtual_equipment_assignment(target)
-    ) and exact_score is not None:
+    if exact_score is not None:
         # Active-plan overlays may carry a stale historical total.  The
         # per-slot scores are authoritative and virtual placeholders are 0.
         saved_score: float | None = exact_score

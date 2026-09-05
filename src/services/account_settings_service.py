@@ -26,7 +26,11 @@ _UI_RUNTIME_DEFAULTS = {
     "equipment_plugin_dll_source": "",
     "equipment_plugin_backup_path": "",
     "equipment_plugin_deployed_sha256": "",
-    "cloud_nte_mode": False,
+    "equipment_plugin_workspace": "",
+    "equipment_plugin_workspace_registry_value_before": "",
+    "equipment_plugin_workspace_registry_value_existed": False,
+    "equipment_plugin_loading_method": "proxy",
+    "equipment_plugin_risk_acknowledged": False,
     # Full visual-scan controls belong to the active account.  The capture
     # method may differ by account hardware and its completed inventory data.
     "full_scan_capture_driver": "mouse",
@@ -39,6 +43,10 @@ _UPDATE_RUNTIME_DEFAULTS = {
     # static databases do not yet include this key, so retain a safe runtime
     # default during the transition.
     "mirror_cdk": "",
+}
+_HOTKEY_RUNTIME_DEFAULTS = {
+    # Older released static datasets only contain the three scan hotkeys.
+    "battle_rerecord": "F11",
 }
 
 
@@ -77,8 +85,8 @@ class AccountSettingsService:
             account_copy = dao.list_application_setting_copies().get(key, {})
         return self._normalize(key, {**defaults, **account_copy}, defaults)
 
-    def legacy_theme_preference(self) -> str:
-        """Read the former account theme only for one-time global migration."""
+    def legacy_theme_preference(self) -> str | None:
+        """Read only an explicitly saved former account theme for migration."""
 
         with UserDataDao(self.user_database_path) as dao:
             account_ui = dao.list_application_setting_copies().get("ui", {})
@@ -89,12 +97,11 @@ class AccountSettingsService:
             )
             if legacy_ui is not None:
                 candidates.append(legacy_ui.get("theme"))
-        candidates.append(self._defaults()["ui"].get("theme"))
         for candidate in candidates:
             theme = str(candidate or "").strip()
             if theme in _LEGACY_THEME_PREFERENCES:
                 return theme
-        return "dark"
+        return None
 
     def remove_legacy_theme_preference(self) -> None:
         """Remove the obsolete theme field without changing other account UI settings."""
@@ -194,6 +201,8 @@ class AccountSettingsService:
             effective_defaults.update(_UI_RUNTIME_DEFAULTS)
         elif key == "update":
             effective_defaults.update(_UPDATE_RUNTIME_DEFAULTS)
+        elif key == "hotkeys":
+            effective_defaults.update(_HOTKEY_RUNTIME_DEFAULTS)
         normalized = {
             name: value.get(name, default)
             for name, default in effective_defaults.items()
@@ -242,7 +251,7 @@ class AccountSettingsService:
                 )
             normalized["inventory_snapshot_retention_count"] = retention
         elif key == "hotkeys":
-            for name in ("capture", "finish", "stop"):
+            for name in ("capture", "finish", "stop", "battle_rerecord"):
                 hotkey = str(normalized[name]).strip()
                 if not hotkey:
                     raise UserDataValidationError(f"{name} 快捷键不能为空")
@@ -262,7 +271,6 @@ class AccountSettingsService:
                 "skip_automatic_assembly_duplicate_warning",
                 "full_scan_dual_thread_processing",
                 "full_scan_amd_compatibility",
-                "cloud_nte_mode",
             ):
                 normalized[name] = bool(normalized[name])
             if normalized["full_scan_amd_compatibility"]:
@@ -290,6 +298,20 @@ class AccountSettingsService:
                 "equipment_plugin_dll_source",
                 "equipment_plugin_backup_path",
                 "equipment_plugin_deployed_sha256",
+                "equipment_plugin_workspace",
+                "equipment_plugin_workspace_registry_value_before",
             ):
                 normalized[name] = str(normalized.get(name) or "").strip()
+            loading_method = str(
+                normalized.get("equipment_plugin_loading_method") or "proxy"
+            ).strip().casefold()
+            normalized["equipment_plugin_loading_method"] = (
+                loading_method if loading_method in {"proxy", "loader"} else "proxy"
+            )
+            normalized["equipment_plugin_workspace_registry_value_existed"] = bool(
+                normalized.get("equipment_plugin_workspace_registry_value_existed", False)
+            )
+            normalized["equipment_plugin_risk_acknowledged"] = bool(
+                normalized.get("equipment_plugin_risk_acknowledged", False)
+            )
         return normalized

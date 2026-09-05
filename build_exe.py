@@ -11,6 +11,7 @@ import importlib.util
 import os
 import shutil
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import PyInstaller.__main__
@@ -35,12 +36,21 @@ THIRD_PARTY_DIR = ROOT / "third_party"
 SQLITE_SCHEMA_DIR = ROOT / "src" / "storage" / "sqlite" / "schema"
 NTE_CORE_ENV = "NTE_CORE_EXE"
 MODS_PLUGIN_ENV = "NTE_MODS_PLUGIN_DLL"
+MOD_LOADER_ENV = "NTE_MOD_LOADER_EXE"
 LEGACY_EQUIPMENT_PLUGIN_ENV = "NTE_EQUIPMENT_PLUGIN_DLL"
 STATIC_DATABASE_PATH = ROOT / "data" / "game_static.sqlite3"
 STATIC_MANIFEST_PATH = ROOT / "data" / "manifest.json"
 STATIC_MIGRATION_DATA_DIR = ROOT / "data" / "migrations"
 SHARED_DATABASE_SEED_PATH = ROOT / "data" / "app_shared.sqlite3"
 MODS_PLUGIN_WORKSPACE_DIR = THIRD_PARTY_DIR / "mods-plugin" / "workspace"
+MOD_LOADER_PATH = THIRD_PARTY_DIR / "mod-loader" / "bin" / "nte-mod-loader.exe"
+CONFIG_RELEASE_FILES = (
+    "gameplay_effect_semantics.json",
+    "global_ui_preferences.json",
+    "stats.json",
+    "workshop_weight_template.json",
+)
+CONFIG_RELEASE_DIRECTORIES = ("github", "templates")
 NTE_CORE_RELEASE_FILES = (
     "LICENSE",
     "SOURCE.md",
@@ -51,46 +61,81 @@ NTE_CORE_RELEASE_FILES = (
     "THIRD_PARTY_LICENSES.md",
 )
 
-EXPLICIT_WORKSHOP_ARGS = {"--skip-workshop-sync", "--require-workshop-sync", "--prompt-workshop-key"}
+SYSTEM_ICU_SHADOW_DLL = "icuuc.dll"
+FORBIDDEN_AMBIENT_ICU_DLLS = ("icuuc.dll", "icudt78.dll")
+FORBIDDEN_RUNTIME_CACHE_NAMES = ("NTE_SDK.bin", "NTE_SDK.checksum")
+
+
+def _is_same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return False
+
+
+@contextmanager
+def _without_ambient_system_icu_on_path():
+    """Prevent build-tool DLLs from shadowing the Windows system ICU runtime."""
+
+    original = os.environ.get("PATH")
+    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    system32 = system_root / "System32"
+    kept: list[str] = []
+    removed_count = 0
+    for raw_entry in (original or "").split(os.pathsep):
+        if not raw_entry:
+            continue
+        entry = Path(os.path.expandvars(raw_entry)).expanduser()
+        shadows_system_icu = (entry / SYSTEM_ICU_SHADOW_DLL).is_file()
+        if shadows_system_icu and not _is_same_path(entry, system32):
+            removed_count += 1
+            continue
+        kept.append(raw_entry)
+
+    if removed_count:
+        build_cli.info(
+            f"[BUILD] 已隔离 {removed_count} 个携带外部 ICU DLL 的 PATH 目录"
+        )
+    os.environ["PATH"] = os.pathsep.join(kept)
+    try:
+        yield
+    finally:
+        if original is None:
+            os.environ.pop("PATH", None)
+        else:
+            os.environ["PATH"] = original
+
+
+def _validate_no_ambient_icu_dlls(output: Path) -> None:
+    """Reject a package that would override Qt's Windows system ICU dependency."""
+
+    if not output.is_dir():
+        return
+    internal = output / "_internal"
+    found = [name for name in FORBIDDEN_AMBIENT_ICU_DLLS if (internal / name).is_file()]
+    if found:
+        joined = ", ".join(found)
+        raise RuntimeError(f"打包产物混入外部 ICU DLL，已拒绝发布：{joined}")
+
+
+def _validate_no_runtime_caches(output: Path) -> None:
+    """Reject local SDK caches that must be generated on the user's machine."""
+
+    if not output.is_dir():
+        return
+    found = [
+        path.relative_to(output)
+        for name in FORBIDDEN_RUNTIME_CACHE_NAMES
+        for path in output.rglob(name)
+    ]
+    if found:
+        joined = "、".join(str(path) for path in found)
+        raise RuntimeError(f"打包产物混入本机运行时缓存，已拒绝发布：{joined}")
 
 
 def _running_in_automation() -> bool:
     return build_cli.running_in_automation()
 
-
-def _choose_workshop_sync_mode() -> tuple[bool, bool]:
-    if any(arg in sys.argv for arg in EXPLICIT_WORKSHOP_ARGS):
-        return build_cli.choose_build_mode(
-            skip_workshop_sync="--skip-workshop-sync" in sys.argv,
-            require_workshop_sync="--require-workshop-sync" in sys.argv,
-            has_explicit_choice=True,
-        )
-    return build_cli.choose_build_mode()
-
-
-skip_workshop_sync, require_workshop_sync = _choose_workshop_sync_mode()
-
-
-def _sync_workshop_weights_before_build() -> None:
-    if skip_workshop_sync:
-        build_cli.skip("普通模式：不更新异环工坊权重")
-        return
-    cmd = [
-        sys.executable,
-        str(ROOT / "tools" / "game_data" / "sync_recommended_weights.py"),
-        "--database", str(STATIC_DATABASE_PATH),
-        "--manifest", str(STATIC_MANIFEST_PATH),
-    ]
-    if require_workshop_sync:
-        cmd.extend(["--prompt-key", "--fallback-normal"])
-    elif "--prompt-workshop-key" in sys.argv:
-        cmd.append("--prompt-key")
-    else:
-        cmd.append("--optional")
-    build_cli.run(cmd, ROOT)
-
-
-_sync_workshop_weights_before_build()
 
 def _remove_package_artifact(path: Path) -> None:
     """Remove only this package's PyInstaller output, never unrelated build worktrees."""
@@ -128,7 +173,6 @@ assets_dir = ROOT / "assets"
 locales_dir = ROOT / "locales"
 icon_path = assets_dir / "app_icon.ico"
 sep = ";" if sys.platform == "win32" else ":"
-args.append(f"--add-data={config_dir}{sep}config")
 if assets_dir.exists():
     args.append(f"--add-data={assets_dir}{sep}assets")
 if locales_dir.exists():
@@ -143,6 +187,19 @@ def _append_add_data(src: str | Path, dst: str):
 
 def _append_add_binary(src: str | Path, dst: str):
     args.append(f"--add-binary={Path(src)}{sep}{dst}")
+
+
+# 发行配置采用显式白名单，避免把 config 下的账号数据或运行时 SDK 缓存带入安装包。
+for release_name in CONFIG_RELEASE_FILES:
+    release_path = config_dir / release_name
+    if not release_path.is_file():
+        raise FileNotFoundError(f"打包缺少发行配置文件：{release_path}")
+    _append_add_data(release_path, "config")
+for release_name in CONFIG_RELEASE_DIRECTORIES:
+    release_path = config_dir / release_name
+    if not release_path.is_dir():
+        raise FileNotFoundError(f"打包缺少发行配置目录：{release_path}")
+    _append_add_data(release_path, f"config/{release_name}")
 
 
 def _first_existing_file(*candidates: str | Path | None) -> Path | None:
@@ -227,6 +284,12 @@ mods_plugin_path = _required_build_file(
     ROOT / "dwmapi.dll",
 )
 _append_add_data(mods_plugin_path, ".")
+mod_loader_path = _required_build_file(
+    "nte-mod-loader.exe",
+    os.environ.get(MOD_LOADER_ENV),
+    MOD_LOADER_PATH,
+)
+_append_add_binary(mod_loader_path, ".")
 if not MODS_PLUGIN_WORKSPACE_DIR.is_dir():
     raise FileNotFoundError(f"打包缺少 nte-mods 工作区：{MODS_PLUGIN_WORKSPACE_DIR}")
 _append_add_data(MODS_PLUGIN_WORKSPACE_DIR, "plugins")
@@ -247,6 +310,20 @@ for notice_path in (
 ):
     if notice_path.is_file():
         _append_add_data(notice_path, "licenses/mods-plugin")
+for notice_path in (
+    THIRD_PARTY_DIR / "mod-loader" / "LICENSE",
+    THIRD_PARTY_DIR / "mod-loader" / "SOURCE.md",
+    THIRD_PARTY_DIR / "mod-loader" / "COMPONENT.md",
+    THIRD_PARTY_DIR / "mod-loader" / "THIRD_PARTY_LICENSES.md",
+):
+    if notice_path.is_file():
+        _append_add_data(notice_path, "licenses/mod-loader")
+mod_loader_dependency_licenses = THIRD_PARTY_DIR / "mod-loader" / "licenses"
+if mod_loader_dependency_licenses.is_dir():
+    _append_add_data(
+        mod_loader_dependency_licenses,
+        "licenses/mod-loader/dependencies",
+    )
 
 
 def _find_package_dir(package_name: str) -> Path | None:
@@ -365,13 +442,16 @@ if vg_path is not None:
 args.append("--upx-dir=.")
 
 build_cli.info(f"[BUILD] Mode: {'Single File' if onefile else 'Single Dir'}")
-PyInstaller.__main__.run(args)
+with _without_ambient_system_icu_on_path():
+    PyInstaller.__main__.run(args)
 
 output = PACKAGE_ONEDIR_DIR
 if onefile:
     output = PACKAGE_ONEFILE_EXE
 
 if output.exists():
+    _validate_no_ambient_icu_dlls(output)
+    _validate_no_runtime_caches(output)
     size_mb = sum(
         f.stat().st_size for f in output.rglob("*") if f.is_file()
     ) / (1024 * 1024)

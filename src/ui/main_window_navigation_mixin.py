@@ -87,7 +87,12 @@ class MainWindowNavigationMixin:
         tbh.setContentsMargins(20, 10, 20, 10)
         self.topbar_title = QLabel(NAV_ITEMS[0].label)
         tbh.addWidget(self.topbar_title)
-        self.topbar_source_label = QLabel(tr("评分标准来源于微信小程序“异环工坊”"))
+        self.topbar_catalog_return = QPushButton("‹ 返回工具", tbar)
+        self.topbar_catalog_return.setObjectName("staticCatalogReturnToToolbox")
+        self.topbar_catalog_return.setVisible(False)
+        self.topbar_catalog_return.clicked.connect(lambda: self._go("toolbox"))
+        tbh.addWidget(self.topbar_catalog_return)
+        self.topbar_source_label = QLabel("评分标准来源于微信小程序“异环工坊”")
         self.topbar_source_label.setStyleSheet("color:#8b949e;font-size:12px;margin-left:12px")
         self.topbar_source_label.setWordWrap(False)
         self.topbar_source_label.setVisible(False)
@@ -126,6 +131,8 @@ class MainWindowNavigationMixin:
                 page = self.blueprint_page.build()
             elif item.key == "my_role":
                 page = build_official_role_page(self)
+            elif item.key == "static_catalog":
+                page = self.static_catalog_page.build()
             else:
                 page = getattr(self, item.page_builder)()
             self.stack.addWidget(page)
@@ -182,6 +189,7 @@ class MainWindowNavigationMixin:
             return
         self.stack.setCurrentIndex(indexes.get(item.key, 0))
         self.topbar_title.setText(item.label)
+        self.topbar_catalog_return.setVisible(item.key == "static_catalog")
         self.topbar_source_label.setVisible(item.key in {"identify", "config"})
         self.topbar_equipment_modes.setVisible(item.key == "equipment")
         for btn in self._nav_buttons.values():
@@ -203,6 +211,8 @@ class MainWindowNavigationMixin:
             self.blueprint_page.refresh()
         elif item.key == "my_role":
             refresh_official_role_page(self)
+        elif item.key == "static_catalog":
+            self.static_catalog_page.refresh()
         else:
             getattr(self, item.refresh_method)()
 

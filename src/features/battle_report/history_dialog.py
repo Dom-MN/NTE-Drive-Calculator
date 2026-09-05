@@ -42,6 +42,9 @@ def _local_time(value: str) -> str:
 
 
 def _scene_label(entry: BattleReportHistoryEntry) -> str:
+    if entry.environment_name:
+        suffix = "（推断）" if entry.environment_source == "inferred" else "（已确认）"
+        return f"{entry.environment_name}{suffix}"
     if entry.combat_context_kind != "abyss":
         return tr("未知场景")
     if entry.abyss_floor is None:
@@ -107,7 +110,7 @@ class BattleReportHistoryDialog(QDialog):
         header.setSectionResizeMode(3, QHeaderView.Stretch)
         self.table.setColumnWidth(0, 218)
         self.table.setColumnWidth(1, 158)
-        self.table.setColumnWidth(2, 145)
+        self.table.setColumnWidth(2, 220)
         self.table.setColumnWidth(4, 98)
         self.table.setColumnWidth(5, 250)
         layout.addWidget(self.table, 1)
@@ -140,6 +143,7 @@ class BattleReportHistoryDialog(QDialog):
     def _text_item(text: str) -> QTableWidgetItem:
         item = QTableWidgetItem(text)
         item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        item.setToolTip(text)
         return item
 
     def _characters_widget(self, entry: BattleReportHistoryEntry) -> QWidget:

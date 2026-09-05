@@ -6,70 +6,17 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .protocols import StaticDataDaoMixinHost
-
-SCHEMA_VERSION = 16
-STATIC_DATABASE_ENV = "NTE_GAME_STATIC_DB"
-_DEFAULT_LOGICAL_CHARACTER_IDS = {
-    "protagonist": 1051,
-}
-_ROLE_TEMPLATE_CLASSIFICATIONS = {
-    "available_character",
-    "scheduled_character",
-    "playable",
-}
-
-SUMMARY_TABLES = (
-    "source_file",
-    "source_row",
-    "character",
-    "character_annotation",
-    "character_awaken_effect",
-    "character_awaken_skill_level_bonus",
-    "character_panel_growth",
-    "character_skill",
-    "character_skill_level",
-    "skill_damage",
-    "skill_damage_modifier",
-    "combat_level_curve",
-    "combat_level_curve_point",
-    "reaction_definition",
-    "combat_effect_constant",
-    "enemy_combat_profile",
-    "enemy_element_resistance",
-    "monster_instance_profile",
-    "monster_instance_profile_variant",
-    "abyss_level",
-    "abyss_level_monster_spawn",
-    "abyss_monster_pool_entry",
-    "equipment_attribute",
-    "equipment_shape",
-    "equipment_suit",
-    "equipment_suit_effect",
-    "equipment_item",
-    "equipment_plan",
-    "character_weight_recommendation",
-    "character_weight_recommendation_property",
-    "character_graduation_template",
-    "application_setting_default",
-    "character_shape_bonus",
-    "character_shape_bonus_property",
-    "logical_character_shape_bonus",
-    "logical_character_shape_bonus_property",
-    "fork_type",
-    "fork_item",
-    "fork_refinement_parameter_value",
-)
+from .static_game_data_fork_permanent_queries import ForkPermanentPropertyProjectionMixin
 
 
+def _official_pack_key(value: object) -> str:
+    """Normalize official pack identifiers without changing stored source facts."""
+
+    return str(value or "").casefold()
 
 
+class StaticGameDataExtendedQueriesMixin(ForkPermanentPropertyProjectionMixin):
 
-
-
-
-
-class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
     def list_forks(self) -> list[dict[str, Any]]:
         rows = self._rows(
             """
@@ -93,6 +40,15 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
 
     def list_fork_templates(self) -> list[dict[str, Any]]:
         """返回弧盘的官方成长、突破、星级和逐项属性加成。"""
+        recommendations_by_fork: dict[str, list[dict[str, Any]]] = {}
+        for row in self._rows(
+            """
+            SELECT fork_id, character_id, ordinal, description_zh, source_kind
+            FROM character_cultivation_fork_recommendation
+            ORDER BY fork_id, ordinal, character_id
+            """
+        ):
+            recommendations_by_fork.setdefault(row.pop("fork_id"), []).append(row)
         modifiers_by_pack: dict[str, list[dict[str, Any]]] = {}
         for row in self._rows(
             """
@@ -101,10 +57,14 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
             ORDER BY modify_pack_id, ordinal
             """
         ):
-            modifiers_by_pack.setdefault(row.pop("modify_pack_id"), []).append(row)
+            modifiers_by_pack.setdefault(
+                _official_pack_key(row.pop("modify_pack_id")), []
+            ).append(row)
 
         conditions_by_pack = {
-            row["modify_pack_id"]: json.loads(row["conditions_json"] or "[]")
+            _official_pack_key(row["modify_pack_id"]): json.loads(
+                row["conditions_json"] or "[]"
+            )
             for row in self._rows(
                 "SELECT modify_pack_id, conditions_json FROM fork_modify_pack"
             )
@@ -113,7 +73,10 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
         def modifiers(pack_id: str | None) -> list[dict[str, Any]]:
             if not pack_id:
                 return []
-            return [dict(row) for row in modifiers_by_pack.get(pack_id, [])]
+            return [
+                dict(row)
+                for row in modifiers_by_pack.get(_official_pack_key(pack_id), [])
+            ]
 
         upgrades_by_pack: dict[str, list[dict[str, Any]]] = {}
         for row in self._rows(
@@ -126,8 +89,10 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
             pack_id = row.pop("upgrade_pack_id")
             modify_pack_id = row.pop("modify_pack_id")
             row["modifiers"] = modifiers(modify_pack_id)
-            row["conditions"] = conditions_by_pack.get(modify_pack_id, [])
-            upgrades_by_pack.setdefault(pack_id, []).append(row)
+            row["conditions"] = conditions_by_pack.get(
+                _official_pack_key(modify_pack_id), []
+            )
+            upgrades_by_pack.setdefault(_official_pack_key(pack_id), []).append(row)
 
         breakthroughs_by_pack: dict[str, list[dict[str, Any]]] = {}
         for row in self._rows(
@@ -141,8 +106,12 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
             pack_id = row.pop("breakthrough_pack_id")
             modify_pack_id = row.pop("modify_pack_id")
             row["modifiers"] = modifiers(modify_pack_id)
-            row["conditions"] = conditions_by_pack.get(modify_pack_id, [])
-            breakthroughs_by_pack.setdefault(pack_id, []).append(row)
+            row["conditions"] = conditions_by_pack.get(
+                _official_pack_key(modify_pack_id), []
+            )
+            breakthroughs_by_pack.setdefault(
+                _official_pack_key(pack_id), []
+            ).append(row)
 
         parameters_by_star: dict[tuple[str, int], list[dict[str, Any]]] = {}
         for row in self._rows(
@@ -158,7 +127,9 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
         ):
             key = (row.pop("star_pack_id"), int(row.pop("star_level")))
             row["is_percent"] = bool(row["is_percent"])
-            parameters_by_star.setdefault(key, []).append(row)
+            parameters_by_star.setdefault(
+                (_official_pack_key(key[0]), key[1]), []
+            ).append(row)
 
         stars_by_pack: dict[str, list[dict[str, Any]]] = {}
         for row in self._rows(
@@ -172,20 +143,47 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
             pack_id = row.pop("star_pack_id")
             star_level = int(row["star_level"])
             row["buffs"] = json.loads(row.pop("buffs_json") or "[]")
-            row["parameters"] = parameters_by_star.get((pack_id, star_level), [])
-            stars_by_pack.setdefault(pack_id, []).append(row)
+            row["parameters"] = parameters_by_star.get(
+                (_official_pack_key(pack_id), star_level), []
+            )
+            stars_by_pack.setdefault(_official_pack_key(pack_id), []).append(row)
+
+        permanent_by_fork: dict[str, list[dict[str, Any]]] = {}
+        table_exists = self._one(
+            "SELECT 1 AS found FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'fork_permanent_property'"
+        )
+        if table_exists is not None:
+            for row in self._rows(
+                """
+                SELECT fork_id, refinement_level, property_id, modifier_operation,
+                       property_value, source_parameter_name_id,
+                       source_effect_definition_id, source_calculation_asset_path
+                FROM fork_permanent_property
+                ORDER BY fork_id, refinement_level
+                """
+            ):
+                permanent_by_fork.setdefault(str(row.pop("fork_id")), []).append(row)
+        else:
+            permanent_by_fork = self._legacy_fork_permanent_properties()
 
         templates: list[dict[str, Any]] = []
         for fork in self.list_forks():
             template = dict(fork)
             template["upgrade_levels"] = upgrades_by_pack.get(
-                str(template.get("upgrade_pack_id") or ""), []
+                _official_pack_key(template.get("upgrade_pack_id")), []
             )
             template["breakthroughs"] = breakthroughs_by_pack.get(
-                str(template.get("breakthrough_pack_id") or ""), []
+                _official_pack_key(template.get("breakthrough_pack_id")), []
             )
             template["star_levels"] = stars_by_pack.get(
-                str(template.get("star_pack_id") or ""), []
+                _official_pack_key(template.get("star_pack_id")), []
+            )
+            template["permanent_properties"] = permanent_by_fork.get(
+                str(template.get("fork_id") or ""), []
+            )
+            template["cultivation_recommendations"] = recommendations_by_fork.get(
+                str(template.get("fork_id") or ""), []
             )
             templates.append(template)
         return templates
@@ -244,6 +242,220 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
             )
         ]
         return plan
+
+    def get_character_cultivation_guide(
+        self, character_id: int
+    ) -> dict[str, Any] | None:
+        guide = self._one(
+            """
+            SELECT character_id, display_text, s_score, a_score, icon_path,
+                   recommend_attribute_jump_id, role_sex_change, source_row_id
+            FROM character_cultivation_guide
+            WHERE character_id = ?
+            """,
+            (int(character_id),),
+        )
+        if guide is None:
+            return None
+        guide["display_text"] = bool(guide["display_text"])
+        guide["role_sex_change"] = bool(guide["role_sex_change"])
+        guide["fork_recommendations"] = self._rows(
+            """
+            SELECT ordinal, fork_id, description_zh, source_kind
+            FROM character_cultivation_fork_recommendation
+            WHERE character_id = ? ORDER BY ordinal
+            """,
+            (int(character_id),),
+        )
+        guide["attribute_recommendations"] = self._rows(
+            """
+            SELECT recommendation.ordinal, recommendation.property_id,
+                   attribute.display_name_zh, attribute.show_percent
+            FROM character_cultivation_attribute_recommendation AS recommendation
+            LEFT JOIN equipment_attribute AS attribute
+              ON attribute.attribute_id = recommendation.property_id
+            WHERE recommendation.character_id = ?
+            ORDER BY recommendation.ordinal
+            """,
+            (int(character_id),),
+        )
+        stages = self._rows(
+            """
+            SELECT stage_ordinal, character_level, fork_level, core_item_id,
+                   core_level, equipment_level
+            FROM character_cultivation_stage
+            WHERE character_id = ? ORDER BY stage_ordinal
+            """,
+            (int(character_id),),
+        )
+        for stage in stages:
+            stage["skills"] = self._rows(
+                """
+                SELECT sex_kind, ordinal, ability_id, recommended_level
+                FROM character_cultivation_stage_skill
+                WHERE character_id = ? AND stage_ordinal = ?
+                ORDER BY sex_kind, ordinal
+                """,
+                (int(character_id), int(stage["stage_ordinal"])),
+            )
+        guide["stages"] = stages
+        return guide
+
+    def get_gameplay_ability(self, ability_id: str) -> dict[str, Any] | None:
+        ability = self._one(
+            """
+            SELECT ability_id, name_zh, name_text_table, name_text_key,
+                   icon_path, extended_icon_path, gameplay_ability_path,
+                   is_stolen, source_row_id
+            FROM gameplay_ability_catalog WHERE ability_id = ?
+            """,
+            (str(ability_id),),
+        )
+        if ability is None:
+            return None
+        ability["is_stolen"] = bool(ability["is_stolen"])
+        descriptions = self._rows(
+            """
+            SELECT ordinal, description_type, title_zh, description_zh,
+                   description_text_table, description_text_key,
+                   short_description_zh, unlock_id, unlock_description_zh,
+                   replacement_values_json
+            FROM gameplay_ability_description
+            WHERE ability_id = ? ORDER BY ordinal
+            """,
+            (str(ability_id),),
+        )
+        for row in descriptions:
+            row["replacement_values"] = json.loads(
+                row.pop("replacement_values_json") or "[]"
+            )
+        ability["descriptions"] = descriptions
+        hints = self._rows(
+            """
+            SELECT ordinal, name_id, description_zh, value_description_zh,
+                   global_curve_id, source_type, damage_effect_ids_json,
+                   defense_effect_ids_json, health_effect_ids_json
+            FROM gameplay_ability_level_hint
+            WHERE ability_id = ? ORDER BY ordinal
+            """,
+            (str(ability_id),),
+        )
+        for row in hints:
+            for field in (
+                "damage_effect_ids",
+                "defense_effect_ids",
+                "health_effect_ids",
+            ):
+                row[field] = json.loads(row.pop(f"{field}_json") or "[]")
+        ability["level_hints"] = hints
+        return ability
+
+    def list_gameplay_ability_names(self) -> list[dict[str, Any]]:
+        """Return stable ability IDs and official Chinese display names."""
+
+        return self._rows(
+            """
+            SELECT ability_id, name_zh
+            FROM gameplay_ability_catalog ORDER BY ability_id
+            """
+        )
+
+    def list_gameplay_effects(self) -> list[dict[str, Any]]:
+        """Return the stable GE index-to-ID catalog for evidence fallback."""
+
+        return self._rows(
+            """
+            SELECT gameplay_effect_index, gameplay_effect_id, class_path
+            FROM gameplay_effect_catalog ORDER BY gameplay_effect_index
+            """
+        )
+
+    def get_gameplay_effect(
+        self,
+        *,
+        gameplay_effect_index: int | None = None,
+        gameplay_effect_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        if gameplay_effect_index is not None:
+            return self._one(
+                """
+                SELECT gameplay_effect_index, gameplay_effect_id, class_path,
+                       source_row_id
+                FROM gameplay_effect_catalog WHERE gameplay_effect_index = ?
+                """,
+                (int(gameplay_effect_index),),
+            )
+        if gameplay_effect_id:
+            return self._one(
+                """
+                SELECT gameplay_effect_index, gameplay_effect_id, class_path,
+                       source_row_id
+                FROM gameplay_effect_catalog WHERE gameplay_effect_id = ?
+                """,
+                (str(gameplay_effect_id),),
+            )
+        return None
+
+    def find_monster_catalog(
+        self,
+        identifier: str,
+        *,
+        alias_kind: str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized = str(identifier)
+        parameters: list[Any] = [normalized, normalized]
+        alias_filter = ""
+        if alias_kind is not None:
+            alias_filter = " AND alias.alias_kind = ?"
+            parameters.append(str(alias_kind))
+        return self._rows(
+            """
+            SELECT DISTINCT monster.monster_manual_id, monster.sort_order,
+                   monster.name_zh, monster.enemy_type, monster.image_path,
+                   monster.world_image_path, monster.place_zh,
+                   monster.discovered_description_zh,
+                   monster.undiscovered_description_zh, monster.drop_id,
+                   monster.stamina_cost, monster.trace_type,
+                   monster.map_icon_id, monster.quest_id, monster.source_row_id
+            FROM monster_catalog AS monster
+            LEFT JOIN monster_identifier_alias AS alias
+              USING (monster_manual_id)
+            WHERE (monster.monster_manual_id = ? OR alias.alias_value = ?)
+            """
+            + alias_filter
+            + " ORDER BY monster.sort_order, monster.monster_manual_id",
+            parameters,
+        )
+
+    def list_combat_effect_definitions(
+        self,
+        *,
+        owner_kind: str | None = None,
+        owner_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        parameters: list[Any] = []
+        if owner_kind is not None:
+            clauses.append("owner_kind = ?")
+            parameters.append(str(owner_kind))
+        if owner_id is not None:
+            clauses.append("owner_id = ?")
+            parameters.append(str(owner_id))
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        rows = self._rows(
+            """
+            SELECT effect_definition_id, owner_kind, owner_id, effect_kind,
+                   activation_kind, description_zh, parameters_json,
+                   formula_version, source_row_id
+            FROM combat_effect_definition
+            """
+            + where
+            + " ORDER BY owner_kind, owner_id, effect_definition_id",
+            parameters,
+        )
+        for row in rows:
+            row["parameters"] = json.loads(row.pop("parameters_json") or "{}")
+        return rows
 
     def list_equipment_plans(self) -> list[dict[str, Any]]:
         """Return every official equipment plan without per-role query fan-out.
@@ -323,30 +535,6 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
             (int(character_id),),
         )
 
-    def get_skill_damage(self, damage_id: str) -> dict[str, Any] | None:
-        """按官方伤害记录 ID 返回 v7 原始倍率数组和修正规则。"""
-        damage = self._one(
-            """
-            SELECT d.*, m.atk_rate_base_coefficient AS modifier_atk_rate_base_coefficient,
-                   m.source_row_id AS modifier_source_row_id
-            FROM skill_damage AS d
-            LEFT JOIN skill_damage_modifier AS m USING (damage_id)
-            WHERE d.damage_id = ?
-            """,
-            (str(damage_id).strip(),),
-        )
-        if damage is None:
-            return None
-        for key in ("atk_rate_base", "def_rate_base", "hp_rate_base"):
-            damage[key] = json.loads(damage.pop(f"{key}_json"))
-        for key in (
-            "override_breakable_damage",
-            "override_breakable_impulse",
-            "override_vehicle_breakable_impulse",
-        ):
-            damage[key] = bool(damage[key])
-        return damage
-
     def get_combat_level_curve(self, curve_id: str) -> dict[str, Any] | None:
         curve = self._one(
             """
@@ -407,7 +595,8 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
             SELECT profile_set, pack_id, defense_base, defense_up, defense_add,
                    defense_ignore, topple_limit, topple_accrue_efficiency,
                    topple_anti_accrue_efficiency, topple_bonus,
-                   topple_reduce_natural, topple_reduce_reset, source_row_id
+                   topple_reduce_natural, topple_reduce_reset, source_row_id,
+                   health_base, health_up, health_add
             FROM enemy_combat_profile WHERE profile_set = ? AND pack_id = ?
             """,
             (profile_set, str(pack_id).strip()),
@@ -493,3 +682,29 @@ class StaticGameDataExtendedQueriesMixin(StaticDataDaoMixinHost):
         if row is None or row["payload_json"] is None:
             return None
         return json.loads(row["payload_json"])
+
+    def get_character_likeability_bonus(
+        self,
+        character_id: int,
+    ) -> dict[str, Any] | None:
+        bonus = self._one(
+            """
+            SELECT character_id, required_level, modify_data_id,
+                   source_row_id, modifier_source_row_id
+            FROM character_likeability_bonus
+            WHERE character_id = ?
+            """,
+            (int(character_id),),
+        )
+        if bonus is None:
+            return None
+        bonus["properties"] = self._rows(
+            """
+            SELECT ordinal, property_id, value, modifier_operation,
+                   source_row_id
+            FROM character_likeability_bonus_property
+            WHERE character_id = ? ORDER BY ordinal
+            """,
+            (int(character_id),),
+        )
+        return bonus

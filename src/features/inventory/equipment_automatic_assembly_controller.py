@@ -172,8 +172,6 @@ def _start_automatic_equipment_assembly(
             tr("已有自动装配任务正在执行，请等待它结束。"),
         )
         return
-    # 云异环路径仍保留在自动装配实现中，但当前没有前端入口。
-    cloud_nte_mode = False
     try:
         state = _sqlite_automatic_assembly_state(
             _account_database_path(window),
@@ -232,7 +230,6 @@ def _start_automatic_equipment_assembly(
                 template_dir=str(template_dir),
                 record_root=record_root,
                 role_name_aliases=aliases,
-                cloud_nte_mode=cloud_nte_mode,
                 should_stop=stop_requested.is_set,
             )
         return execute_all_roles_from_current_game_page(
@@ -240,7 +237,6 @@ def _start_automatic_equipment_assembly(
             template_dir=str(template_dir),
             record_root=record_root,
             role_name_aliases=aliases,
-            cloud_nte_mode=cloud_nte_mode,
             should_stop=stop_requested.is_set,
         )
 

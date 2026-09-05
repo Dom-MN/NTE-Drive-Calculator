@@ -132,7 +132,8 @@ python tools/windows_validation/run_validation.py --profile vision `
 - [ ] 锁定备用槽位；下一次计算排除其 UID，覆盖、归档和替换均被阻止。
 - [ ] 批量保存中制造后续角色无效输入；整批回滚，没有部分槽位更新。
 - [ ] 从游戏导入到指定槽位；来源、快照、逐件评分和卡带满级值被冻结，其他槽位不被覆盖。
-- [ ] 修改账号基础权重只影响当前账号；修改公共额外形状后其他账号读取同一公共覆盖。
+- [ ] 修改账号基础权重只影响当前账号；官方角色额外形状在基础权重页只读且严格采用发行静态库，旧公共
+  覆盖不能改变页面、计算、图纸或战报重放结果。
 - [ ] 创建自建角色，保存权重、额外形状、默认套装和 20 格底盘；可进入视觉计算与自动装配，但不进入
   官方角色页、游戏配装导入或极速装配。
 - [ ] 角色图纸生成后返回角色页，父导航保持高亮。
@@ -171,11 +172,6 @@ python tools/windows_validation/run_validation.py --profile vision `
 - [ ] 缺少插件、角色实例或原生来源时启动；写入前停止并区分错误类型。
 - [ ] 使用普通鼠标执行游戏界面自动装配；角色识别、卸载、筛选、拖拽和返回符合槽位方案。
 - [ ] 自动装配过程中按 F12；鼠标/手柄在安全检查点释放，后续角色不执行。
-- [ ] 设置页云模式保持开发状态，普通流程传入 `cloud_nte_mode=False`。
-
-云模式相关代码发生变化时，额外执行：单角色完整路径三轮、两角色重入三轮、列表/装配页/拖拽前三个
-停止点，以及普通鼠标回归。未达到路线图门槛时不恢复用户开关。
-
 测试角色、槽位、任务 ID 与结果：
 
 ```text
@@ -199,13 +195,14 @@ python tools/windows_validation/run_validation.py --profile vision `
 
 ## 10. 插件、环境、更新与发行
 
-- [ ] 环境诊断分别显示 Npcap、nte-core、dwmapi、插件 presence、SDK 缓存和 IPC 管道状态。
+- [ ] 环境诊断分别显示 Npcap、nte-core、dwmapi、Mod Loader、VC++ 运行库、插件 presence、SDK 缓存和 IPC 管道状态。
 - [ ] 在测试环境执行插件部署、备份和还原；失败保留原 DLL 和运行时 SDK 缓存。
-- [ ] 游戏更新后按顺序验证：记录 `SizeOfImage`、PE CheckSum、游戏版本和插件哈希；分别确认 nte-core
-  抓包、presence event、工作区和 pipe 以定位故障层；重新运行签名解析并记录候选数量，不沿用旧偏移；
-  确认 Viewport Tick Hook 已安装（presence 存在但 pipe 缺失即为未安装）；最后完成一次受控装配。
-- [ ] 新插件 profile 必须有原生断言、实机 pipe 证据和至少一次协议/状态确认；保留原 DLL、修复 DLL、
-  源码 diff 和可运行回滚，并更新 `third_party/mods-plugin/COMPONENT.md` 与 `SOURCE.md` 的来源与哈希。
+- [ ] 代理 DLL 可加载的环境保持默认代理方式，启动游戏后 IPC v7 管道出现且 Loader 未启动。
+- [ ] 代理 DLL 不会自动加载的环境先安全还原代理，再经 UAC 启动备用 Loader；游戏启动后 IPC v7 管道出现。
+- [ ] Loader 运行时尝试切到代理方式；应用拒绝。停止 Loader 后确认本次注入的启动器退出，再允许部署代理。
+- [ ] 取消 UAC、Loader 文件缺失、payload 缺失、VC++ 运行库缺失和停止超时分别显示明确错误，不报告加载成功。
+- [ ] 游戏更新后按 [外部集成：插件发行基线与升级复核](../integrations.md#插件发行基线与升级复核) 验证 DLL 哈希、工作区、
+  SDK 重建、presence、pipe 和一次受控装配。
 - [ ] 执行 Mirror 更新检查、取消、失败重试和安装器启动；日志无 CDK、Token 和鉴权 URL。
 - [ ] 运行打包测试，确认 Windows 验证器、本机数据库、日志、截图、SDK 缓存和安装器旧输出不进入安装包。
 - [ ] 检查发行静态库与 manifest SHA-256，确认 unresolved 资源仍显式记录。

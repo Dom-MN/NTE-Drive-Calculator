@@ -74,20 +74,25 @@ class AccountUserDatabaseTests(unittest.TestCase):
             self.assertEqual(first_settings.load("ui")["protagonist_game_name"], "无度")
             self.assertEqual(second_settings.load("ui")["protagonist_game_name"], "")
 
-    def test_cloud_nte_mode_is_account_scoped_ui_setting(self):
+    def test_mod_plugin_loading_preferences_default_and_validate(self):
         with tempfile.TemporaryDirectory() as temporary:
             manager = self.make_manager(Path(temporary))
-            first = manager.initialize()
-            second_id = manager.create_account("第二账号")
-            second_path = manager.account_dir(second_id) / "user_data.sqlite3"
+            account = manager.initialize()
+            settings = AccountSettingsService(account.user_database_path)
 
-            first_settings = AccountSettingsService(first.user_database_path)
-            second_settings = AccountSettingsService(second_path)
-            self.assertFalse(first_settings.load("ui")["cloud_nte_mode"])
-            first_settings.save("ui", {"cloud_nte_mode": True})
+            defaults = settings.load("ui")
+            self.assertEqual(defaults["equipment_plugin_loading_method"], "proxy")
+            self.assertFalse(defaults["equipment_plugin_risk_acknowledged"])
 
-            self.assertTrue(first_settings.load("ui")["cloud_nte_mode"])
-            self.assertFalse(second_settings.load("ui")["cloud_nte_mode"])
+            saved = settings.save(
+                "ui",
+                {
+                    "equipment_plugin_loading_method": "LOADER",
+                    "equipment_plugin_risk_acknowledged": True,
+                },
+            )
+            self.assertEqual(saved["equipment_plugin_loading_method"], "loader")
+            self.assertTrue(saved["equipment_plugin_risk_acknowledged"])
 
     def test_versioned_stats_catalog_replaces_stale_local_copy(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -145,7 +150,12 @@ class AccountUserDatabaseTests(unittest.TestCase):
 
             self.assertEqual(
                 settings.load("hotkeys"),
-                {"capture": "F6", "finish": "F7", "stop": "F8"},
+                {
+                    "capture": "F6",
+                    "finish": "F7",
+                    "stop": "F8",
+                    "battle_rerecord": "F11",
+                },
             )
             self.assertEqual(settings.load("update")["ignored_version"], "1.2.3")
             self.assertEqual(settings.load("update")["mirror_cdk"], "legacy-cdk")

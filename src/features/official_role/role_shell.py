@@ -6,6 +6,7 @@ from __future__ import annotations
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QFrame,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -23,8 +24,11 @@ from src.features.official_role.dependencies import OfficialRoleDependencies
 from src.services.official_role_profile_service import (
     OfficialRoleProfileUpdate,
 )
+from src.services.world_bonus_settings_service import WorldBonusSettings
 from src.ui.persistent_tab_order import bind_persistent_tab_order
 from src.ui.widgets import (
+    NoWheelDoubleSpinBox,
+    NoWheelSpinBox,
     match_pinyin,
 )
 from .role_calculation import (
@@ -32,10 +36,16 @@ from .role_calculation import (
     _build_margin_group,
     _clear_layout,
     _selected_combo_data,
+    _selected_fork_stage,
     _selected_growth,
 )
 from .role_equipment import _build_drive_summary_group
-from .role_growth import _build_base_group, _build_fork_group
+from .role_growth import (
+    _build_awakening_group,
+    _build_base_group,
+    _build_fork_group,
+    _build_skill_group,
+)
 from .role_weights import _build_weight_group
 
 __all__ = ["_page_my_role", "_refresh_my_role", "confirm_pending_my_role_changes"]
@@ -54,6 +64,69 @@ _WEIGHT_PROPERTY_CHOICES = (
     ("倾陷强度", "UnbalIntensityBase"),
 )
 _WEIGHT_LABEL_BY_PROPERTY = {property_id: display_term(label) for label, property_id in _WEIGHT_PROPERTY_CHOICES}
+
+
+def _mark_world_bonus_dirty(window) -> None:
+    window._official_role_world_bonus_dirty = True
+    window._my_role_dirty = True
+
+
+def _set_world_bonus_controls(window, settings: WorldBonusSettings) -> None:
+    attack = getattr(window, "official_role_world_attack", None)
+    crit_damage = getattr(window, "official_role_world_crit_damage", None)
+    if attack is None or crit_damage is None:
+        return
+    attack.blockSignals(True)
+    crit_damage.blockSignals(True)
+    attack.setValue(int(round(settings.yaodao_attack_add)))
+    crit_damage.setValue(float(settings.quantao_crit_damage) * 100.0)
+    attack.blockSignals(False)
+    crit_damage.blockSignals(False)
+
+
+def _build_world_bonus_card(window) -> QFrame:
+    settings = _role_controller(window).load_world_bonus()
+    card = QFrame()
+    card.setObjectName("officialRoleWorldBonusCard")
+    card.setFixedHeight(35)
+    layout = QHBoxLayout(card)
+    layout.setContentsMargins(10, 0, 10, 0)
+    layout.setSpacing(6)
+    title = QLabel("家具加成")
+    title.setObjectName("officialRoleWorldBonusTitle")
+    layout.addWidget(title)
+
+    attack = NoWheelSpinBox()
+    attack.setObjectName("officialRoleWorldAttack")
+    attack.setRange(0, 20)
+    attack.setSingleStep(2)
+    attack.setSuffix(" 攻")
+    attack.setToolTip("妖刀家具加成：每级攻击力 +2，满级 +20")
+    attack.setFixedWidth(72)
+    attack.setFixedHeight(29)
+    attack.setStyleSheet("padding:1px 6px")
+    crit_damage = NoWheelDoubleSpinBox()
+    crit_damage.setObjectName("officialRoleWorldCritDamage")
+    crit_damage.setRange(0.0, 4.0)
+    crit_damage.setDecimals(1)
+    crit_damage.setSingleStep(0.4)
+    crit_damage.setSuffix("% 爆伤")
+    crit_damage.setToolTip("拳套家具加成：每级暴击伤害 +0.4%，满级 +4%")
+    crit_damage.setFixedWidth(96)
+    crit_damage.setFixedHeight(29)
+    crit_damage.setStyleSheet("padding:1px 6px")
+    layout.addWidget(QLabel("妖刀"))
+    layout.addWidget(attack)
+    layout.addWidget(QLabel("拳套"))
+    layout.addWidget(crit_damage)
+    window.official_role_world_attack = attack
+    window.official_role_world_crit_damage = crit_damage
+    _set_world_bonus_controls(window, settings)
+    attack.valueChanged.connect(lambda _value: _mark_world_bonus_dirty(window))
+    crit_damage.valueChanged.connect(
+        lambda _value: _mark_world_bonus_dirty(window)
+    )
+    return card
 
 
 def _role_controller(window) -> OfficialRoleController:
@@ -79,25 +152,40 @@ def _populate_role_tab(window, scroll: QScrollArea, character_id: int) -> None:
         "equipment_context_key": ("saved" if detail["equipment_contexts"]["saved"]["available"] else "current"),
     }
     window._official_role_editors[character_id] = editor
-    content = QWidget()
-    form = QVBoxLayout(content)
-    form.setSpacing(15)
-    form.setContentsMargins(15, 15, 15, 15)
-    form.addWidget(_build_base_group(window, character_id, detail, editor))
-    form.addWidget(_build_margin_group(window, character_id, detail, editor))
-    form.addWidget(_build_fork_group(window, character_id, detail, editor))
-    form.addWidget(_build_drive_summary_group(window, detail, editor))
-    form.addWidget(_build_damage_formula_group(detail, editor))
-    form.addWidget(_build_weight_group(window, character_id, detail, editor))
-    form.addSpacing(100)
-    form.addStretch()
-    scroll.setWidget(content)
-    scroll.setProperty("loaded", True)
+    # Keep the lazily-built page a hidden child throughout construction.  A
+    # parentless QWidget is a transient top-level window on Windows and can be
+    # painted as a small popup while the heavy role form is being assembled.
+    content = QWidget(scroll.viewport())
+    content.hide()
+    scroll.setUpdatesEnabled(False)
+    try:
+        form = QVBoxLayout(content)
+        form.setSpacing(15)
+        form.setContentsMargins(15, 15, 15, 15)
+        form.addWidget(_build_base_group(window, character_id, detail, editor))
+        form.addWidget(_build_awakening_group(window, character_id, detail, editor))
+        form.addWidget(_build_skill_group(window, character_id, detail, editor))
+        form.addWidget(_build_margin_group(window, character_id, detail, editor))
+        form.addWidget(_build_fork_group(window, character_id, detail, editor))
+        form.addWidget(_build_drive_summary_group(window, detail, editor))
+        form.addWidget(_build_damage_formula_group(detail, editor))
+        form.addWidget(_build_weight_group(window, character_id, detail, editor))
+        form.addSpacing(100)
+        form.addStretch()
+        scroll.setWidget(content)
+        scroll.setProperty("loaded", True)
+        content.show()
+    finally:
+        scroll.setUpdatesEnabled(True)
+    scroll.viewport().update()
 
 
 def _save_profiles(window, *, show_message: bool = True) -> bool:
     dirty_ids = list(getattr(window, "_official_role_dirty_ids", set()))
-    if not dirty_ids:
+    world_bonus_dirty = bool(
+        getattr(window, "_official_role_world_bonus_dirty", False)
+    )
+    if not dirty_ids and not world_bonus_dirty:
         if show_message:
             QMessageBox.information(window, tr("保存"), tr("当前没有需要保存的角色修改。"))
         return True
@@ -112,28 +200,59 @@ def _save_profiles(window, *, show_message: bool = True) -> bool:
             if growth is None:
                 raise ValueError("角色等级不在官方成长数据范围内")
             fork_id = _selected_combo_data(editor["fork"])
+            selected_awaken_effect_ids = tuple(
+                effect_id
+                for effect_id, check in editor["awakening_checks"].items()
+                if check.isChecked()
+            )
             updates.append(
                 OfficialRoleProfileUpdate(
                     character_id=character_id,
                     character_level=int(growth[0]),
                     breakthrough_stage=int(growth[1]),
-                    awakening_level=editor["awakening"].value(),
+                    awakening_level=len(selected_awaken_effect_ids),
+                    selected_awaken_effect_ids=selected_awaken_effect_ids,
+                    likeability_level_10_enabled=editor[
+                        "likeability_level_10"
+                    ].isChecked(),
                     fork_id=fork_id,
                     fork_level=editor["fork_level"].value() if fork_id else None,
+                    fork_breakthrough_stage=(
+                        _selected_fork_stage(editor) if fork_id else None
+                    ),
                     fork_refinement_level=(int(editor["refinement"].currentData() or 1) if fork_id else None),
-                    selected_skill_id=_selected_combo_data(editor["selected_skill"]),
+                    # 兼容账号 schema；角色页计算不再读取这个历史指针。
+                    selected_skill_id=detail["profile"].get("selected_skill_id"),
                     skill_levels=dict(editor["skill_levels"]),
                     ordinal=int(detail["profile"].get("ordinal") or 0),
                 )
             )
-        _role_controller(window).save_profiles(updates)
+        if updates:
+            _role_controller(window).save_profiles(updates)
+        if world_bonus_dirty:
+            _role_controller(window).save_world_bonus(
+                WorldBonusSettings(
+                    yaodao_attack_add=float(
+                        window.official_role_world_attack.value()
+                    ),
+                    quantao_crit_damage=float(
+                        window.official_role_world_crit_damage.value()
+                    )
+                    / 100.0,
+                )
+            )
     except Exception as exc:
         QMessageBox.warning(window, tr("保存失败"), str(exc))
         return False
     window._official_role_dirty_ids.clear()
+    window._official_role_world_bonus_dirty = False
     window._my_role_dirty = False
     if show_message:
-        QMessageBox.information(window, tr("保存"), tr("角色养成指针已保存到当前账号数据库。"))
+        QMessageBox.information(
+            window,
+            "保存",
+            "角色养成指针与家具加成已保存到当前账号数据库。",
+        )
     _refresh_my_role(window)
     return True
 
@@ -149,13 +268,19 @@ def _reload_current_role_tab(window, character_id: int) -> None:
     if index < 0:
         return
     scroll = tabs.widget(index)
+    scroll.setUpdatesEnabled(False)
+    existing = scroll.widget()
+    if existing is not None:
+        existing.hide()
     old = scroll.takeWidget()
     if old is not None:
         old.deleteLater()
     scroll.setProperty("loaded", False)
     window._official_role_editors.pop(character_id, None)
     window._official_role_dirty_ids.discard(character_id)
-    window._my_role_dirty = bool(window._official_role_dirty_ids)
+    window._my_role_dirty = bool(window._official_role_dirty_ids) or bool(
+        getattr(window, "_official_role_world_bonus_dirty", False)
+    )
     _populate_role_tab(window, scroll, character_id)
 
 
@@ -166,8 +291,8 @@ def _reset_current_role(window) -> None:
     character_id = int(tabs.tabBar().tabData(tabs.currentIndex()))
     answer = QMessageBox.question(
         window,
-        tr("重置当前角色"),
-        tr("将当前角色的等级、觉醒、技能和弧盘恢复为公共模板。\n额外形状与账号基础权重不会重置，是否继续？"),
+        "重置当前角色",
+        "将当前角色的等级、觉醒、技能和弧盘恢复为公共模板。\n官方额外形状始终读取静态库，账号基础权重不会重置，是否继续？",
         QMessageBox.Yes | QMessageBox.Cancel,
         QMessageBox.Cancel,
     )
@@ -185,8 +310,8 @@ def _reset_current_role(window) -> None:
 def _reset_all_roles(window) -> None:
     answer = QMessageBox.question(
         window,
-        tr("重置全部角色"),
-        tr("将当前账号所有角色的等级、觉醒、技能和弧盘恢复为公共模板。\n额外形状与账号基础权重不会重置，是否继续？"),
+        "重置全部角色",
+        "将当前账号所有角色的等级、觉醒、技能和弧盘恢复为公共模板。\n官方额外形状始终读取静态库，账号基础权重不会重置，是否继续？",
         QMessageBox.Yes | QMessageBox.Cancel,
         QMessageBox.Cancel,
     )
@@ -198,7 +323,9 @@ def _reset_all_roles(window) -> None:
         QMessageBox.warning(window, tr("重置失败"), str(exc))
         return
     window._official_role_dirty_ids.clear()
-    window._my_role_dirty = False
+    window._my_role_dirty = bool(
+        getattr(window, "_official_role_world_bonus_dirty", False)
+    )
     _refresh_my_role(window)
     QMessageBox.information(
         window, tr("已重置"),
@@ -219,6 +346,8 @@ def _page_my_role(window) -> QWidget:
         QPushButton{font-size:13px;padding:8px 15px;border-radius:7px}
         QTabBar::tab{font-size:13px;padding:10px 20px}
         QGroupBox{font-size:15px;border:1px solid #30363d;border-radius:10px;padding:24px;padding-top:36px}
+        QFrame#officialRoleWorldBonusCard{border:1px solid #30363d;border-radius:8px}
+        QLabel#officialRoleWorldBonusTitle{font-weight:bold;color:#58a6ff}
         """
         )
     )
@@ -230,11 +359,11 @@ def _page_my_role(window) -> QWidget:
     header.addWidget(search, 1)
     reset_current = QPushButton(tr("重置当前"))
     reset_current.setObjectName("btnDanger")
-    reset_current.setToolTip(tr("将当前角色和弧盘恢复为公共模板；保留额外形状与基础权重"))
+    reset_current.setToolTip("将当前角色和弧盘恢复为公共模板；官方额外形状读取静态库，保留基础权重")
     reset_current.clicked.connect(lambda: _reset_current_role(window))
     reset_all = QPushButton(tr("重置所有"))
     reset_all.setObjectName("btnDanger")
-    reset_all.setToolTip(tr("将本账号所有角色和弧盘恢复为公共模板；保留额外形状与基础权重"))
+    reset_all.setToolTip("将本账号所有角色和弧盘恢复为公共模板；官方额外形状读取静态库，保留基础权重")
     reset_all.clicked.connect(lambda: _reset_all_roles(window))
     save = QPushButton(tr("保存"))
     save.setObjectName("btnPrimary")
@@ -242,9 +371,10 @@ def _page_my_role(window) -> QWidget:
     blueprint = QPushButton(tr("角色图纸"))
     blueprint.setToolTip(tr("查看角色套装形状与可用图纸方案"))
     blueprint.clicked.connect(lambda: window._go("blueprint"))
-    base_weights = QPushButton(tr("基础权重"))
-    base_weights.setToolTip(tr("编辑当前账号角色基础权重，以及全部账号共享的额外形状覆盖"))
+    base_weights = QPushButton("基础权重")
+    base_weights.setToolTip("编辑当前账号角色基础权重；官方额外形状只读静态库，自创角色额外形状可编辑")
     base_weights.clicked.connect(lambda: window._go("config"))
+    header.addWidget(_build_world_bonus_card(window))
     header.addWidget(blueprint)
     header.addWidget(base_weights)
     header.addWidget(reset_current)
@@ -264,6 +394,7 @@ def _page_my_role(window) -> QWidget:
     window._official_role_page = page
     window.official_role_search = search
     window._official_role_dirty_ids = set()
+    window._official_role_world_bonus_dirty = False
     window._official_role_editors = {}
     window._my_role_dirty = False
     _refresh_my_role(window)
@@ -275,6 +406,11 @@ def _refresh_my_role(window, *, restore_scroll_value: int | None = None) -> None
     if layout is None:
         return
     current_id = getattr(window, "_current_official_role_id", None)
+    if not getattr(window, "_official_role_world_bonus_dirty", False):
+        _set_world_bonus_controls(
+            window,
+            _role_controller(window).load_world_bonus(),
+        )
     _clear_layout(layout)
     window._official_role_editors = {}
     roles = _role_controller(window).load_index()
@@ -285,11 +421,11 @@ def _refresh_my_role(window, *, restore_scroll_value: int | None = None) -> None
     search = getattr(window, "official_role_search", None)
     if not isinstance(search, QLineEdit):
         return
-    tabs = QTabWidget()
+    tabs = QTabWidget(window.my_role_form_widget)
     tabs.setObjectName("officialRoleTabs")
     tab_ids = {}
     for role in roles:
-        scroll = QScrollArea()
+        scroll = QScrollArea(tabs)
         scroll.setWidgetResizable(True)
         scroll.setProperty("loaded", False)
         character_id = int(role["character_id"])
@@ -355,8 +491,8 @@ def confirm_pending_my_role_changes(window) -> bool:
         return True
     answer = QMessageBox.question(
         window,
-        tr("未保存角色状态"),
-        tr("角色养成指针有未保存修改，是否先保存？"),
+        "未保存角色状态",
+        "角色养成指针或家具加成有未保存修改，是否先保存？",
         QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
         QMessageBox.Save,
     )
@@ -374,5 +510,10 @@ def confirm_pending_my_role_changes(window) -> bool:
         "discard", len(getattr(window, "_official_role_dirty_ids", set()))
     )
     window._official_role_dirty_ids.clear()
+    window._official_role_world_bonus_dirty = False
+    _set_world_bonus_controls(
+        window,
+        _role_controller(window).load_world_bonus(),
+    )
     window._my_role_dirty = False
     return True
