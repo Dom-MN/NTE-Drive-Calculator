@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 import math
 from typing import Any
 
@@ -180,7 +182,7 @@ class BattleAnalysisLogMixin:
                 if column == 9:
                     item.setData(Qt.ItemDataRole.UserRole, hit.event_id)
                     item.setToolTip(
-                        "点击查看本击原始字段、HP、公式因子、置信度和推算 Buff。"
+                        tr("点击查看本击原始字段、HP、公式因子、置信度和推算 Buff。")
                     )
                     font = item.font()
                     font.setUnderline(True)

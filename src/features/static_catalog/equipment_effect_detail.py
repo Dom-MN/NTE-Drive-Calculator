@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
@@ -35,7 +37,7 @@ class EquipmentEffectDetail(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
 
-        self.title_label = QLabel("请选择一条资料。")
+        self.title_label = QLabel(tr("请选择一条资料。"))
         self.title_label.setObjectName("cardTitle")
         self.title_label.setWordWrap(True)
         root.addWidget(self.title_label)
@@ -56,7 +58,7 @@ class EquipmentEffectDetail(QWidget):
         root.addWidget(self.scroll, 1)
 
     def clear(self) -> None:
-        self.title_label.setText("请选择一条资料。")
+        self.title_label.setText(tr("请选择一条资料。"))
         self.subtitle_label.clear()
         self._clear_body()
 
@@ -77,13 +79,13 @@ class EquipmentEffectDetail(QWidget):
                 form.addRow(field.label, self._field_widget(field))
             self.body_layout.insertWidget(self.body_layout.count() - 1, group)
         if detail.relations:
-            relations = QGroupBox("关联资料")
+            relations = QGroupBox(tr("关联资料"))
             layout = QVBoxLayout(relations)
             for relation in detail.relations:
                 layout.addWidget(self._relation_button(relation))
             self.body_layout.insertWidget(self.body_layout.count() - 1, relations)
         if detail.source_row_id is not None or detail.source_file_id is not None:
-            source_button = QPushButton("查看来源追溯")
+            source_button = QPushButton(tr("查看来源追溯"))
             source_button.setObjectName("btnAction")
             source_button.clicked.connect(
                 lambda _checked=False, row_id=detail.source_row_id,
@@ -113,11 +115,11 @@ class EquipmentEffectDetail(QWidget):
             "tone", "active" if field.origin_kind == "formal_static" else "neutral"
         )
         marker.setToolTip(
-            "正式静态来自发行静态库；项目注解和派生显示值会单独标记。"
+            tr("正式静态来自发行静态库；项目注解和派生显示值会单独标记。")
         )
         layout.addWidget(marker, 0, Qt.AlignTop)
         if field.copy_kind is not None and field.value != "—":
-            button = QPushButton("复制")
+            button = QPushButton(tr("复制"))
             button.setObjectName("btnSm")
             button.setToolTip(f"复制{field.label}")
             button.clicked.connect(

@@ -92,7 +92,7 @@ def _build_world_bonus_card(window) -> QFrame:
     layout = QHBoxLayout(card)
     layout.setContentsMargins(10, 0, 10, 0)
     layout.setSpacing(6)
-    title = QLabel("家具加成")
+    title = QLabel(tr("家具加成"))
     title.setObjectName("officialRoleWorldBonusTitle")
     layout.addWidget(title)
 
@@ -101,7 +101,7 @@ def _build_world_bonus_card(window) -> QFrame:
     attack.setRange(0, 20)
     attack.setSingleStep(2)
     attack.setSuffix(" 攻")
-    attack.setToolTip("妖刀家具加成：每级攻击力 +2，满级 +20")
+    attack.setToolTip(tr("妖刀家具加成：每级攻击力 +2，满级 +20"))
     attack.setFixedWidth(72)
     attack.setFixedHeight(29)
     attack.setStyleSheet("padding:1px 6px")
@@ -111,13 +111,13 @@ def _build_world_bonus_card(window) -> QFrame:
     crit_damage.setDecimals(1)
     crit_damage.setSingleStep(0.4)
     crit_damage.setSuffix("% 爆伤")
-    crit_damage.setToolTip("拳套家具加成：每级暴击伤害 +0.4%，满级 +4%")
+    crit_damage.setToolTip(tr("拳套家具加成：每级暴击伤害 +0.4%，满级 +4%"))
     crit_damage.setFixedWidth(96)
     crit_damage.setFixedHeight(29)
     crit_damage.setStyleSheet("padding:1px 6px")
-    layout.addWidget(QLabel("妖刀"))
+    layout.addWidget(QLabel(tr("妖刀")))
     layout.addWidget(attack)
-    layout.addWidget(QLabel("拳套"))
+    layout.addWidget(QLabel(tr("拳套")))
     layout.addWidget(crit_damage)
     window.official_role_world_attack = attack
     window.official_role_world_crit_damage = crit_damage
@@ -250,8 +250,8 @@ def _save_profiles(window, *, show_message: bool = True) -> bool:
     if show_message:
         QMessageBox.information(
             window,
-            "保存",
-            "角色养成指针与家具加成已保存到当前账号数据库。",
+            tr("保存"),
+            tr("角色养成指针与家具加成已保存到当前账号数据库。"),
         )
     _refresh_my_role(window)
     return True
@@ -291,8 +291,8 @@ def _reset_current_role(window) -> None:
     character_id = int(tabs.tabBar().tabData(tabs.currentIndex()))
     answer = QMessageBox.question(
         window,
-        "重置当前角色",
-        "将当前角色的等级、觉醒、技能和弧盘恢复为公共模板。\n官方额外形状始终读取静态库，账号基础权重不会重置，是否继续？",
+        tr("重置当前角色"),
+        tr("将当前角色的等级、觉醒、技能和弧盘恢复为公共模板。\n官方额外形状始终读取静态库，账号基础权重不会重置，是否继续？"),
         QMessageBox.Yes | QMessageBox.Cancel,
         QMessageBox.Cancel,
     )
@@ -310,8 +310,8 @@ def _reset_current_role(window) -> None:
 def _reset_all_roles(window) -> None:
     answer = QMessageBox.question(
         window,
-        "重置全部角色",
-        "将当前账号所有角色的等级、觉醒、技能和弧盘恢复为公共模板。\n官方额外形状始终读取静态库，账号基础权重不会重置，是否继续？",
+        tr("重置全部角色"),
+        tr("将当前账号所有角色的等级、觉醒、技能和弧盘恢复为公共模板。\n官方额外形状始终读取静态库，账号基础权重不会重置，是否继续？"),
         QMessageBox.Yes | QMessageBox.Cancel,
         QMessageBox.Cancel,
     )
@@ -359,11 +359,11 @@ def _page_my_role(window) -> QWidget:
     header.addWidget(search, 1)
     reset_current = QPushButton(tr("重置当前"))
     reset_current.setObjectName("btnDanger")
-    reset_current.setToolTip("将当前角色和弧盘恢复为公共模板；官方额外形状读取静态库，保留基础权重")
+    reset_current.setToolTip(tr("将当前角色和弧盘恢复为公共模板；官方额外形状读取静态库，保留基础权重"))
     reset_current.clicked.connect(lambda: _reset_current_role(window))
     reset_all = QPushButton(tr("重置所有"))
     reset_all.setObjectName("btnDanger")
-    reset_all.setToolTip("将本账号所有角色和弧盘恢复为公共模板；官方额外形状读取静态库，保留基础权重")
+    reset_all.setToolTip(tr("将本账号所有角色和弧盘恢复为公共模板；官方额外形状读取静态库，保留基础权重"))
     reset_all.clicked.connect(lambda: _reset_all_roles(window))
     save = QPushButton(tr("保存"))
     save.setObjectName("btnPrimary")
@@ -371,8 +371,8 @@ def _page_my_role(window) -> QWidget:
     blueprint = QPushButton(tr("角色图纸"))
     blueprint.setToolTip(tr("查看角色套装形状与可用图纸方案"))
     blueprint.clicked.connect(lambda: window._go("blueprint"))
-    base_weights = QPushButton("基础权重")
-    base_weights.setToolTip("编辑当前账号角色基础权重；官方额外形状只读静态库，自创角色额外形状可编辑")
+    base_weights = QPushButton(tr("基础权重"))
+    base_weights.setToolTip(tr("编辑当前账号角色基础权重；官方额外形状只读静态库，自创角色额外形状可编辑"))
     base_weights.clicked.connect(lambda: window._go("config"))
     header.addWidget(_build_world_bonus_card(window))
     header.addWidget(blueprint)
@@ -491,8 +491,8 @@ def confirm_pending_my_role_changes(window) -> bool:
         return True
     answer = QMessageBox.question(
         window,
-        "未保存角色状态",
-        "角色养成指针或家具加成有未保存修改，是否先保存？",
+        tr("未保存角色状态"),
+        tr("角色养成指针或家具加成有未保存修改，是否先保存？"),
         QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
         QMessageBox.Save,
     )

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 import re
 
 from PySide6.QtCore import Qt
@@ -289,7 +291,7 @@ class CharacterBuildView(QWidget):
 
     @staticmethod
     def _derived_badge() -> QLabel:
-        badge = QLabel("项目推荐 · 派生")
+        badge = QLabel(tr("项目推荐 · 派生"))
         badge.setObjectName("characterDerivedBadge")
         badge.setStyleSheet(themed_style(
             "color:#d29922;background:#0d1117;border:1px solid #d29922;"

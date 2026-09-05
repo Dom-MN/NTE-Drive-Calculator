@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from copy import deepcopy
 
 from PySide6.QtCore import QSize, Qt
@@ -45,7 +47,7 @@ class BattleBuildSnapshotEditorDialog(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("编辑本场角色配置副本")
+        self.setWindowTitle(tr("编辑本场角色配置副本"))
         self._action = ""
         self._equipment_editable = bool(editor_data.get("equipment_editable", True))
         self._details = deepcopy(list(editor_data.get("details") or ()))
@@ -60,7 +62,7 @@ class BattleBuildSnapshotEditorDialog(QDialog):
         layout.addWidget(note)
         if not editor_data.get("has_edit"):
             seed = QLabel(
-                "首次修改已复制本场原始冻结配置；保存前不会改变战报或角色页。"
+                tr("首次修改已复制本场原始冻结配置；保存前不会改变战报或角色页。")
             )
             seed.setWordWrap(True)
             seed.setStyleSheet(themed_style("color:#d29922;font-size:12px"))
@@ -77,39 +79,39 @@ class BattleBuildSnapshotEditorDialog(QDialog):
         layout.addWidget(self.tabs, 1)
 
         actions = QHBoxLayout()
-        self.cancel_button = QPushButton("取消")
+        self.cancel_button = QPushButton(tr("取消"))
         self.cancel_button.clicked.connect(self.reject)
         actions.addWidget(self.cancel_button)
         self.import_cultivation_button = QPushButton(
-            "从角色页面同步（不含空幕驱动）"
+            tr("从角色页面同步（不含空幕驱动）")
         )
         self.import_cultivation_button.setToolTip(
-            "用当前角色页养成覆盖战报修改副本，保留副本已选空幕/驱动。"
+            tr("用当前角色页养成覆盖战报修改副本，保留副本已选空幕/驱动。")
         )
         self.import_cultivation_button.clicked.connect(
             self._import_cultivation
         )
         actions.addWidget(self.import_cultivation_button)
         self.import_all_button = QPushButton(
-            "从角色页面同步（含空幕驱动）"
+            tr("从角色页面同步（含空幕驱动）")
         )
         self.import_all_button.setToolTip(
-            "用当前角色页养成和当前空幕/驱动覆盖战报修改副本；"
-            "不会反向写回装备。"
+            tr("用当前角色页养成和当前空幕/驱动覆盖战报修改副本；"
+            "不会反向写回装备。")
         )
         self.import_all_button.clicked.connect(self._import_all)
         actions.addWidget(self.import_all_button)
         self.import_all_button.setVisible(self._equipment_editable)
         actions.addStretch()
-        self.save_button = QPushButton("保存修改副本")
+        self.save_button = QPushButton(tr("保存修改副本"))
         self.save_button.setObjectName("btnPrimary")
         self.save_button.clicked.connect(self._save_only)
         actions.addWidget(self.save_button)
         self.save_and_sync_button = QPushButton(
-            "保存并同步到角色页（不含空幕驱动）"
+            tr("保存并同步到角色页（不含空幕驱动）")
         )
         self.save_and_sync_button.setToolTip(
-            "仅把养成配置同步到角色页；所选空幕/驱动只保存在战报副本。"
+            tr("仅把养成配置同步到角色页；所选空幕/驱动只保存在战报副本。")
         )
         self.save_and_sync_button.clicked.connect(self._save_and_sync)
         actions.addWidget(self.save_and_sync_button)

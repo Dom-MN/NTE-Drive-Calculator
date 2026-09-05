@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections import defaultdict
 
 from PySide6.QtCore import Signal
@@ -29,7 +31,7 @@ class BattleMarginalDerivedSettlementView(QFrame):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
 
-        heading = QLabel("候选新增机制结算")
+        heading = QLabel(tr("候选新增机制结算"))
         heading.setObjectName("cardTitle")
         layout.addWidget(heading)
         self.summary = QLabel()
@@ -37,9 +39,9 @@ class BattleMarginalDerivedSettlementView(QFrame):
         self.summary.setStyleSheet(themed_style("color:#d29922;font-weight:700"))
         layout.addWidget(self.summary)
         note = QLabel(
-            "零觉洞察原本会额外结算一次；五觉再按每层洞察各追加一次。这里"
+            tr("零觉洞察原本会额外结算一次；五觉再按每层洞察各追加一次。这里"
             "只单列相对零觉新增的伤害事件，它们计入新总伤害和角色收益，"
-            "但不会改写作为触发条件的原始逐击；双击一行可查看完整公式。"
+            "但不会改写作为触发条件的原始逐击；双击一行可查看完整公式。")
         )
         note.setWordWrap(True)
         note.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))

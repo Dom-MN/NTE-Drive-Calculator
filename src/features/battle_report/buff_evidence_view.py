@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections import defaultdict
 
 from PySide6.QtCore import QSize, Qt
@@ -165,7 +167,7 @@ def _interval_detail(rows: list, counterfactual) -> str:
 class _BuffDetailDialog(QDialog):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Buff 详情")
+        self.setWindowTitle(tr("Buff 详情"))
         root = QVBoxLayout(self)
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
@@ -204,7 +206,7 @@ class BattleBuffEvidencePanel(QWidget):
         self._detail_dialog: _BuffDetailDialog | None = None
 
     def clear(self) -> None:
-        self.summary_label.setText("当前没有可用的 Buff 推算。")
+        self.summary_label.setText(tr("当前没有可用的 Buff 推算。"))
         self.table.setRowCount(0)
 
     def render(self, analysis: BattleAnalysisSnapshot) -> None:

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 from pathlib import Path
 
@@ -119,11 +121,11 @@ class CombatMechanicsCatalogPage(QWidget):
         heading = QHBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(0)
-        self.gallery_title = QLabel("战斗机制图鉴", control)
+        self.gallery_title = QLabel(tr("战斗机制图鉴"), control)
         self.gallery_title.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:21px;font-weight:900;"
         ))
-        self.gallery_subtitle = QLabel("用中文公式解释伤害如何计算", control)
+        self.gallery_subtitle = QLabel(tr("用中文公式解释伤害如何计算"), control)
         self.gallery_subtitle.setStyleSheet(themed_style(
             "color:#8b949e;font-size:12px;font-weight:700;"
         ))
@@ -134,12 +136,12 @@ class CombatMechanicsCatalogPage(QWidget):
         self.search = QLineEdit(control)
         self.search.setObjectName("mechanicsSearch")
         self.search.setClearButtonEnabled(True)
-        self.search.setPlaceholderText("搜索公式或中文名词")
+        self.search.setPlaceholderText(tr("搜索公式或中文名词"))
         self.search.setMaximumWidth(360)
         self.search.setFixedHeight(36)
         self.search.textChanged.connect(self._schedule_refresh)
         heading.addWidget(self.search, 1)
-        self.result_count = QLabel("0 项", control)
+        self.result_count = QLabel(tr("0 项"), control)
         self.result_count.setStyleSheet(themed_style(
             "color:#8b949e;font-size:12px;font-weight:800;"
         ))
@@ -253,7 +255,7 @@ class CombatMechanicsCatalogPage(QWidget):
         self._card_widgets = []
         _clear_layout(self.gallery_grid)
         if not self._cards:
-            empty = QLabel("没有匹配的伤害公式。", self.gallery_host)
+            empty = QLabel(tr("没有匹配的伤害公式。"), self.gallery_host)
             empty.setWordWrap(True)
             empty.setAlignment(Qt.AlignCenter)
             empty.setStyleSheet(themed_style(

@@ -102,10 +102,10 @@ class BattleReportPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         model_notice = QLabel(
-            "重要提示：战报反事实计算模型尚未完整覆盖全部游戏机制，"
+            tr("重要提示：战报反事实计算模型尚未完整覆盖全部游戏机制，"
             "当前展示的各项收益结果仅供参考。若发现计算结果与实际机制明显不符，"
             "请将相关战报及问题说明发送至 1412582379@qq.com，"
-            "我们将据此核查并持续完善模型。",
+            "我们将据此核查并持续完善模型。"),
             self,
         )
         model_notice.setObjectName("battleCounterfactualNotice")
@@ -146,7 +146,7 @@ class BattleReportPage(QWidget):
         self.status_badge = QLabel()
         self.status_badge.setAlignment(Qt.AlignCenter)
         set_status_badge(self.status_badge, "未开始", "neutral")
-        self.status_detail = QLabel("尚未开始战报采集。")
+        self.status_detail = QLabel(tr("尚未开始战报采集。"))
         self.status_detail.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
         status_row.addWidget(self.status_badge)
         status_row.addWidget(self.status_detail, 1)
@@ -164,39 +164,39 @@ class BattleReportPage(QWidget):
                 help_text,
             )
         )
-        self.export_button = QPushButton("导出战报")
+        self.export_button = QPushButton(tr("导出战报"))
         self.export_button.setObjectName("btnAction")
         self.export_button.clicked.connect(self.export_requested)
         status_row.addWidget(self.export_button)
         status_row.addWidget(help_button)
         control_layout.addLayout(status_row)
         actions = QHBoxLayout()
-        self.capture_button = QPushButton("开始采集")
+        self.capture_button = QPushButton(tr("开始采集"))
         self.capture_button.setObjectName("btnPrimary")
         self.capture_button.clicked.connect(self._request_capture_action)
         actions.addWidget(self.capture_button)
-        self.rerecord_button = QPushButton("放弃重录")
+        self.rerecord_button = QPushButton(tr("放弃重录"))
         self.rerecord_button.setObjectName("btnDanger")
         self.rerecord_button.setToolTip(
-            "丢弃本次尚未保存的战报，并立即重新开始采集。"
+            tr("丢弃本次尚未保存的战报，并立即重新开始采集。")
         )
         self.rerecord_button.hide()
         self.rerecord_button.clicked.connect(self.rerecord_requested)
-        self.save_result_button = QPushButton("保存伤害结果")
+        self.save_result_button = QPushButton(tr("保存伤害结果"))
         self.save_result_button.setEnabled(False)
         self.save_result_button.clicked.connect(self.save_result_requested)
         actions.addWidget(self.save_result_button)
-        self.history_button = QPushButton("读取历史战报")
+        self.history_button = QPushButton(tr("读取历史战报"))
         self.history_button.clicked.connect(self.history_requested)
         actions.addWidget(self.history_button)
         actions.addSpacing(12)
-        self.overlay_toggle = QCheckBox("显示实时悬浮窗")
+        self.overlay_toggle = QCheckBox(tr("显示实时悬浮窗"))
         self.overlay_toggle.setChecked(True)
         self.overlay_toggle.toggled.connect(self.overlay_visibility_changed)
         actions.addWidget(self.overlay_toggle)
-        self.passthrough_toggle = QCheckBox("鼠标穿透")
+        self.passthrough_toggle = QCheckBox(tr("鼠标穿透"))
         self.passthrough_toggle.setChecked(True)
-        self.passthrough_toggle.setToolTip("关闭后可拖动悬浮窗；开启后鼠标操作落到游戏。")
+        self.passthrough_toggle.setToolTip(tr("关闭后可拖动悬浮窗；开启后鼠标操作落到游戏。"))
         self.passthrough_toggle.toggled.connect(self.overlay_passthrough_changed)
         actions.addWidget(self.passthrough_toggle)
         actions.addSpacing(12)
@@ -245,7 +245,7 @@ class BattleReportPage(QWidget):
             self.build_edit_requested
         )
         root.addWidget(self.long_analysis_view)
-        self.quality_label = QLabel("数据质量：等待采集")
+        self.quality_label = QLabel(tr("数据质量：等待采集"))
         self.quality_label.hide()
         root.addWidget(self.quality_label)
         root.addStretch()

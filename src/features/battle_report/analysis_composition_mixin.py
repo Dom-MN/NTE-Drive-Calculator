@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QTableWidgetItem
 
@@ -122,13 +124,13 @@ class BattleAnalysisCompositionMixin:
         )
         if composition.pending_topple_attribution:
             self.composition_status_label.setText(
-                "当前时段含团队倾陷，尚未加载逐角色公式。"
+                tr("当前时段含团队倾陷，尚未加载逐角色公式。")
             )
             if self._topple_detail_requested_analysis is not analysis:
                 QTimer.singleShot(0, self._request_topple_attribution)
         elif composition.unresolved_topple_attribution:
             self.composition_status_label.setText(
-                "倾陷缺少明确目标或公式证据，暂列未归因。"
+                tr("倾陷缺少明确目标或公式证据，暂列未归因。")
             )
 
     def _request_topple_attribution(self) -> None:

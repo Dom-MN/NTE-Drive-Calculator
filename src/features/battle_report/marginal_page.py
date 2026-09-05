@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
@@ -27,8 +28,7 @@ from src.features.battle_report.analysis_components import (
     analysis_table,
 )
 from src.features.battle_report.build_change_summary import (
-    character_level_summary,
-    fork_level_summary,
+    character_level_summary, fork_level_summary,
 )
 from src.features.battle_report.composition_view import BattleDamageCompositionPanel
 from src.features.battle_report.hit_formula_dialog import BattleHitFormulaDialog
@@ -155,10 +155,10 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
 
         timeline_card, timeline_layout = analysis_section("调整后逐击轴")
         timeline_controls = QHBoxLayout()
-        timeline_controls.addWidget(QLabel("口径"))
+        timeline_controls.addWidget(QLabel(tr("口径")))
         self.timeline_time_mode_combo = NoWheelComboBox()
-        self.timeline_time_mode_combo.addItem("扣除时停", ACTIVE_TIME_MODE)
-        self.timeline_time_mode_combo.addItem("包含时停", ELAPSED_TIME_MODE)
+        self.timeline_time_mode_combo.addItem(tr("扣除时停"), ACTIVE_TIME_MODE)
+        self.timeline_time_mode_combo.addItem(tr("包含时停"), ELAPSED_TIME_MODE)
         self.timeline_time_mode_combo.setCurrentIndex(
             self.timeline_time_mode_combo.findData(ELAPSED_TIME_MODE)
         )
@@ -166,7 +166,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             self._timeline_time_mode_changed
         )
         timeline_controls.addWidget(self.timeline_time_mode_combo)
-        timeline_controls.addWidget(QLabel("缩放"))
+        timeline_controls.addWidget(QLabel(tr("缩放")))
         self.timeline_zoom_combo = NoWheelComboBox()
         for percent in (10, 25, 50, 100, 200, 300, 400, 500, 600, 700, 800):
             self.timeline_zoom_combo.addItem(f"{percent}%", percent / 100.0)
@@ -231,10 +231,10 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
         root.addWidget(timeline_card)
         attribute_card, attribute_layout = analysis_section("驱动副词条单位边际")
         attribute_note = QLabel(
-            "只展示实际可刷出的金色驱动副词条，每行默认单位为一格；面板属性是当前生效基线，"
+            tr("只展示实际可刷出的金色驱动副词条，每行默认单位为一格；面板属性是当前生效基线，"
             "伤害加权当前面板属性按公式面板"
             "关联伤害发生时的动态属性加权。灵可面板控制的队友同频伤害也进入这里，因此面板关联"
-            "伤害可以大于顶部原始角色伤害；Core 原始伤害归属不改写。"
+            "伤害可以大于顶部原始角色伤害；Core 原始伤害归属不改写。")
         )
         attribute_note.setStyleSheet(
             themed_style("color:#8b949e;font-size:12px")
@@ -267,10 +267,10 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
         ) = build_marginal_benefit_sections(root)
         buff_card, buff_layout = analysis_section("团队 Buff 边际")
         buff_note = QLabel(
-            "逐个独立移除 Buff，并按实际造成伤害的角色拆分收益；"
+            tr("逐个独立移除 Buff，并按实际造成伤害的角色拆分收益；"
             "角色收益之间可加总为该 Buff 的全队收益，不同 Buff 之间不可直接相加。"
             "具有正式逐击因果证据的机制被动也在此按来源角色合并展示。"
-            "伤害覆盖率统计固定轴有效伤害，并包含由覆盖逐击联动的生命上限结算。"
+            "伤害覆盖率统计固定轴有效伤害，并包含由覆盖逐击联动的生命上限结算。")
         )
         buff_note.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
         buff_note.setWordWrap(True)
@@ -413,7 +413,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             self.metric_labels["dps"].setText(_number(analysis.effective_dps))
             self.metric_labels["damage"].setText(_number(analysis.effective_damage))
             self.metric_subtitles["damage"].setText(
-                "+0.00% · 当前生效基线（本次未修改）"
+                tr("+0.00% · 当前生效基线（本次未修改）")
             )
             self.metric_labels["structured"].setText("—")
             self.roles_table.setRowCount(0)
@@ -539,7 +539,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
         dialog = getattr(self, "_counterfactual_hit_dialog", None)
         if dialog is None:
             dialog = BattleHitFormulaDialog(self)
-            dialog.setWindowTitle("边际逐击详情")
+            dialog.setWindowTitle(tr("边际逐击详情"))
             self._counterfactual_hit_dialog = dialog
         dialog.show_for_hit(
             original_hit,
@@ -614,7 +614,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
     def _refresh_change_summary(self, *_args) -> None:
         index = self.character_combo.currentIndex()
         if not 0 <= index < len(self._editors):
-            self.change_summary.setText("等待角色配置")
+            self.change_summary.setText(tr("等待角色配置"))
             self.change_summary.setToolTip("")
             return
         editor = self._ensure_editor(index)
@@ -622,8 +622,8 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             profile = editor.profile()
             equipment = editor.selected_equipment_context()
         except (KeyError, TypeError, ValueError):
-            self.change_summary.setText("当前候选尚未完整")
-            self.change_summary.setToolTip("请完成角色养成与可冻结配装选择。")
+            self.change_summary.setText(tr("当前候选尚未完整"))
+            self.change_summary.setToolTip(tr("请完成角色养成与可冻结配装选择。"))
             return
         awakening_count = len(profile.get("selected_awaken_effect_ids") or ())
         skill_levels = tuple(
@@ -755,7 +755,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
                 "—" if original is None else _number(original.damage)
             )
             self.metric_subtitles["role"].setText(
-                "+0.00% · 当前生效基线（本次未修改）"
+                tr("+0.00% · 当前生效基线（本次未修改）")
             )
         else:
             projected_damage = display_projection(

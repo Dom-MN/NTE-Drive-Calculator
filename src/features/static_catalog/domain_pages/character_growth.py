@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -71,12 +73,12 @@ class CharacterGrowthView(QWidget):
         layout = QVBoxLayout(calculator)
         layout.setContentsMargins(12, 9, 12, 9)
         layout.setSpacing(5)
-        title = QLabel("等级规划", calculator)
+        title = QLabel(tr("等级规划"), calculator)
         title.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:15px;font-weight:900"
         ))
         hint = QLabel(
-            "选择等级与突破状态，直接汇总正式经验书、突破材料与方斯；不换算活力。",
+            tr("选择等级与突破状态，直接汇总正式经验书、突破材料与方斯；不换算活力。"),
             calculator,
         )
         hint.setWordWrap(True)
@@ -84,7 +86,7 @@ class CharacterGrowthView(QWidget):
         layout.addWidget(title)
         layout.addWidget(hint)
         controls = QHBoxLayout()
-        controls.addWidget(QLabel("角色等级", calculator))
+        controls.addWidget(QLabel(tr("角色等级"), calculator))
         self.start_level = QComboBox(calculator)
         self.end_level = QComboBox(calculator)
         for level in range(1, 81):
@@ -92,7 +94,7 @@ class CharacterGrowthView(QWidget):
             self.end_level.addItem(f"Lv.{level}", level)
         self.start_level.setCurrentIndex(4)
         self.end_level.setCurrentIndex(79)
-        self.include_breakthroughs = QCheckBox("包含沿途突破", calculator)
+        self.include_breakthroughs = QCheckBox(tr("包含沿途突破"), calculator)
         self.include_breakthroughs.setChecked(False)
         controls.addWidget(self.start_level)
         controls.addWidget(QLabel("→", calculator))
@@ -120,7 +122,7 @@ class CharacterGrowthView(QWidget):
         layout.addWidget(self.panel_preview)
 
         self.progression_result = QLabel(
-            "选择角色后显示正式材料汇总。",
+            tr("选择角色后显示正式材料汇总。"),
             calculator,
         )
         self.progression_result.setObjectName("characterProgressionResult")
@@ -132,7 +134,7 @@ class CharacterGrowthView(QWidget):
         layout.addWidget(self.progression_result)
         root.addWidget(calculator)
 
-        section_title = QLabel("突破里程碑", self)
+        section_title = QLabel(tr("突破里程碑"), self)
         section_title.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:16px;font-weight:900"
         ))
@@ -258,7 +260,7 @@ class CharacterGrowthView(QWidget):
         detail = self._detail
         if detail is None or detail.progression is None:
             self.progression_result.setText(
-                "人物养成正式上游已定位，但尚未进入当前发行静态库。"
+                tr("人物养成正式上游已定位，但尚未进入当前发行静态库。")
             )
             return
         projection = project_character_level_requirements(

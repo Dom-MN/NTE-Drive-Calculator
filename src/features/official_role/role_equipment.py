@@ -337,7 +337,7 @@ def _build_drive_summary_group(
     show_context_selector: bool = True,
     replacement_handler=None,
 ) -> QGroupBox:
-    group = QGroupBox("空幕加成")
+    group = QGroupBox(tr("空幕加成"))
     group.setObjectName("officialRoleDriveGroup")
     layout = QVBoxLayout(group)
     layout.setSpacing(8)
@@ -367,11 +367,11 @@ def _build_drive_summary_group(
     )
     top.addWidget(context_combo)
     context_combo.setVisible(show_context_selector)
-    score_label = QLabel("配装评分: --")
+    score_label = QLabel(tr("配装评分: --"))
     score_label.setObjectName("officialRoleLoadoutScore")
     score_label.setStyleSheet("color:#58a6ff;font-weight:bold;font-size:13px;")
     top.addWidget(score_label)
-    margin_label = QLabel("直伤收益: --")
+    margin_label = QLabel(tr("直伤收益: --"))
     margin_label.setStyleSheet("color:#ffaa00;font-weight:bold;font-size:13px;")
     top.addWidget(margin_label)
     summary_host = QWidget()
@@ -393,7 +393,7 @@ def _build_drive_summary_group(
             or ()
         )
         if getattr(window, "scoring_engine", None) is None or not score_items:
-            score_label.setText("配装评分: --")
+            score_label.setText(tr("配装评分: --"))
         else:
             total_score = sum(
                 _equipment_weight_score(

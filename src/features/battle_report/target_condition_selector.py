@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
@@ -20,9 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.domain.battle_report import BattleTargetCondition
-from src.services.battle_target_profile_snapshot_service import (
-    battle_target_profile_snapshots,
-)
+from src.services.battle_target_profile_snapshot_service import battle_target_profile_snapshots
 from src.ui.widgets import NoWheelComboBox
 
 
@@ -42,14 +41,14 @@ class BattleTargetConditionSelector(QGroupBox):
         self._feast_option_combos: dict[str, NoWheelComboBox] = {}
         root = QVBoxLayout(self)
         top = QGridLayout()
-        top.addWidget(QLabel("战斗环境"), 0, 0)
+        top.addWidget(QLabel(tr("战斗环境")), 0, 0)
         self.environment_combo = NoWheelComboBox()
-        self.environment_combo.addItem("大世界", "open_world")
-        self.environment_combo.addItem("材料 / 养成副本", "clone")
-        self.environment_combo.addItem("轨外之境", "outer_realm")
-        self.environment_combo.addItem("争锋赏宴", "feast")
+        self.environment_combo.addItem(tr("大世界"), "open_world")
+        self.environment_combo.addItem(tr("材料 / 养成副本"), "clone")
+        self.environment_combo.addItem(tr("轨外之境"), "outer_realm")
+        self.environment_combo.addItem(tr("争锋赏宴"), "feast")
         top.addWidget(self.environment_combo, 0, 1)
-        top.addWidget(QLabel("魔女赐福"), 0, 2)
+        top.addWidget(QLabel(tr("魔女赐福")), 0, 2)
         self.witch_combo = NoWheelComboBox()
         top.addWidget(self.witch_combo, 0, 3)
         root.addLayout(top)
@@ -69,17 +68,17 @@ class BattleTargetConditionSelector(QGroupBox):
         page = QWidget()
         layout = QGridLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(QLabel("对象（可多选）"), 0, 0)
+        layout.addWidget(QLabel(tr("对象（可多选）")), 0, 0)
         self.open_world_list = QListWidget()
         self.open_world_list.setSelectionMode(
             QAbstractItemView.SelectionMode.NoSelection
         )
         self.open_world_list.setMinimumHeight(120)
         layout.addWidget(self.open_world_list, 1, 0, 1, 4)
-        layout.addWidget(QLabel("主要展示对象"), 2, 0)
+        layout.addWidget(QLabel(tr("主要展示对象")), 2, 0)
         self.open_world_primary = NoWheelComboBox()
         layout.addWidget(self.open_world_primary, 2, 1, 1, 3)
-        layout.addWidget(QLabel("世界等级 / 属性档"), 3, 0)
+        layout.addWidget(QLabel(tr("世界等级 / 属性档")), 3, 0)
         self.open_world_variant = NoWheelComboBox()
         layout.addWidget(self.open_world_variant, 3, 1, 1, 3)
         self.open_world_list.itemChanged.connect(
@@ -95,16 +94,16 @@ class BattleTargetConditionSelector(QGroupBox):
         page = QWidget()
         layout = QGridLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(QLabel("副本类目"), 0, 0)
+        layout.addWidget(QLabel(tr("副本类目")), 0, 0)
         self.clone_category_combo = NoWheelComboBox()
         layout.addWidget(self.clone_category_combo, 0, 1)
-        layout.addWidget(QLabel("副本"), 0, 2)
+        layout.addWidget(QLabel(tr("副本")), 0, 2)
         self.clone_activity_combo = NoWheelComboBox()
         layout.addWidget(self.clone_activity_combo, 0, 3)
-        layout.addWidget(QLabel("难度"), 1, 0)
+        layout.addWidget(QLabel(tr("难度")), 1, 0)
         self.clone_difficulty_combo = NoWheelComboBox()
         layout.addWidget(self.clone_difficulty_combo, 1, 1)
-        layout.addWidget(QLabel("主要展示对象"), 1, 2)
+        layout.addWidget(QLabel(tr("主要展示对象")), 1, 2)
         self.clone_primary_combo = NoWheelComboBox()
         layout.addWidget(self.clone_primary_combo, 1, 3)
         self.clone_targets_label = QLabel()
@@ -126,16 +125,16 @@ class BattleTargetConditionSelector(QGroupBox):
         page = QWidget()
         layout = QGridLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(QLabel("环境版本"), 0, 0)
+        layout.addWidget(QLabel(tr("环境版本")), 0, 0)
         self.outer_config_combo = NoWheelComboBox()
         layout.addWidget(self.outer_config_combo, 0, 1)
-        layout.addWidget(QLabel("层数"), 0, 2)
+        layout.addWidget(QLabel(tr("层数")), 0, 2)
         self.outer_floor_combo = NoWheelComboBox()
         layout.addWidget(self.outer_floor_combo, 0, 3)
-        layout.addWidget(QLabel("分区"), 0, 4)
+        layout.addWidget(QLabel(tr("分区")), 0, 4)
         self.outer_half_combo = NoWheelComboBox()
         layout.addWidget(self.outer_half_combo, 0, 5)
-        layout.addWidget(QLabel("主要展示对象"), 1, 0)
+        layout.addWidget(QLabel(tr("主要展示对象")), 1, 0)
         self.outer_primary_combo = NoWheelComboBox()
         layout.addWidget(self.outer_primary_combo, 1, 1, 1, 5)
         self.outer_targets_label = QLabel()
@@ -152,10 +151,10 @@ class BattleTargetConditionSelector(QGroupBox):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
         selectors = QGridLayout()
-        selectors.addWidget(QLabel("挑战对象"), 0, 0)
+        selectors.addWidget(QLabel(tr("挑战对象")), 0, 0)
         self.feast_stage_combo = NoWheelComboBox()
         selectors.addWidget(self.feast_stage_combo, 0, 1)
-        selectors.addWidget(QLabel("难度"), 0, 2)
+        selectors.addWidget(QLabel(tr("难度")), 0, 2)
         self.feast_difficulty_combo = NoWheelComboBox()
         selectors.addWidget(self.feast_difficulty_combo, 0, 3)
         layout.addLayout(selectors)
@@ -192,7 +191,7 @@ class BattleTargetConditionSelector(QGroupBox):
         for stage in catalog.get("feast") or ():
             self.feast_stage_combo.addItem(stage["name_zh"], stage)
         self.witch_combo.clear()
-        self.witch_combo.addItem("无", None)
+        self.witch_combo.addItem(tr("无"), None)
         for buff in catalog.get("witch_buffs") or ():
             self.witch_combo.addItem(buff["name_zh"], buff)
         self._loading = False
@@ -492,7 +491,7 @@ class BattleTargetConditionSelector(QGroupBox):
         for category in stage.get("option_categories") or ():
             key = str(category["category_ordinal"])
             combo = NoWheelComboBox()
-            combo.addItem("不选择", None)
+            combo.addItem(tr("不选择"), None)
             for option in category.get("options") or ():
                 combo.addItem(self._option_label(option), option)
             combo.currentIndexChanged.connect(self._emit_preset)
@@ -791,7 +790,7 @@ class BattleTargetConditionSelector(QGroupBox):
         preset = self.current_preset()
         selected_count = len(preset.get("selected_target_ids") or ())
         if selected_count == 0:
-            self.summary_label.setText("请选择至少一个对象；保存前不会参与逐击重放。")
+            self.summary_label.setText(tr("请选择至少一个对象；保存前不会参与逐击重放。"))
         else:
             self.summary_label.setText(
                 f"已选 {selected_count} 个对象；逐击将按 targetId 与血量映射各自属性。"

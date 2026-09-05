@@ -1,6 +1,8 @@
 # 游戏资料库空幕与驱动独立卡片页面。
 """Player-facing release catalog with an optional frozen inventory projection."""
 from __future__ import annotations
+
+from src.i18n import tr
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable
@@ -67,7 +69,7 @@ class CurvePlot(QLabel):
         ))
     def set_curve(self, curve: AttributeCurve | None) -> None:
         if curve is None or not curve.points:
-            self.setText("当前没有可展示的强化曲线")
+            self.setText(tr("当前没有可展示的强化曲线"))
             return
         values = [point[1] for point in curve.points]
         low, high = min(values), max(values)
@@ -266,7 +268,7 @@ class EquipmentDetailView(QScrollArea):
                 number = CurvePlot.number(curve.max_value, curve.show_percent)
                 value.setText(f"满级 {curve.label}  {number}{'%' if curve.show_percent else ''}")
             else:
-                value.setText("当前装备没有可展示的强化曲线")
+                value.setText(tr("当前装备没有可展示的强化曲线"))
         selector.currentIndexChanged.connect(select_curve)
         select_curve(selector.currentIndex())
         self.layout.addWidget(strength)
@@ -500,18 +502,18 @@ class EquipmentCatalogPage(QWidget):
         layout.addWidget(hero)
         filters = QHBoxLayout()
         self.search = QLineEdit(page)
-        self.search.setPlaceholderText("搜索空幕、套装或驱动形状")
+        self.search.setPlaceholderText(tr("搜索空幕、套装或驱动形状"))
         self.search.textChanged.connect(self._refresh_cards)
         filters.addWidget(self.search, 1)
         self.quality = QComboBox(page)
-        self.quality.addItem("全部品质", "all")
+        self.quality.addItem(tr("全部品质"), "all")
         for key in _QUALITY_COLORS:
             self.quality.addItem(self._controller.quality_name(key), key)
         self.quality.currentIndexChanged.connect(self._refresh_cards)
         filters.addWidget(self.quality)
         self.ownership = QComboBox(page)
-        self.ownership.addItem("全部图鉴", "all")
-        self.ownership.addItem("只看已拥有", "owned")
+        self.ownership.addItem(tr("全部图鉴"), "all")
+        self.ownership.addItem(tr("只看已拥有"), "owned")
         self.ownership.currentIndexChanged.connect(self._refresh_cards)
         filters.addWidget(self.ownership)
         self.result_count = QLabel(page)
@@ -596,7 +598,7 @@ class EquipmentCatalogPage(QWidget):
             f"解锁 {len(suit.required_shape_ids)} 种驱动形状  ·  {self._ownership_text(owned)}",
             card, muted=True,
         ))
-        button = QPushButton("查看套装效果", card)
+        button = QPushButton(tr("查看套装效果"), card)
         button.setObjectName("btnAction")
         button.clicked.connect(lambda _checked=False: self.open_suit(suit.suit_id))
         layout.addWidget(button)
@@ -610,7 +612,7 @@ class EquipmentCatalogPage(QWidget):
             f"{shape.name} · {shape.area} 格 · {self._ownership_text(owned)}",
             card, muted=True,
         ))
-        button = QPushButton("查看支持套装", card)
+        button = QPushButton(tr("查看支持套装"), card)
         button.setObjectName("btnAction")
         button.clicked.connect(lambda _checked=False: self.open_shape(shape.shape_id))
         layout.addWidget(button)

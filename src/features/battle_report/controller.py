@@ -480,8 +480,8 @@ class BattleReportController(
         if self.is_running():
             QMessageBox.information(
                 self._dialog_parent,
-                "战报采集中",
-                "请先结束当前采集，再导出或读取战报包。",
+                tr("战报采集中"),
+                tr("请先结束当前采集，再导出或读取战报包。"),
             )
             return
         try:
@@ -516,7 +516,7 @@ class BattleReportController(
             dialog.show_error(f"保存昵称失败：{error}")
             return
         dialog.set_account_name(saved)
-        QMessageBox.information(dialog, "账号昵称", "账号昵称已保存。")
+        QMessageBox.information(dialog, tr("账号昵称"), tr("账号昵称已保存。"))
 
     def _export_selected_reports(self, report_ids: object) -> None:
         dialog = self._transfer_dialog
@@ -554,7 +554,7 @@ class BattleReportController(
         else:
             QMessageBox.information(
                 dialog,
-                "导出完成",
+                tr("导出完成"),
                 f"已导出 {outcome.report_count} 场战报。\n保存位置：{target}",
             )
         finally:
@@ -583,7 +583,7 @@ class BattleReportController(
         else:
             QMessageBox.information(
                 dialog,
-                "读取完成",
+                tr("读取完成"),
                 (
                     f"已导入 {len(outcome.imported_record_ids)} 场战报；"
                     f"跳过 {outcome.skipped_existing_count} 场已有战报。"

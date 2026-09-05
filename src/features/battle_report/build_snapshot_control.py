@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -21,27 +23,27 @@ class BattleBuildSnapshotControl(QWidget):
         super().__init__(parent)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.status = QLabel("等待战报角色配置")
+        self.status = QLabel(tr("等待战报角色配置"))
         self.status.hide()
-        self.edit_button = QPushButton("编辑角色")
+        self.edit_button = QPushButton(tr("编辑角色"))
         self.edit_button.clicked.connect(self.edit_requested)
         self.edit_button.setEnabled(False)
         layout.addWidget(self.edit_button)
-        self.import_button = QPushButton("从角色页同步")
+        self.import_button = QPushButton(tr("从角色页同步"))
         self.import_button.setToolTip(
-            "用当前角色页养成覆盖本场修改副本；保留副本已选边际空幕/驱动。"
+            tr("用当前角色页养成覆盖本场修改副本；保留副本已选边际空幕/驱动。")
         )
         self.import_button.clicked.connect(self.role_page_import_requested)
         self.import_button.setEnabled(False)
         self.import_button.hide()
-        self.environment_button = QPushButton("环境配置 · 未配置")
+        self.environment_button = QPushButton(tr("环境配置 · 未配置"))
         self.environment_button.setToolTip(
-            "确认战斗模式、对象、难度、争锋加成与魔女赐福。"
+            tr("确认战斗模式、对象、难度、争锋加成与魔女赐福。")
         )
         self.environment_button.clicked.connect(self.environment_requested)
         self.environment_button.setEnabled(False)
         self.environment_button.hide()
-        self.activation_button = QPushButton("恢复原始快照")
+        self.activation_button = QPushButton(tr("恢复原始快照"))
         self.activation_button.clicked.connect(self._request_activation)
         self.activation_button.setEnabled(False)
         self.activation_button.hide()

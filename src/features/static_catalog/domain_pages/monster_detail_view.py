@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -76,7 +78,7 @@ class MonsterDetailView(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         top = QHBoxLayout()
-        self.crumb = QLabel("怪物与玩法", self)
+        self.crumb = QLabel(tr("怪物与玩法"), self)
         self.crumb.setStyleSheet(themed_style("color:#8b949e;font-size:10px"))
         top.addWidget(self.crumb)
         top.addStretch(1)
@@ -137,7 +139,7 @@ class MonsterDetailView(QWidget):
                 ))
                 selector_layout = QHBoxLayout(selector)
                 selector_layout.setContentsMargins(10, 8, 10, 8)
-                label = QLabel("大世界等级", selector)
+                label = QLabel(tr("大世界等级"), selector)
                 label.setStyleSheet(themed_style(
                     "color:#c9d1d9;font-size:10px;font-weight:800"
                 ))

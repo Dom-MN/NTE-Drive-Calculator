@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Sequence
 
 from PySide6.QtCore import QSize
@@ -36,13 +38,13 @@ class BattleHitFormulaDialog(QDialog):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("逐击伤害公式")
+        self.setWindowTitle(tr("逐击伤害公式"))
         self.setModal(False)
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 16, 18, 16)
         root.setSpacing(10)
 
-        self.title_label = QLabel("逐击伤害公式")
+        self.title_label = QLabel(tr("逐击伤害公式"))
         self.title_label.setStyleSheet(
             themed_style("color:#58a6ff;font-size:16px;font-weight:700")
         )

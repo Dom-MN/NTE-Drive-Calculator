@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from pathlib import Path
 from typing import Callable
 
@@ -52,7 +54,7 @@ class FeastEncounterView(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 2, 4, 0)
         root.setSpacing(8)
-        self.heading = QLabel("争锋赏宴", self)
+        self.heading = QLabel(tr("争锋赏宴"), self)
         self.heading.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:20px;font-weight:900"
         ))
@@ -75,7 +77,7 @@ class FeastEncounterView(QWidget):
         summary_row = QHBoxLayout()
         summary_row.setContentsMargins(0, 0, 0, 0)
         summary_row.setSpacing(8)
-        difficulty_label = QLabel("难度", self.controls)
+        difficulty_label = QLabel(tr("难度"), self.controls)
         difficulty_label.setStyleSheet(themed_style(
             "color:#c9d1d9;font-size:10px;font-weight:800"
         ))
@@ -84,14 +86,14 @@ class FeastEncounterView(QWidget):
         self.difficulty_combo.setMinimumWidth(210)
         self.difficulty_combo.currentIndexChanged.connect(self._refresh_detail)
         summary_row.addWidget(self.difficulty_combo, 1)
-        self.condition_summary = QLabel("未启用挑战条件", self.controls)
+        self.condition_summary = QLabel(tr("未启用挑战条件"), self.controls)
         self.condition_summary.setStyleSheet(themed_style(
             "color:#8b949e;font-size:10px"
         ))
         summary_row.addWidget(self.condition_summary)
         self.conditions_toggle = QToolButton(self.controls)
         self.conditions_toggle.setCheckable(True)
-        self.conditions_toggle.setText("挑战条件")
+        self.conditions_toggle.setText(tr("挑战条件"))
         self.conditions_toggle.setStyleSheet(themed_style(
             "QToolButton{color:#58a6ff;background:#0d1117;border:0;"
             "border-radius:7px;padding:5px 10px;font-weight:800;}"
@@ -101,7 +103,7 @@ class FeastEncounterView(QWidget):
         summary_row.addWidget(self.conditions_toggle)
         self.blessing_toggle = QToolButton(self.controls)
         self.blessing_toggle.setCheckable(True)
-        self.blessing_toggle.setText("魔女赐福")
+        self.blessing_toggle.setText(tr("魔女赐福"))
         self.blessing_toggle.setStyleSheet(self.conditions_toggle.styleSheet())
         self.blessing_toggle.toggled.connect(self._toggle_blessing)
         summary_row.addWidget(self.blessing_toggle)
@@ -125,7 +127,7 @@ class FeastEncounterView(QWidget):
         blessing_layout.setContentsMargins(9, 7, 9, 7)
         blessing_layout.setSpacing(5)
         blessing_row = QHBoxLayout()
-        blessing_label = QLabel("战前赐福", self.blessing_host)
+        blessing_label = QLabel(tr("战前赐福"), self.blessing_host)
         blessing_label.setStyleSheet(themed_style(
             "color:#c9d1d9;font-size:10px;font-weight:800"
         ))
@@ -134,7 +136,7 @@ class FeastEncounterView(QWidget):
         blessing_row.addWidget(blessing_label)
         blessing_row.addWidget(self.blessing_combo, 1)
         blessing_layout.addLayout(blessing_row)
-        self.blessing_summary = QLabel("未选择魔女赐福", self.blessing_host)
+        self.blessing_summary = QLabel(tr("未选择魔女赐福"), self.blessing_host)
         self.blessing_summary.setWordWrap(True)
         self.blessing_summary.setStyleSheet(themed_style(
             "color:#8b949e;font-size:10px"
@@ -181,7 +183,7 @@ class FeastEncounterView(QWidget):
         self._option_combos = []
         for group in setup.option_groups:
             combo = NoWheelComboBox(self.options_host)
-            combo.addItem("不启用", "")
+            combo.addItem(tr("不启用"), "")
             for option in group.options:
                 combo.addItem(option.display_name, option.option_id)
             combo.currentIndexChanged.connect(self._refresh_detail)
@@ -196,7 +198,7 @@ class FeastEncounterView(QWidget):
         self.conditions_toggle.setChecked(False)
         self._toggle_options(False)
         self.blessing_combo.clear()
-        self.blessing_combo.addItem("不选择", "")
+        self.blessing_combo.addItem(tr("不选择"), "")
         for blessing in blessings:
             self.blessing_combo.addItem(blessing.title, blessing.key)
         self.blessing_combo.setCurrentIndex(0)
@@ -235,12 +237,12 @@ class FeastEncounterView(QWidget):
             return
         key = str(self.blessing_combo.currentData() or "")
         if not key or self._blessing_loader is None:
-            self.blessing_summary.setText("未选择魔女赐福")
+            self.blessing_summary.setText(tr("未选择魔女赐福"))
             return
         detail = self._blessing_loader(key)
         values = detail.sections[0].values if detail and detail.sections else ()
         if not values:
-            self.blessing_summary.setText("赐福效果暂未提供")
+            self.blessing_summary.setText(tr("赐福效果暂未提供"))
             return
         value = values[0]
         label = value.display_label or "赐福效果"

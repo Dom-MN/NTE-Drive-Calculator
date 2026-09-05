@@ -327,7 +327,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
 
             name_btn = PriorityRoleButton(self, name, index)
             name_btn.setObjectName("btnSm")
-            name_btn.setToolTip("点击移出当前优先级；向后拖拽会按目标同级组调整优先级")
+            name_btn.setToolTip(tr("点击移出当前优先级；向后拖拽会按目标同级组调整优先级"))
             name_btn.setFixedWidth(self._priority_role_name_width())
             name_size = self._priority_role_name_font_size(name)
             name_btn.setStyleSheet(

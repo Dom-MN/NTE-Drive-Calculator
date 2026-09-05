@@ -213,7 +213,7 @@ def _add_extra_shape_row(window, data, role_name, role_data, form_layout):
     )
     role_data["extra_shape_label"] = current_label
     value.setCurrentText(current_label)
-    value.setPlaceholderText("选择额外形状标签")
+    value.setPlaceholderText(tr("选择额外形状标签"))
     ownership = "点击“保存”后写入当前账号的自建角色数据。"
     value.setToolTip(f"选择额外形状标签；{ownership}")
     value.currentTextChanged.connect(
@@ -690,8 +690,8 @@ def save_config_form(window, config_dir, json_edit_dialog_cls):
         reload_data()
     QMessageBox.information(
         window,
-        "保存",
-        "卡带主词条和驱动副词条权重已保存到当前账号 SQLite；自创角色额外形状已保存，官方角色额外形状保持静态资源库值。",
+        tr("保存"),
+        tr("卡带主词条和驱动副词条权重已保存到当前账号 SQLite；自创角色额外形状已保存，官方角色额外形状保持静态资源库值。"),
     )
 
 

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
@@ -61,7 +63,7 @@ class MechanicsFormulaPanel(QWidget):
         ))
         root = QVBoxLayout(card)
         root.setContentsMargins(13, 10, 13, 10)
-        label = QLabel("伤害乘区流程", card)
+        label = QLabel(tr("伤害乘区流程"), card)
         label.setStyleSheet(themed_style(
             "color:#8b949e;font-size:11px;font-weight:900;letter-spacing:1px;"
         ))

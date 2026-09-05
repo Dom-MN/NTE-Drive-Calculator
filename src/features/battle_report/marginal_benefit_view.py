@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtWidgets import QLabel, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from src.app.theme import themed_style
@@ -26,12 +28,12 @@ def build_marginal_benefit_sections(
 ) -> tuple[QTableWidget, QLabel, QWidget, QTableWidget, QLabel]:
     core_card, core_layout = analysis_section("空幕主属性边际（金色候选）")
     core_note = QLabel(
-        "识别当前任意品质空幕并固定套装与副词条，候选统一使用金色满级主属性；"
-        "“相对无主属性”用于统一比较，“替换当前”用于实际换装决策。"
+        tr("识别当前任意品质空幕并固定套装与副词条，候选统一使用金色满级主属性；"
+        "“相对无主属性”用于统一比较，“替换当前”用于实际换装决策。")
     )
     _style_note(core_note)
     core_layout.addWidget(core_note)
-    core_notice = QLabel("等待后台计算…")
+    core_notice = QLabel(tr("等待后台计算…"))
     _style_note(core_notice)
     core_layout.addWidget(core_notice)
     core_table = analysis_table(
@@ -56,17 +58,17 @@ def build_marginal_benefit_sections(
     fork_panel.setObjectName("battleForkBenefitPanel")
     fork_layout = QVBoxLayout(fork_panel)
     fork_layout.setContentsMargins(0, 8, 0, 0)
-    fork_title = QLabel("固定轴综合收益")
+    fork_title = QLabel(tr("固定轴综合收益"))
     fork_title.setObjectName("battleForkBenefitTitle")
     fork_title.setStyleSheet(themed_style("font-weight:bold;color:#58a6ff"))
     fork_layout.addWidget(fork_title)
     fork_note = QLabel(
-        "A=无弧盘，B=仅恢复弧盘常驻面板，C=完整弧盘。"
-        "常驻=B-A，技能/机制=C-B，综合=C-A；团队 Buff 表仍作为机制明细，不与本表相加。"
+        tr("A=无弧盘，B=仅恢复弧盘常驻面板，C=完整弧盘。"
+        "常驻=B-A，技能/机制=C-B，综合=C-A；团队 Buff 表仍作为机制明细，不与本表相加。")
     )
     _style_note(fork_note)
     fork_layout.addWidget(fork_note)
-    fork_notice = QLabel("等待后台计算…")
+    fork_notice = QLabel(tr("等待后台计算…"))
     _style_note(fork_notice)
     fork_layout.addWidget(fork_notice)
     fork_table = analysis_table(
@@ -101,8 +103,8 @@ def render_marginal_benefits(
     if benefits is None or benefits.character_id != character_id:
         core_table.setRowCount(0)
         fork_table.setRowCount(0)
-        core_notice.setText("等待所选角色的后台固定轴计算…")
-        fork_notice.setText("等待所选角色的后台固定轴计算…")
+        core_notice.setText(tr("等待所选角色的后台固定轴计算…"))
+        fork_notice.setText(tr("等待所选角色的后台固定轴计算…"))
         core_notice.show()
         fork_notice.show()
         return
@@ -146,7 +148,7 @@ def _render_fork(
 ) -> None:
     if fork is None:
         table.setRowCount(0)
-        notice.setText("当前角色缺少弧盘分析结果。")
+        notice.setText(tr("当前角色缺少弧盘分析结果。"))
         notice.show()
         return
     if fork.unavailable_reason:

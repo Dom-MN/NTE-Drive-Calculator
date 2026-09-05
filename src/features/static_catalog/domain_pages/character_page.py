@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -220,15 +222,15 @@ class CharacterCatalogPage(QWidget):
         search_row = QHBoxLayout()
         self.search = QLineEdit(filters)
         self.search.setClearButtonEnabled(True)
-        self.search.setPlaceholderText("搜索正式中文名或 character_id")
+        self.search.setPlaceholderText(tr("搜索正式中文名或 character_id"))
         self.search.textChanged.connect(self._apply_filters)
         search_row.addWidget(self.search, 1)
-        self.sort_hint = QLabel("上线时间 ↓", filters)
+        self.sort_hint = QLabel(tr("上线时间 ↓"), filters)
         self.sort_hint.setStyleSheet(themed_style(
             "color:#58a6ff;font-size:10px;font-weight:800"
         ))
         search_row.addWidget(self.sort_hint)
-        self.result_count = QLabel("0 位角色", filters)
+        self.result_count = QLabel(tr("0 位角色"), filters)
         self.result_count.setStyleSheet(themed_style(
             "color:#8b949e;font-size:11px;font-weight:700"
         ))
@@ -236,13 +238,13 @@ class CharacterCatalogPage(QWidget):
         filter_layout.addLayout(search_row)
 
         summary_row = QHBoxLayout()
-        self.filter_summary = QLabel("全部角色 · 全属性 · 全品质 · 全获取", filters)
+        self.filter_summary = QLabel(tr("全部角色 · 全属性 · 全品质 · 全获取"), filters)
         self.filter_summary.setObjectName("characterFilterSummary")
         self.filter_summary.setStyleSheet(themed_style(
             "color:#8b949e;font-size:10px;font-weight:700"
         ))
         summary_row.addWidget(self.filter_summary, 1)
-        self.filter_toggle = QPushButton("展开筛选  ▾", filters)
+        self.filter_toggle = QPushButton(tr("展开筛选  ▾"), filters)
         self.filter_toggle.setObjectName("characterFilterToggle")
         self.filter_toggle.setCheckable(True)
         self.filter_toggle.setStyleSheet(themed_style(
@@ -317,7 +319,7 @@ class CharacterCatalogPage(QWidget):
         self.card_grid.setHorizontalSpacing(12)
         self.card_grid.setVerticalSpacing(12)
         self.card_grid.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.empty_label = QLabel("没有匹配的角色", self.gallery_host)
+        self.empty_label = QLabel(tr("没有匹配的角色"), self.gallery_host)
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_label.setStyleSheet(themed_style(
             "color:#8b949e;background:#161b22;border:1px dashed #30363d;"

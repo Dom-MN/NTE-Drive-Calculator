@@ -505,7 +505,7 @@ class _RewindRecommendationDialog(RewindExecutionUiMixin, RewindSlotUiMixin, QDi
         summary.setWordWrap(False)
         summary.setStyleSheet(themed_style("color:#c9d1d9"))
         selection_row.addWidget(summary, 1)
-        button = QPushButton("选择角色")
+        button = QPushButton(tr("选择角色"))
         button.setObjectName("btnAction")
         button.setEnabled(False)
         button.clicked.connect(self._choose_main_roles if main else self._choose_target_roles)

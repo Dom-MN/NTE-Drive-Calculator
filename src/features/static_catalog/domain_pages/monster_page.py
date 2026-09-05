@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -119,11 +121,11 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
         hero_layout = QHBoxLayout(hero)
         hero_layout.setContentsMargins(22, 17, 22, 17)
         copy = QVBoxLayout()
-        eyebrow = QLabel("敌方与挑战档案", hero)
+        eyebrow = QLabel(tr("敌方与挑战档案"), hero)
         eyebrow.setStyleSheet(themed_style("color:#58a6ff;font-size:10px;font-weight:900"))
-        title = QLabel("怪物与玩法", hero)
+        title = QLabel(tr("怪物与玩法"), hero)
         title.setStyleSheet(themed_style("color:#f0f6fc;font-size:28px;font-weight:900"))
-        subtitle = QLabel("从玩法进入期数、层、半场与刷怪槽位，查看当前选择下的怪物画像。", hero)
+        subtitle = QLabel(tr("从玩法进入期数、层、半场与刷怪槽位，查看当前选择下的怪物画像。"), hero)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
         copy.addWidget(eyebrow)
@@ -172,11 +174,11 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
         search_row = QHBoxLayout()
         self.browser_search = QLineEdit(page)
         self.browser_search.setClearButtonEnabled(True)
-        self.browser_search.setPlaceholderText("搜索怪物或玩法")
+        self.browser_search.setPlaceholderText(tr("搜索怪物或玩法"))
         self.browser_search.textChanged.connect(self._render_browser_state)
         search_row.addWidget(self.browser_search, 1)
         self.more_filters_button = QToolButton(page)
-        self.more_filters_button.setText("更多筛选")
+        self.more_filters_button.setText(tr("更多筛选"))
         self.more_filters_button.setCheckable(True)
         search_row.addWidget(self.more_filters_button)
         root.addLayout(search_row)

@@ -370,13 +370,13 @@ def _role_option_card(
         if bool(comparison.diff.get(DIFF_CHANGED))
     )
     if changed_comparisons:
-        diff_button = QPushButton("变动")
+        diff_button = QPushButton(tr("变动"))
         diff_button.setStyleSheet(themed_style(
             "QPushButton{background:#1f6feb;color:#ffffff;border:1px solid #58a6ff;"
             "border-radius:6px;font-size:13px;font-weight:700;padding:4px 12px}"
             "QPushButton:hover{background:#388bfd}"
         ))
-        diff_button.setToolTip("选择已保存配装槽位，查看本次结果的新旧装备与属性变化")
+        diff_button.setToolTip(tr("选择已保存配装槽位，查看本次结果的新旧装备与属性变化"))
         menu = QMenu(diff_button)
         for comparison in changed_comparisons:
             label = comparison.slot_name

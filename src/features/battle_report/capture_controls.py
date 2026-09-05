@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from time import monotonic
 
 from PySide6.QtWidgets import QMessageBox
@@ -74,8 +76,8 @@ class BattleCaptureControlsMixin:
         if confirm:
             answer = QMessageBox.question(
                 self._dialog_parent,
-                "放弃当前战报",
-                "确定放弃本次尚未保存的战报，并立即重新开始采集吗？",
+                tr("放弃当前战报"),
+                tr("确定放弃本次尚未保存的战报，并立即重新开始采集吗？"),
                 (
                     QMessageBox.StandardButton.Yes
                     | QMessageBox.StandardButton.No

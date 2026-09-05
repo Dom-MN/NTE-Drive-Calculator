@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -54,7 +56,7 @@ class CultivationImageSelector(QDialog):
         note.setStyleSheet(themed_style("color:#8b949e"))
         root.addWidget(note)
         self._search = QLineEdit(self)
-        self._search.setPlaceholderText("搜索（支持拼音）")
+        self._search.setPlaceholderText(tr("搜索（支持拼音）"))
         self._search.textChanged.connect(self._apply_filter)
         root.addWidget(self._search)
         self._scroll = QScrollArea(self)

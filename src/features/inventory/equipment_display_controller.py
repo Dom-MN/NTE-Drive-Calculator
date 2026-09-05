@@ -314,9 +314,9 @@ def _manage_loadout_slot(
     layout.addWidget(plan_status)
 
     actions = QHBoxLayout()
-    create_button = QPushButton("新增槽位", dialog)
-    rename_button = QPushButton("重命名", dialog)
-    archive_button = QPushButton("删除槽位", dialog)
+    create_button = QPushButton(tr("新增槽位"), dialog)
+    rename_button = QPushButton(tr("重命名"), dialog)
+    archive_button = QPushButton(tr("删除槽位"), dialog)
     archive_button.setStyleSheet(themed_style("QPushButton{color:#f85149}"))
     actions.addWidget(create_button)
     actions.addWidget(rename_button)

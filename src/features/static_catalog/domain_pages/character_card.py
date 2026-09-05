@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -129,7 +131,7 @@ class CharacterGalleryCard(QFrame):
                         Qt.TransformationMode.SmoothTransformation,
                     ))
             if art.pixmap().isNull():
-                art.setText("头像未提供")
+                art.setText(tr("头像未提供"))
                 art.setStyleSheet(themed_style(
                     "color:#6e7681;background:#0d1117;border:1px dashed #30363d;"
                     "border-radius:12px;font-size:10px"

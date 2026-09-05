@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -256,7 +258,7 @@ class StaticCatalogPage:
         layout.setContentsMargins(10, 12, 10, 10)
         self._search_edit = QLineEdit(pane)
         self._search_edit.setClearButtonEnabled(True)
-        self._search_edit.setPlaceholderText("搜索中文名、正式 ID、GA、GE、Buff key、Gameplay Tag、资源路径")
+        self._search_edit.setPlaceholderText(tr("搜索中文名、正式 ID、GA、GE、Buff key、Gameplay Tag、资源路径"))
         self._search_edit.textChanged.connect(lambda _text: self._queue_search())
         layout.addWidget(self._search_edit)
         self._result_list = QListWidget(pane)
@@ -264,9 +266,9 @@ class StaticCatalogPage:
         self._result_list.currentItemChanged.connect(self._on_result_changed)
         layout.addWidget(self._result_list, 1)
         pager = QHBoxLayout()
-        self._previous_button = QPushButton("上一页", pane)
-        self._next_button = QPushButton("下一页", pane)
-        self._page_label = QLabel("0 项", pane)
+        self._previous_button = QPushButton(tr("上一页"), pane)
+        self._next_button = QPushButton(tr("下一页"), pane)
+        self._page_label = QLabel(tr("0 项"), pane)
         self._page_label.setAlignment(Qt.AlignCenter)
         self._page_label.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
         self._previous_button.clicked.connect(lambda: self._change_page(-1))
@@ -392,8 +394,8 @@ class StaticCatalogPage:
             self._update_navigation_buttons()
             QMessageBox.warning(
                 self._dialog_parent,
-                "无法打开关联资料",
-                "该关联资料暂不可用，已返回原页面。",
+                tr("无法打开关联资料"),
+                tr("该关联资料暂不可用，已返回原页面。"),
             )
             return False
         self._update_navigation_buttons()
@@ -407,7 +409,7 @@ class StaticCatalogPage:
         self._update_navigation_buttons()
 
     def _navigation_button(self, parent: QWidget) -> QPushButton:
-        button = QPushButton("‹ 资料库", parent)
+        button = QPushButton(tr("‹ 资料库"), parent)
         button.setObjectName("staticCatalogNavigateBack")
         button.setMinimumHeight(28)
         button.clicked.connect(self._go_back)
@@ -669,7 +671,7 @@ class StaticCatalogPage:
         layout.addWidget(value, 1)
         layout.addWidget(source, 0, Qt.AlignTop)
         if field.copyable:
-            copy_button = QPushButton("复制")
+            copy_button = QPushButton(tr("复制"))
             copy_button.setObjectName("btnSm")
             copy_button.clicked.connect(
                 lambda _checked=False, text=field.value: QApplication.clipboard().setText(text)

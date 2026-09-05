@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
@@ -117,7 +119,7 @@ class CultivationCalculatorDialog(QDialog):
         self._skill_inputs: dict[str, tuple[QSpinBox, QSpinBox]] = {}
         self._last_plan: CultivationPlan | None = None
         self._asset_catalog = GameUiAssetCatalog(bundled_game_ui_asset_root())
-        self.setWindowTitle("养成计算器")
+        self.setWindowTitle(tr("养成计算器"))
         self.setObjectName("cultivationCalculatorDialog")
         self.setModal(True)
         self._build()
@@ -130,7 +132,7 @@ class CultivationCalculatorDialog(QDialog):
         layout.setSpacing(10)
 
         note = QLabel(
-            "按角色页已保存的养成状态预填；仅汇总正式材料，不扣除背包库存，也不估算体力。",
+            tr("按角色页已保存的养成状态预填；仅汇总正式材料，不扣除背包库存，也不估算体力。"),
             self,
         )
         note.setWordWrap(True)
@@ -149,7 +151,7 @@ class CultivationCalculatorDialog(QDialog):
         input_layout.setContentsMargins(2, 2, 2, 2)
         input_layout.setSpacing(10)
 
-        configuration_caption = QLabel("养成目标", input_body)
+        configuration_caption = QLabel(tr("养成目标"), input_body)
         configuration_caption.setStyleSheet(themed_style(
             "font-size:14px;font-weight:800;color:#c9d1d9"
         ))
@@ -165,11 +167,11 @@ class CultivationCalculatorDialog(QDialog):
         grid.setContentsMargins(14, 12, 14, 12)
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(8)
-        self._role = QPushButton("选择角色", controls)
+        self._role = QPushButton(tr("选择角色"), controls)
         self._role.setObjectName("cultivationCalculatorRoleSelector")
         self._role.setMinimumWidth(210)
         self._role.clicked.connect(self._select_role)
-        grid.addWidget(QLabel("角色", controls), 0, 0)
+        grid.addWidget(QLabel(tr("角色"), controls), 0, 0)
         grid.addWidget(self._role, 0, 1, 1, 2)
         self._character_toggle = _participation_toggle(controls, "角色养成")
         self._character_toggle.toggled.connect(self._set_character_progression_enabled)
@@ -180,10 +182,10 @@ class CultivationCalculatorDialog(QDialog):
         self._target_stage = QComboBox(controls)
         self._current_level.valueChanged.connect(self._refresh_current_stages)
         self._target_level.valueChanged.connect(self._refresh_target_stages)
-        grid.addWidget(QLabel("当前等级", controls), 1, 0)
+        grid.addWidget(QLabel(tr("当前等级"), controls), 1, 0)
         grid.addWidget(self._current_level, 1, 1)
         grid.addWidget(self._current_stage, 1, 2)
-        grid.addWidget(QLabel("目标等级", controls), 2, 0)
+        grid.addWidget(QLabel(tr("目标等级"), controls), 2, 0)
         grid.addWidget(self._target_level, 2, 1)
         grid.addWidget(self._target_stage, 2, 2)
         input_layout.addWidget(controls)
@@ -198,11 +200,11 @@ class CultivationCalculatorDialog(QDialog):
         fork_grid.setContentsMargins(14, 12, 14, 12)
         fork_grid.setHorizontalSpacing(10)
         fork_grid.setVerticalSpacing(8)
-        self._fork = QPushButton("选择弧盘", self._fork_controls)
+        self._fork = QPushButton(tr("选择弧盘"), self._fork_controls)
         self._fork.setObjectName("cultivationCalculatorForkSelector")
         self._fork.setMinimumWidth(210)
         self._fork.clicked.connect(self._select_fork)
-        fork_grid.addWidget(QLabel("弧盘", self._fork_controls), 0, 0)
+        fork_grid.addWidget(QLabel(tr("弧盘"), self._fork_controls), 0, 0)
         fork_grid.addWidget(self._fork, 0, 1, 1, 2)
         self._fork_toggle = _participation_toggle(self._fork_controls, "弧盘养成")
         self._fork_toggle.toggled.connect(self._refresh_fork_participation)
@@ -213,10 +215,10 @@ class CultivationCalculatorDialog(QDialog):
         self._fork_target_stage = QComboBox(self._fork_controls)
         self._fork_current_level.valueChanged.connect(self._refresh_fork_current_stages)
         self._fork_target_level.valueChanged.connect(self._refresh_fork_target_stages)
-        fork_grid.addWidget(QLabel("当前等级", self._fork_controls), 1, 0)
+        fork_grid.addWidget(QLabel(tr("当前等级"), self._fork_controls), 1, 0)
         fork_grid.addWidget(self._fork_current_level, 1, 1)
         fork_grid.addWidget(self._fork_current_stage, 1, 2)
-        fork_grid.addWidget(QLabel("目标等级", self._fork_controls), 2, 0)
+        fork_grid.addWidget(QLabel(tr("目标等级"), self._fork_controls), 2, 0)
         fork_grid.addWidget(self._fork_target_level, 2, 1)
         fork_grid.addWidget(self._fork_target_stage, 2, 2)
         input_layout.addWidget(self._fork_controls)
@@ -224,7 +226,7 @@ class CultivationCalculatorDialog(QDialog):
 
         skill_header = QHBoxLayout()
         skill_header.setContentsMargins(0, 0, 22, 0)
-        skill_caption = QLabel("技能目标", input_body)
+        skill_caption = QLabel(tr("技能目标"), input_body)
         skill_caption.setStyleSheet(themed_style("font-size:14px;font-weight:800;color:#c9d1d9"))
         skill_header.addWidget(skill_caption)
         skill_header.addStretch(1)
@@ -240,7 +242,7 @@ class CultivationCalculatorDialog(QDialog):
         input_layout.addWidget(self._skills_box)
 
         action_row = QHBoxLayout()
-        calculate = QPushButton("计算所需材料", input_body)
+        calculate = QPushButton(tr("计算所需材料"), input_body)
         calculate.setObjectName("cultivationCalculatorCalculate")
         calculate.setMinimumHeight(44)
         calculate.setStyleSheet(themed_style(
@@ -265,7 +267,7 @@ class CultivationCalculatorDialog(QDialog):
         result_layout = QVBoxLayout(result_panel)
         result_layout.setContentsMargins(14, 12, 14, 12)
         result_layout.setSpacing(8)
-        result_caption = QLabel("材料清单", result_panel)
+        result_caption = QLabel(tr("材料清单"), result_panel)
         result_caption.setStyleSheet(themed_style("font-size:15px;font-weight:900;color:#58a6ff"))
         result_layout.addWidget(result_caption)
         self._result = QScrollArea(result_panel)
@@ -340,7 +342,7 @@ class CultivationCalculatorDialog(QDialog):
             if not self._forks:
                 self._forks = self._service.list_forks()
         except Exception as exc:
-            QMessageBox.warning(self, "养成计算器", f"读取弧盘列表失败：{exc}")
+            QMessageBox.warning(self, tr("养成计算器"), f"读取弧盘列表失败：{exc}")
             return
         selected = select_cultivation_item(
             self,
@@ -364,13 +366,13 @@ class CultivationCalculatorDialog(QDialog):
                 character_id=self._seed.character_id if self._seed else None,
             ))
         except Exception as exc:
-            QMessageBox.warning(self, "养成计算器", f"读取弧盘养成状态失败：{exc}")
+            QMessageBox.warning(self, tr("养成计算器"), f"读取弧盘养成状态失败：{exc}")
 
     def _apply_fork_seed(self, seed: CultivationForkSeed | None) -> None:
         self._fork_seed = seed
         self._set_fork_controls_enabled(seed is not None)
         if seed is None:
-            self._fork.setText("选择弧盘")
+            self._fork.setText(tr("选择弧盘"))
             return
         self._fork.setText(seed.fork_name)
         self._fork_current_level.setValue(seed.current_level)
@@ -414,7 +416,7 @@ class CultivationCalculatorDialog(QDialog):
             self._skills_layout.removeRow(0)
         self._skill_inputs.clear()
         if not seed.skills:
-            self._skills_layout.addRow(QLabel("当前正式静态库未提供可升级技能。", self._skills_box))
+            self._skills_layout.addRow(QLabel(tr("当前正式静态库未提供可升级技能。"), self._skills_box))
             return
         for skill in seed.skills:
             current = _CultivationSpinBox(self._skills_box)
@@ -427,9 +429,9 @@ class CultivationCalculatorDialog(QDialog):
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(0, 0, 0, 0)
             row_layout.setSpacing(6)
-            row_layout.addWidget(QLabel("当前", row))
+            row_layout.addWidget(QLabel(tr("当前"), row))
             row_layout.addWidget(current)
-            row_layout.addWidget(QLabel("目标", row))
+            row_layout.addWidget(QLabel(tr("目标"), row))
             row_layout.addWidget(target)
             row_layout.addStretch()
             self._skills_layout.addRow(f"{skill.category} · {skill.name}", row)
@@ -497,10 +499,10 @@ class CultivationCalculatorDialog(QDialog):
         try:
             plan = self._service.calculate(request)
         except ValueError as exc:
-            QMessageBox.warning(self, "养成计算器", str(exc))
+            QMessageBox.warning(self, tr("养成计算器"), str(exc))
             return
         except Exception as exc:
-            QMessageBox.warning(self, "养成计算器", f"计算材料失败：{exc}")
+            QMessageBox.warning(self, tr("养成计算器"), f"计算材料失败：{exc}")
             return
         self._last_plan = plan
         self._copy_button.setEnabled(True)
@@ -554,7 +556,7 @@ class CultivationCalculatorDialog(QDialog):
         ))
         total_layout = QVBoxLayout(total)
         total_layout.setContentsMargins(10, 8, 10, 8)
-        total_heading = QLabel("合计", total)
+        total_heading = QLabel(tr("合计"), total)
         total_heading.setStyleSheet(themed_style("color:#58a6ff;font-size:14px;font-weight:900"))
         total_layout.addWidget(total_heading)
         total_text = QLabel(
@@ -566,7 +568,7 @@ class CultivationCalculatorDialog(QDialog):
         self._result_layout.addWidget(total)
         if plan.gaps:
             self._result_layout.addWidget(QLabel(
-                "部分正式材料数量尚未提供，合计只包含已识别条目。", self._result_body
+                tr("部分正式材料数量尚未提供，合计只包含已识别条目。"), self._result_body
             ))
         self._result_layout.addStretch()
 

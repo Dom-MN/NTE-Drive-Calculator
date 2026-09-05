@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from typing import Any
 
 from PySide6.QtCore import QTimer, Qt, Signal
@@ -81,19 +83,19 @@ class ForkCatalogWidget(QWidget):
         filters = QHBoxLayout()
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText(
-            "名称 / 弧盘 ID / 角色 / 参数 / Buff / 资源路径"
+            tr("名称 / 弧盘 ID / 角色 / 参数 / Buff / 资源路径")
         )
         self.search_edit.setClearButtonEnabled(True)
         self.type_combo = QComboBox()
         self.quality_combo = QComboBox()
-        self.quality_combo.addItem("全部品质", None)
+        self.quality_combo.addItem(tr("全部品质"), None)
         for value, label in (("ORANGE", "橙色"), ("PURPLE", "紫色"), ("BLUE", "蓝色")):
             self.quality_combo.addItem(label, value)
         self.character_edit = QLineEdit()
-        self.character_edit.setPlaceholderText("角色 ID")
+        self.character_edit.setPlaceholderText(tr("角色 ID"))
         self.character_edit.setValidator(QIntValidator(1, 999999, self))
         self.character_edit.setMaximumWidth(110)
-        self.reset_button = QPushButton("重置")
+        self.reset_button = QPushButton(tr("重置"))
         filters.addWidget(self.search_edit, 1)
         filters.addWidget(self.type_combo)
         filters.addWidget(self.quality_combo)
@@ -109,9 +111,9 @@ class ForkCatalogWidget(QWidget):
         self.catalog_list.setUniformItemSizes(True)
         catalog_layout.addWidget(self.catalog_list, 1)
         pager = QHBoxLayout()
-        self.previous_button = QPushButton("上一页")
+        self.previous_button = QPushButton(tr("上一页"))
         self.page_label = QLabel()
-        self.next_button = QPushButton("下一页")
+        self.next_button = QPushButton(tr("下一页"))
         pager.addWidget(self.previous_button)
         pager.addWidget(self.page_label, 1, Qt.AlignCenter)
         pager.addWidget(self.next_button)
@@ -122,9 +124,9 @@ class ForkCatalogWidget(QWidget):
         detail_layout = QVBoxLayout(detail)
         detail_layout.setContentsMargins(0, 0, 0, 0)
         detail_actions = QHBoxLayout()
-        self.detail_title = QLabel("选择弧盘查看详情")
+        self.detail_title = QLabel(tr("选择弧盘查看详情"))
         self.detail_title.setObjectName("forkCatalogDetailTitle")
-        self.copy_button = QPushButton("复制当前字段")
+        self.copy_button = QPushButton(tr("复制当前字段"))
         self.copy_button.setEnabled(False)
         detail_actions.addWidget(self.detail_title, 1)
         detail_actions.addWidget(self.copy_button)
@@ -149,7 +151,7 @@ class ForkCatalogWidget(QWidget):
             f"source payload {'已保留' if metadata.source_payloads_preserved else '已省略'}"
         )
         self.type_combo.clear()
-        self.type_combo.addItem("全部类型", None)
+        self.type_combo.addItem(tr("全部类型"), None)
         for fork_type in self._service.list_types():
             self.type_combo.addItem(
                 f"{fork_type.name_zh} ({fork_type.fork_count})",
@@ -226,7 +228,7 @@ class ForkCatalogWidget(QWidget):
         elif page.items:
             self.catalog_list.setCurrentRow(0)
         else:
-            self.detail_title.setText("没有匹配的弧盘")
+            self.detail_title.setText(tr("没有匹配的弧盘"))
             self.detail_tree.clear()
 
     @staticmethod
@@ -285,9 +287,9 @@ class ForkCatalogWidget(QWidget):
         item.setData(1, Qt.UserRole, relation.copy_value if relation else text)
         if relation is not None and relation.available:
             item.setData(1, Qt.UserRole + 1, (relation.kind, relation.target_id))
-            item.setToolTip(0, "双击请求跳转；右键可复制正式标识")
+            item.setToolTip(0, tr("双击请求跳转；右键可复制正式标识"))
         elif relation is not None:
-            item.setToolTip(0, "关系目标未解析，仅可复制正式标识")
+            item.setToolTip(0, tr("关系目标未解析，仅可复制正式标识"))
         parent.addChild(item)
         return item
 
@@ -527,9 +529,9 @@ class ForkCatalogWidget(QWidget):
         if item is None:
             return
         menu = QMenu(self)
-        copy_action = menu.addAction("复制字段值")
+        copy_action = menu.addAction(tr("复制字段值"))
         relation = item.data(1, Qt.UserRole + 1)
-        jump_action = menu.addAction("跳转到关联资料") if relation else None
+        jump_action = menu.addAction(tr("跳转到关联资料")) if relation else None
         selected = menu.exec(self.detail_tree.viewport().mapToGlobal(position))
         if selected is copy_action:
             self.detail_tree.setCurrentItem(item)

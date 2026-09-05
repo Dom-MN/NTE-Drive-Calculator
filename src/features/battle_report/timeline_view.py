@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Sequence
 import math
 from pathlib import Path
@@ -266,8 +268,8 @@ class BattleUnifiedTimelineWidget(BattleTimelineRangeMixin, QWidget):
         if self._analysis is None or self._is_in_sticky_label(event.pos().x()):
             return
         menu = QMenu(self)
-        set_start = menu.addAction("设为分析开始")
-        set_end = menu.addAction("设为分析结束")
+        set_start = menu.addAction(tr("设为分析开始"))
+        set_end = menu.addAction(tr("设为分析结束"))
         selected = menu.exec(event.globalPos())
         if selected is None:
             return

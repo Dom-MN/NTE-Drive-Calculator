@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
@@ -87,8 +89,8 @@ class ForkProfileView(QWidget):
         self._cultivation_layout = cultivation_host
         self._build_detail_tab()
         self._build_cultivation_tab()
-        self.tabs.addTab(detail_scroll, "详情")
-        self.tabs.addTab(cultivation_scroll, "养成")
+        self.tabs.addTab(detail_scroll, tr("详情"))
+        self.tabs.addTab(cultivation_scroll, tr("养成"))
         root.addWidget(self.tabs, 1)
 
     def _build_hero(self) -> QFrame:
@@ -115,7 +117,7 @@ class ForkProfileView(QWidget):
         eyebrow.setStyleSheet(themed_style(
             "color:#a371f7;font-size:10px;font-weight:900;letter-spacing:2px"
         ))
-        self.name = QLabel("选择弧盘", hero)
+        self.name = QLabel(tr("选择弧盘"), hero)
         self.name.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:23px;font-weight:900"
         ))
@@ -127,7 +129,7 @@ class ForkProfileView(QWidget):
         badges.addWidget(self.type_badge)
         badges.addWidget(self.release_badge)
         badges.addStretch(1)
-        self.owner_label = QLabel("归属角色 · 尚未载入", hero)
+        self.owner_label = QLabel(tr("归属角色 · 尚未载入"), hero)
         self.owner_label.setWordWrap(True)
         self.owner_label.setStyleSheet(themed_style(
             "color:#d29922;font-size:13px;font-weight:900"
@@ -161,7 +163,7 @@ class ForkProfileView(QWidget):
     def _build_detail_tab(self) -> None:
         controls = self._panel("等级与混频")
         hint = QLabel(
-            "选择 1–80 级；20/30/40/50/60/70 级会同时保留突破前与突破后。",
+            tr("选择 1–80 级；20/30/40/50/60/70 级会同时保留突破前与突破后。"),
             controls,
         )
         hint.setWordWrap(True)
@@ -178,7 +180,7 @@ class ForkProfileView(QWidget):
             nodes.addWidget(button, index // 4, index % 4)
         controls.layout().addLayout(nodes)
         level_row = QHBoxLayout()
-        level_row.addWidget(QLabel("等级", controls))
+        level_row.addWidget(QLabel(tr("等级"), controls))
         self.level_slider = QSlider(Qt.Orientation.Horizontal, controls)
         self.level_slider.setRange(1, 80)
         self.level_slider.setValue(80)
@@ -193,7 +195,7 @@ class ForkProfileView(QWidget):
         controls.layout().addLayout(level_row)
         self.stage_layout = QHBoxLayout()
         controls.layout().addLayout(self.stage_layout)
-        refinement_caption = QLabel("混频节点", controls)
+        refinement_caption = QLabel(tr("混频节点"), controls)
         refinement_caption.setStyleSheet(themed_style(
             "color:#c9d1d9;font-size:11px;font-weight:900"
         ))
@@ -215,7 +217,7 @@ class ForkProfileView(QWidget):
         self.panel_host.layout().addLayout(self.panel_grid)
         self._detail_layout.addWidget(self.panel_host)
         self.refinement_host = self._panel("弧盘技能")
-        self.refinement_title = QLabel("混频 1", self.refinement_host)
+        self.refinement_title = QLabel(tr("混频 1"), self.refinement_host)
         self.refinement_title.setStyleSheet(themed_style(
             "color:#a371f7;font-size:16px;font-weight:900"
         ))
@@ -239,7 +241,7 @@ class ForkProfileView(QWidget):
 
     def _build_cultivation_tab(self) -> None:
         current = self._panel("当前等级养成信息")
-        self.current_level_cost = QLabel("尚未选择弧盘", current)
+        self.current_level_cost = QLabel(tr("尚未选择弧盘"), current)
         self.current_level_cost.setWordWrap(True)
         self.current_level_cost.setStyleSheet(themed_style(
             "color:#c9d1d9;font-size:12px;font-weight:800"
@@ -284,7 +286,7 @@ class ForkProfileView(QWidget):
         art_path = self._asset_catalog.fork_icon(summary.fork_id)
         pixmap = QPixmap(str(art_path)) if art_path is not None else QPixmap()
         if pixmap.isNull():
-            self.art.setText("弧盘大图\n当前正式资源未提供")
+            self.art.setText(tr("弧盘大图\n当前正式资源未提供"))
             self.art.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
         else:
             self.art.setText("")
@@ -331,7 +333,7 @@ class ForkProfileView(QWidget):
             preferred_stage=self._stage,
         )
         self._stage = int(selected["stage"]) if selected is not None else None
-        label = QLabel("突破状态", self)
+        label = QLabel(tr("突破状态"), self)
         label.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
         self.stage_layout.addWidget(label)
         for index, row in enumerate(choices):
@@ -433,7 +435,7 @@ class ForkProfileView(QWidget):
         )
         self.refinement_title.setText(f"混频 {self._refinement}")
         if refinement is None:
-            self.refinement_description.setText("弧盘技能 · 当前正式数据未提供")
+            self.refinement_description.setText(tr("弧盘技能 · 当前正式数据未提供"))
         else:
             title = refinement.title_zh or "技能标题未提供"
             description = refinement_skill_text(refinement)
@@ -491,7 +493,7 @@ class ForkProfileView(QWidget):
         elif recommended_names:
             self.owner_label.setText(f"养成推荐 · {'、'.join(recommended_names)}")
         else:
-            self.owner_label.setText("通用弧盘 · 无专属角色")
+            self.owner_label.setText(tr("通用弧盘 · 无专属角色"))
         compatible = tuple(
             item for item in self._characters
             if detail.summary.raw_group_type

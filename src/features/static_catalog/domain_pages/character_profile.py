@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
@@ -108,7 +110,7 @@ class CharacterDetailView(QWidget):
         ))
         art_layout = QVBoxLayout(self.art_panel)
         art_layout.setContentsMargins(2, 2, 2, 2)
-        self.art = QLabel("立绘未提供", self.art_panel)
+        self.art = QLabel(tr("立绘未提供"), self.art_panel)
         self.art.setObjectName("characterFullArt")
         self.art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.art.setWordWrap(True)
@@ -127,11 +129,11 @@ class CharacterDetailView(QWidget):
         identity_layout.setSpacing(12)
         copy = QVBoxLayout()
         copy.setSpacing(4)
-        self.eyebrow = QLabel("角色图鉴", self.identity_panel)
+        self.eyebrow = QLabel(tr("角色图鉴"), self.identity_panel)
         self.eyebrow.setStyleSheet(themed_style(
             "color:#58a6ff;font-size:10px;font-weight:900"
         ))
-        self.name = QLabel("选择角色", self.identity_panel)
+        self.name = QLabel(tr("选择角色"), self.identity_panel)
         self.name.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:25px;font-weight:900"
         ))
@@ -142,7 +144,7 @@ class CharacterDetailView(QWidget):
         self.identity.setStyleSheet(themed_style(
             "color:#c9d1d9;font-size:12px;font-weight:700"
         ))
-        self.release_line = QLabel("上线信息未提供", self.identity_panel)
+        self.release_line = QLabel(tr("上线信息未提供"), self.identity_panel)
         self.release_line.setStyleSheet(themed_style(
             "color:#8b949e;font-size:10px;font-weight:700"
         ))
@@ -183,8 +185,8 @@ class CharacterDetailView(QWidget):
             terminology=terminology,
             parent=self.cultivation_tabs,
         )
-        self.cultivation_tabs.addTab(self.growth_view, "等级养成")
-        self.cultivation_tabs.addTab(self.skill_training_view, "技能养成")
+        self.cultivation_tabs.addTab(self.growth_view, tr("等级养成"))
+        self.cultivation_tabs.addTab(self.skill_training_view, tr("技能养成"))
         self.awakening_view = CharacterAwakeningView(
             terminology=terminology,
             parent=self,
@@ -194,12 +196,12 @@ class CharacterDetailView(QWidget):
             terminology=terminology,
             parent=self,
         )
-        self.tabs.addTab(self.overview_host, "角色档案")
-        self.tabs.addTab(self.skill_view, "技能")
-        self.tabs.addTab(self.cultivation_tabs, "养成")
-        self.tabs.addTab(self.awakening_view, "觉醒")
-        self.tabs.addTab(self.affinity_host, "好感度")
-        self.tabs.addTab(self.route_view, "图纸与毕业")
+        self.tabs.addTab(self.overview_host, tr("角色档案"))
+        self.tabs.addTab(self.skill_view, tr("技能"))
+        self.tabs.addTab(self.cultivation_tabs, tr("养成"))
+        self.tabs.addTab(self.awakening_view, tr("觉醒"))
+        self.tabs.addTab(self.affinity_host, tr("好感度"))
+        self.tabs.addTab(self.route_view, tr("图纸与毕业"))
         root.addWidget(self.tabs, 1)
 
     def _layout_hero(self, compact: bool) -> None:
@@ -295,13 +297,13 @@ class CharacterDetailView(QWidget):
             )
             self.release_line.setText(prefix + release.release_date)
         else:
-            self.release_line.setText("上线信息未提供")
+            self.release_line.setText(tr("上线信息未提供"))
         self.art.clear()
         art_path = self._asset_catalog.character_art(character_id)
         pixmap = QPixmap(str(art_path)) if art_path is not None else QPixmap()
         if pixmap.isNull():
             self.art.setPixmap(QPixmap())
-            self.art.setText("立绘未提供")
+            self.art.setText(tr("立绘未提供"))
         else:
             self.art.setText("")
             self.art.setPixmap(pixmap.scaled(

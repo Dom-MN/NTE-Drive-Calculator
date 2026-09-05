@@ -151,7 +151,7 @@ def _build_base_group(window, character_id: int, detail: dict, editor: dict) -> 
     left_layout.addLayout(level_row)
     breakthrough_row = QHBoxLayout()
     breakthrough_row.setSpacing(6)
-    breakthrough_label = QLabel("突破:")
+    breakthrough_label = QLabel(tr("突破:"))
     breakthrough_label.setStyleSheet("font-weight:bold;color:#58a6ff;")
     breakthrough_combo = NoWheelComboBox()
     breakthrough_combo.setFixedWidth(96)
@@ -185,10 +185,10 @@ def _build_base_group(window, character_id: int, detail: dict, editor: dict) -> 
     likeability.setEnabled(bool(likeability_properties))
     if not likeability_properties:
         if str((detail.get("character") or {}).get("logical_character_key")) == "protagonist":
-            likeability.setText("玩家角色无好感度系统")
-            likeability.setToolTip("零是玩家自身，不提供好感度等级与十级属性加成。")
+            likeability.setText(tr("玩家角色无好感度系统"))
+            likeability.setToolTip(tr("零是玩家自身，不提供好感度等级与十级属性加成。"))
         else:
-            likeability.setToolTip("当前静态资料未提供该角色的好感度 10 级属性。")
+            likeability.setToolTip(tr("当前静态资料未提供该角色的好感度 10 级属性。"))
     right_layout.addWidget(likeability)
 
     stats_grid = QGridLayout()
@@ -317,7 +317,7 @@ def _build_awakening_group(
     detail: dict,
     editor: dict,
 ) -> QGroupBox:
-    group = QGroupBox("人物觉醒")
+    group = QGroupBox(tr("人物觉醒"))
     group.setObjectName("officialRoleAwakeningGroup")
     layout = QVBoxLayout(group)
     layout.setSpacing(8)
@@ -353,7 +353,7 @@ def _build_awakening_group(
 
     resonance_labels: list[tuple[dict, int, QLabel]] = []
     if resonance_effects:
-        resonance_title = QLabel("觉醒共鸣")
+        resonance_title = QLabel(tr("觉醒共鸣"))
         resonance_title.setStyleSheet("font-weight:bold;color:#58a6ff;margin-top:4px;")
         layout.addWidget(resonance_title)
     for effect in resonance_effects:
@@ -511,8 +511,8 @@ def _show_skill_detail(
         table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeToContents)
     dialog_layout.addWidget(table)
     if not rows:
-        dialog_layout.addWidget(QLabel("当前静态资料没有可展示的技能倍率。"))
-    close = QPushButton("关闭")
+        dialog_layout.addWidget(QLabel(tr("当前静态资料没有可展示的技能倍率。")))
+    close = QPushButton(tr("关闭"))
     close.clicked.connect(dialog.accept)
     dialog_layout.addWidget(close)
     fit_dialog_to_available_screen(dialog, QSize(820, 560))
@@ -526,7 +526,7 @@ def _build_skill_group(
     editor: dict,
 ) -> QGroupBox:
     profile = detail["profile"]
-    group = QGroupBox("技能")
+    group = QGroupBox(tr("技能"))
     group.setObjectName("officialRoleSkillGroup")
     layout = QVBoxLayout(group)
 
@@ -544,7 +544,7 @@ def _build_skill_group(
         name = QLabel(_skill_name(skill))
         name.setMinimumWidth(64)
         row.addWidget(name)
-        row.addWidget(QLabel("等级:"))
+        row.addWidget(QLabel(tr("等级:")))
         level = NoWheelSpinBox()
         level.setRange(1, maximum)
         level.setValue(skill_levels[skill_id])
@@ -555,7 +555,7 @@ def _build_skill_group(
         effective_labels[skill_id] = effective
         row.addWidget(effective)
         row.addStretch()
-        detail_button = QPushButton("详情")
+        detail_button = QPushButton(tr("详情"))
         detail_button.clicked.connect(
             lambda _checked=False, target=skill: _show_skill_detail(
                 window, detail, editor, target
@@ -649,7 +649,7 @@ def _build_fork_group(
     fork_level.setValue(int(profile.get("fork_level") or 80))
     identity.addWidget(QLabel(tr("等级:")))
     identity.addWidget(fork_level)
-    fork_breakthrough_label = QLabel("突破:")
+    fork_breakthrough_label = QLabel(tr("突破:"))
     fork_breakthrough = NoWheelComboBox()
     fork_breakthrough.setFixedWidth(96)
     identity.addWidget(fork_breakthrough_label)
@@ -667,7 +667,7 @@ def _build_fork_group(
     margin_label.setVisible(show_direct_damage_margin)
     identity.addWidget(margin_label)
     layout.addLayout(identity)
-    base_label = QLabel("基础加成（橙色为精炼无条件常驻）：")
+    base_label = QLabel(tr("基础加成（橙色为精炼无条件常驻）："))
     base_label.setStyleSheet("font-weight:bold;color:#58a6ff;")
     layout.addWidget(base_label)
     stats_widget = QWidget()
@@ -770,7 +770,7 @@ def _build_fork_group(
             gain = (current["damage"] / baseline["damage"] - 1.0) * 100.0
             margin_label.setText(tr("直伤收益: {value}%", value=f"{gain:+.2f}"))
         else:
-            margin_label.setText("直伤收益: --")
+            margin_label.setText(tr("直伤收益: --"))
         star_rows = list((fork or {}).get("star_levels") or ())
         star = next(
             (row for row in star_rows if int(row.get("star_level") or 0) == refinement.currentData()),

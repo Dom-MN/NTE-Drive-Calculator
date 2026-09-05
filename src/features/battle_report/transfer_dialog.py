@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from datetime import datetime, timezone
 
 from PySide6.QtCore import QSize, Qt, Signal
@@ -44,7 +46,7 @@ class BattleReportTransferDialog(QDialog):
     def __init__(self, *, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._selectors: dict[int, QCheckBox] = {}
-        self.setWindowTitle("导出 / 读取战报包")
+        self.setWindowTitle(tr("导出 / 读取战报包"))
         self.setMinimumSize(900, 520)
         self.resize(1080, 680)
         self._build()
@@ -55,32 +57,32 @@ class BattleReportTransferDialog(QDialog):
         layout.setSpacing(12)
 
         title_row = QHBoxLayout()
-        title = QLabel("战报包")
+        title = QLabel(tr("战报包"))
         title.setStyleSheet(themed_style(
             "font-size:18px;font-weight:700;color:#f0f6fc"
         ))
         title_row.addWidget(title)
         title_row.addStretch()
-        self.count_label = QLabel("0 场可导出")
+        self.count_label = QLabel(tr("0 场可导出"))
         self.count_label.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
         title_row.addWidget(self.count_label)
         layout.addLayout(title_row)
 
         description = QLabel(
-            "导出为应用专用、带完整性校验的压缩 .ntebr 文件；读取时会校验、解压，"
-            "并在一个事务中导入当前账号的战报数据库。"
+            tr("导出为应用专用、带完整性校验的压缩 .ntebr 文件；读取时会校验、解压，"
+            "并在一个事务中导入当前账号的战报数据库。")
         )
         description.setWordWrap(True)
         description.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
         layout.addWidget(description)
 
         account_row = QHBoxLayout()
-        account_row.addWidget(QLabel("当前账号昵称"))
+        account_row.addWidget(QLabel(tr("当前账号昵称")))
         self.account_name_edit = QLineEdit()
-        self.account_name_edit.setPlaceholderText("账号昵称不能为空")
+        self.account_name_edit.setPlaceholderText(tr("账号昵称不能为空"))
         self.account_name_edit.setClearButtonEnabled(True)
         account_row.addWidget(self.account_name_edit, 1)
-        self.save_name_button = QPushButton("保存昵称")
+        self.save_name_button = QPushButton(tr("保存昵称"))
         self.save_name_button.setObjectName("btnAction")
         self.save_name_button.clicked.connect(
             lambda: self.account_name_save_requested.emit(
@@ -91,8 +93,8 @@ class BattleReportTransferDialog(QDialog):
         layout.addLayout(account_row)
 
         selection_row = QHBoxLayout()
-        self.select_all_button = QPushButton("全选")
-        self.clear_selection_button = QPushButton("取消选择")
+        self.select_all_button = QPushButton(tr("全选"))
+        self.clear_selection_button = QPushButton(tr("取消选择"))
         self.select_all_button.clicked.connect(lambda: self._set_all_checked(True))
         self.clear_selection_button.clicked.connect(
             lambda: self._set_all_checked(False)
@@ -102,7 +104,7 @@ class BattleReportTransferDialog(QDialog):
         selection_row.addStretch()
         layout.addLayout(selection_row)
 
-        self.empty_label = QLabel("当前账号还没有可导出的历史战报。")
+        self.empty_label = QLabel(tr("当前账号还没有可导出的历史战报。"))
         self.empty_label.setAlignment(Qt.AlignCenter)
         self.empty_label.setStyleSheet(themed_style(
             "color:#8b949e;font-size:13px;padding:28px"
@@ -141,17 +143,17 @@ class BattleReportTransferDialog(QDialog):
         layout.addWidget(self.error_label)
 
         actions = QHBoxLayout()
-        self.import_button = QPushButton("读取战报包")
+        self.import_button = QPushButton(tr("读取战报包"))
         self.import_button.clicked.connect(self.import_requested)
         actions.addWidget(self.import_button)
         actions.addStretch()
-        self.export_button = QPushButton("导出已选战报")
+        self.export_button = QPushButton(tr("导出已选战报"))
         self.export_button.setObjectName("btnPrimary")
         self.export_button.clicked.connect(
             lambda: self.export_requested.emit(self.selected_report_ids())
         )
         actions.addWidget(self.export_button)
-        close_button = QPushButton("关闭")
+        close_button = QPushButton(tr("关闭"))
         close_button.clicked.connect(self.reject)
         actions.addWidget(close_button)
         layout.addLayout(actions)

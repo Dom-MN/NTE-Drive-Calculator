@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
@@ -27,18 +29,18 @@ def build_static_catalog_entry(
     layout.setSpacing(15)
     copy = QVBoxLayout()
     copy.setSpacing(4)
-    title = QLabel("游戏资料库", row)
+    title = QLabel(tr("游戏资料库"), row)
     title.setStyleSheet(themed_style("font-size:16px;font-weight:800;color:#58a6ff"))
     copy.addWidget(title)
     description = QLabel(
-        "只读浏览角色、弧盘、怪物、装备、正式技能/效果、公式证据与 110 表覆盖总览。",
+        tr("只读浏览角色、弧盘、怪物、装备、正式技能/效果、公式证据与 110 表覆盖总览。"),
         row,
     )
     description.setWordWrap(True)
     description.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
     copy.addWidget(description)
     layout.addLayout(copy, 1)
-    button = QPushButton("打开", row)
+    button = QPushButton(tr("打开"), row)
     button.setObjectName("toolboxStaticCatalog")
     button.setCursor(Qt.PointingHandCursor)
     button.setMinimumSize(76, 38)

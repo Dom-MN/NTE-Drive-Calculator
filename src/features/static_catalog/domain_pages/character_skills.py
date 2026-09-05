@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 import re
 from dataclasses import dataclass
 
@@ -278,7 +280,7 @@ class _SkillRowHeader(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAccessibleName("展开或收起技能详情")
-        self.setToolTip("点击整行展开或收起")
+        self.setToolTip(tr("点击整行展开或收起"))
         self.setStyleSheet(themed_style(
             "QFrame#characterSkillHeader{background:transparent;border:none;"
             "border-radius:8px;}"
@@ -557,18 +559,18 @@ class CharacterSkillTrainingView(QWidget):
         root.setContentsMargins(8, 8, 8, 12)
         root.setSpacing(8)
         controls = QHBoxLayout()
-        controls.addWidget(QLabel("技能", self))
+        controls.addWidget(QLabel(tr("技能"), self))
         self.skill = QComboBox(self)
         self.skill.setObjectName("characterTrainingSkill")
         self.start = QComboBox(self)
         self.end = QComboBox(self)
         controls.addWidget(self.skill, 1)
-        controls.addWidget(QLabel("等级", self))
+        controls.addWidget(QLabel(tr("等级"), self))
         controls.addWidget(self.start)
         controls.addWidget(QLabel("→", self))
         controls.addWidget(self.end)
         root.addLayout(controls)
-        self.result = QLabel("选择技能和等级后显示正式材料合计。", self)
+        self.result = QLabel(tr("选择技能和等级后显示正式材料合计。"), self)
         self.result.setObjectName("skillProgressionResult")
         self.result.setWordWrap(True)
         self.result.setStyleSheet(themed_style(

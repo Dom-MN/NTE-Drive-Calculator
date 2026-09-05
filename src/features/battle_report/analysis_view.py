@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from pathlib import Path
 
 from PySide6.QtCore import QSize, QTimer, Qt, Signal
@@ -118,35 +120,35 @@ class BattleLongAnalysisView(
         range_row = QGridLayout()
         range_row.setHorizontalSpacing(8)
         range_row.setVerticalSpacing(8)
-        self.capability_label = QLabel("等待逐击证据", timeline_card)
+        self.capability_label = QLabel(tr("等待逐击证据"), timeline_card)
         self.capability_label.hide()
-        range_row.addWidget(QLabel("开始（轴秒）"), 0, 0)
+        range_row.addWidget(QLabel(tr("开始（轴秒）")), 0, 0)
         self.start_spin = NoWheelDoubleSpinBox()
         self.start_spin.setDecimals(3)
         self.start_spin.setRange(0.0, 999999.0)
         range_row.addWidget(self.start_spin, 0, 1)
-        range_row.addWidget(QLabel("结束（轴秒）"), 0, 2)
+        range_row.addWidget(QLabel(tr("结束（轴秒）")), 0, 2)
         self.end_spin = NoWheelDoubleSpinBox()
         self.end_spin.setDecimals(3)
         self.end_spin.setRange(0.001, 999999.0)
         range_row.addWidget(self.end_spin, 0, 3)
-        apply_button = QPushButton("确定")
+        apply_button = QPushButton(tr("确定"))
         apply_button.setObjectName("btnPrimary")
         apply_button.clicked.connect(self._request_range)
         range_row.addWidget(apply_button, 0, 4)
-        reset_button = QPushButton("重置")
+        reset_button = QPushButton(tr("重置"))
         reset_button.clicked.connect(self.range_reset_requested)
         range_row.addWidget(reset_button, 0, 5)
-        range_row.addWidget(QLabel("口径"), 0, 6)
+        range_row.addWidget(QLabel(tr("口径")), 0, 6)
         self.time_mode_combo = NoWheelComboBox()
-        self.time_mode_combo.addItem("扣除时停", ACTIVE_TIME_MODE)
-        self.time_mode_combo.addItem("包含时停", ELAPSED_TIME_MODE)
+        self.time_mode_combo.addItem(tr("扣除时停"), ACTIVE_TIME_MODE)
+        self.time_mode_combo.addItem(tr("包含时停"), ELAPSED_TIME_MODE)
         self.time_mode_combo.setCurrentIndex(
             self.time_mode_combo.findData(ELAPSED_TIME_MODE)
         )
         self.time_mode_combo.currentIndexChanged.connect(self._time_mode_changed)
         range_row.addWidget(self.time_mode_combo, 0, 7)
-        range_row.addWidget(QLabel("缩放"), 0, 8)
+        range_row.addWidget(QLabel(tr("缩放")), 0, 8)
         self.zoom_combo = NoWheelComboBox()
         for percent in (10, 25, 50, 100, 200, 300, 400, 500, 600, 700, 800):
             self.zoom_combo.addItem(f"{percent}%", percent / 100.0)
@@ -175,7 +177,7 @@ class BattleLongAnalysisView(
         context_row = QHBoxLayout()
         self.context_row = context_row
         self.build_edit_control = BattleBuildSnapshotControl()
-        context_row.addWidget(QLabel("明细范围"))
+        context_row.addWidget(QLabel(tr("明细范围")))
         self.scope_button_group = QButtonGroup(self)
         self.scope_button_group.setExclusive(True)
         self.scope_buttons: dict[str, QPushButton] = {}
@@ -193,18 +195,18 @@ class BattleLongAnalysisView(
         self.scope_buttons["second"].setEnabled(False)
         context_row.addStretch()
         context_row.addWidget(self.build_edit_control)
-        self.current_scope_title = QLabel("当前环境")
+        self.current_scope_title = QLabel(tr("当前环境"))
         context_row.addWidget(self.current_scope_title)
-        self.current_scope_label = QLabel("未知")
+        self.current_scope_label = QLabel(tr("未知"))
         self.current_scope_label.setStyleSheet(
             themed_style("color:#58a6ff;font-weight:600")
         )
         context_row.addWidget(self.current_scope_label)
-        self.environment_button = QPushButton("确认环境")
+        self.environment_button = QPushButton(tr("确认环境"))
         context_row.addWidget(self.environment_button)
         timeline_layout.addLayout(context_row)
 
-        self.action_summary_label = QLabel("等待动作与输入推算", timeline_card)
+        self.action_summary_label = QLabel(tr("等待动作与输入推算"), timeline_card)
         self.action_summary_label.hide()
         self.timeline = BattleUnifiedTimelineWidget(
             game_ui_asset_root=self._game_ui_asset_root
@@ -247,7 +249,7 @@ class BattleLongAnalysisView(
         root.addWidget(roles_card)
         composition_card, composition_layout = _section("选定时段角色伤害构成")
         composition_controls = QHBoxLayout()
-        composition_controls.addWidget(QLabel("分类口径"))
+        composition_controls.addWidget(QLabel(tr("分类口径")))
         self.composition_group = QButtonGroup(self)
         self.composition_group.setExclusive(True)
         self.composition_buttons: dict[str, QPushButton] = {}
@@ -270,7 +272,7 @@ class BattleLongAnalysisView(
         self.composition_status_label.hide()
         composition_controls.addWidget(self.composition_status_label)
         composition_controls.addStretch()
-        self.composition_topple_button = QPushButton("计算精准倾陷归属")
+        self.composition_topple_button = QPushButton(tr("计算精准倾陷归属"))
         self.composition_topple_button.clicked.connect(
             self._request_topple_attribution
         )
@@ -316,15 +318,15 @@ class BattleLongAnalysisView(
         self.log_dialog, log_layout = self._audit_dialog("逐击日志", QSize(1380, 820))
         filter_row = QHBoxLayout()
         self.log_filter = QLineEdit()
-        self.log_filter.setPlaceholderText("筛选角色、技能、伤害项或目标")
+        self.log_filter.setPlaceholderText(tr("筛选角色、技能、伤害项或目标"))
         self.log_filter.textChanged.connect(self._reset_log_page)
         filter_row.addWidget(self.log_filter, 1)
-        self.prev_button = QPushButton("上一页")
+        self.prev_button = QPushButton(tr("上一页"))
         self.prev_button.pressed.connect(self._previous_log_page)
         filter_row.addWidget(self.prev_button)
         self.log_page_label = QLabel("0 / 0")
         filter_row.addWidget(self.log_page_label)
-        self.next_button = QPushButton("下一页")
+        self.next_button = QPushButton(tr("下一页"))
         self.next_button.pressed.connect(self._next_log_page)
         filter_row.addWidget(self.next_button)
         log_layout.addLayout(filter_row)
@@ -383,7 +385,7 @@ class BattleLongAnalysisView(
         self._selected_character_id = None
         self.capability_label.setText(message)
         self.capability_label.show()
-        self.action_summary_label.setText("当前没有可用的动作推算。")
+        self.action_summary_label.setText(tr("当前没有可用的动作推算。"))
         self.timeline.set_analysis(None)
         self.roles_pie.set_roles(())
         self.damage_composition_panel.clear()
@@ -405,7 +407,7 @@ class BattleLongAnalysisView(
             active=False,
             available=False,
         )
-        self.current_scope_label.setText("未知")
+        self.current_scope_label.setText(tr("未知"))
 
     def set_loading(self, message: str) -> None:
         """Keep the previous projection visible while its replacement loads."""
@@ -478,8 +480,8 @@ class BattleLongAnalysisView(
                 or "已从战报证据推断环境，可打开确认具体对象。"
             )
         else:
-            self.current_scope_label.setText("未知")
-            self.environment_button.setToolTip("打开后确认战斗环境和目标。")
+            self.current_scope_label.setText(tr("未知"))
+            self.environment_button.setToolTip(tr("打开后确认战斗环境和目标。"))
         apply_inferred_scope_warning(self.current_scope_label, analysis, condition)
 
     def set_target_catalog(self, catalog: dict[str, object]) -> None:

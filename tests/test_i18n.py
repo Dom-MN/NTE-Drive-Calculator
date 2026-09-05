@@ -387,9 +387,10 @@ class StatListKeyTests(unittest.TestCase):
         self.assertNotIn("skills", payload)
         self.assertFalse(hasattr(i18n, "display_skill"))
 
-    # Upstream's 2.2.0 UI arrived unwrapped. The backlog is recorded so the gate
+    # Upstream's 2.2.0 UI arrived unwrapped. What remains needs a named-field
+    # rewrite (f-strings and concatenations). The backlog is recorded so the gate
     # still catches anything NEW, and must only ever go down.
-    UNWRAPPED_BACKLOG = 679
+    UNWRAPPED_BACKLOG = 240
 
     def test_unwrapped_chinese_does_not_grow(self) -> None:
         """The catalogue test cannot see text that was never wrapped at all.

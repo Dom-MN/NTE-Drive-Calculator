@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from typing import Any
 
 from PySide6.QtWidgets import QMessageBox
@@ -55,8 +57,8 @@ def equipment_plugin_loading_method_changed(window: Any, _index: int) -> None:
         combo.blockSignals(False)
         QMessageBox.warning(
             window,
-            "切换加载方式",
-            "Mod Loader 正在运行。请先点击“停止 Mod Loader”，再切换到代理 DLL。",
+            tr("切换加载方式"),
+            tr("Mod Loader 正在运行。请先点击“停止 Mod Loader”，再切换到代理 DLL。"),
         )
         return
     if method != "loader":
@@ -69,7 +71,7 @@ def equipment_plugin_loading_method_changed(window: Any, _index: int) -> None:
             combo.blockSignals(False)
             QMessageBox.warning(
                 window,
-                "切换加载方式",
+                tr("切换加载方式"),
                 "无法完成 Loader 会话清理，已保留 Loader 方式：" + str(exc),
             )
             return
@@ -107,15 +109,15 @@ def start_equipment_mod_loader(window: Any) -> None:
     if consent is None or not consent.isChecked():
         QMessageBox.warning(
             window,
-            "启动 Mod Loader",
-            "请先阅读风险提示，并勾选确认自愿使用装备插件、承担相应风险。",
+            tr("启动 Mod Loader"),
+            tr("请先阅读风险提示，并勾选确认自愿使用装备插件、承担相应风险。"),
         )
         return
     executable = window._equipment_plugin_game_executable_edit.text().strip()
     if QMessageBox.question(
         window,
-        "确认启动备用 Mod Loader",
-        "备用 Loader 会请求管理员权限，监控官方启动器，并在 HTGame.exe 创建时加载"
+        tr("确认启动备用 Mod Loader"),
+        tr("备用 Loader 会请求管理员权限，监控官方启动器，并在 HTGame.exe 创建时加载"
         "打包的 dwmapi.dll。它不会把 DLL 写入游戏目录。\n\n"
         "Loader 文件允许用户自行替换，程序不会校验固定 SHA-256；替换后的 EXE 仍会"
         "以管理员权限运行，请只使用可信来源。\n\n"
@@ -123,7 +125,7 @@ def start_equipment_mod_loader(window: Any) -> None:
         "来源未知的 dwmapi.dll 会先备份到当前账号存储目录并校验，再从游戏目录"
         "移除。任一步失败都不会启动 Loader。\n\n"
         "请先关闭游戏和官方启动器。停止 Loader 时，本次会话中已注入的官方"
-        "启动器可能被同步结束。\n\n是否继续？",
+        "启动器可能被同步结束。\n\n是否继续？"),
         QMessageBox.Yes | QMessageBox.No,
         QMessageBox.No,
     ) != QMessageBox.Yes:
@@ -205,7 +207,7 @@ def start_equipment_mod_loader(window: Any) -> None:
                 )
         QMessageBox.information(
             window,
-            "Mod Loader 监控已启动",
+            tr("Mod Loader 监控已启动"),
             "已向 Loader 明确提供当前游戏安装中的官方启动器。Loader 进程运行"
             "不等于游戏插件已经加载；请正常启动游戏，然后使用“诊断 dwmapi”"
             "确认 nte-mods-plugin-v7 管道出现。"
@@ -219,15 +221,15 @@ def start_equipment_mod_loader(window: Any) -> None:
             operation,
             error=exc,
         )
-        QMessageBox.warning(window, "启动 Mod Loader", str(exc))
+        QMessageBox.warning(window, tr("启动 Mod Loader"), str(exc))
 
 
 def stop_equipment_mod_loader(window: Any) -> None:
     if QMessageBox.question(
         window,
-        "停止 Mod Loader",
-        "停止 Loader 会结束本次 Loader 会话；上游 Loader 还可能同步结束本次会话中"
-        "已注入的官方启动器。请先退出游戏。\n\n是否继续？",
+        tr("停止 Mod Loader"),
+        tr("停止 Loader 会结束本次 Loader 会话；上游 Loader 还可能同步结束本次会话中"
+        "已注入的官方启动器。请先退出游戏。\n\n是否继续？"),
         QMessageBox.Yes | QMessageBox.No,
         QMessageBox.No,
     ) != QMessageBox.Yes:
@@ -251,7 +253,7 @@ def stop_equipment_mod_loader(window: Any) -> None:
         window._refresh_equipment_plugin_status()
         QMessageBox.information(
             window,
-            "停止 Mod Loader",
+            tr("停止 Mod Loader"),
             "Mod Loader 已停止。" if stopped else "本次应用会话没有正在运行的 Mod Loader。",
         )
     except ModPluginLoadingError as exc:
@@ -262,4 +264,4 @@ def stop_equipment_mod_loader(window: Any) -> None:
             operation,
             error=exc,
         )
-        QMessageBox.warning(window, "停止 Mod Loader", str(exc))
+        QMessageBox.warning(window, tr("停止 Mod Loader"), str(exc))

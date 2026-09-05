@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -65,8 +67,8 @@ def show_marginal_equipment_replacement(
     if not ranked:
         QMessageBox.information(
             parent,
-            "临时替换",
-            "没有同套装、同形状且未被当前候选使用的可替换装备。",
+            tr("临时替换"),
+            tr("没有同套装、同形状且未被当前候选使用的可替换装备。"),
         )
         return False
     first = ranked[0]

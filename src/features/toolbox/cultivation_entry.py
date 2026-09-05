@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
@@ -40,18 +42,18 @@ def build_cultivation_calculator_entry(
     layout.setSpacing(15)
     copy = QVBoxLayout()
     copy.setSpacing(4)
-    title = QLabel("养成计算器", row)
+    title = QLabel(tr("养成计算器"), row)
     title.setStyleSheet(themed_style("font-size:16px;font-weight:800;color:#58a6ff"))
     copy.addWidget(title)
     description = QLabel(
-        "按角色等级、突破和技能目标汇总官方养成材料；当前不扣除背包，也不估算体力。",
+        tr("按角色等级、突破和技能目标汇总官方养成材料；当前不扣除背包，也不估算体力。"),
         row,
     )
     description.setWordWrap(True)
     description.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
     copy.addWidget(description)
     layout.addLayout(copy, 1)
-    button = QPushButton("使用", row)
+    button = QPushButton(tr("使用"), row)
     button.setObjectName("toolboxCultivationCalculator")
     button.setCursor(Qt.PointingHandCursor)
     button.setMinimumSize(76, 38)
@@ -76,7 +78,7 @@ def show_cultivation_calculator(
     try:
         service = service_factory()
     except Exception as exc:
-        QMessageBox.warning(parent, "养成计算器", f"读取养成数据失败：{exc}")
+        QMessageBox.warning(parent, tr("养成计算器"), f"读取养成数据失败：{exc}")
         return
     CultivationCalculatorDialog(service, parent).exec()
 

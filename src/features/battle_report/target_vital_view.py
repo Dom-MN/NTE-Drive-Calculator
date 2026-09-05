@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 
 from PySide6.QtCore import QSize, Qt, Signal
@@ -67,7 +69,7 @@ class BattleTargetVitalPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         self.environment_dialog = QDialog(self)
-        self.environment_dialog.setWindowTitle("配置本场战斗环境")
+        self.environment_dialog.setWindowTitle(tr("配置本场战斗环境"))
         self.environment_dialog.setModal(True)
         dialog_layout = QVBoxLayout(self.environment_dialog)
         self.condition_selector = BattleTargetConditionSelector(
@@ -79,24 +81,24 @@ class BattleTargetVitalPanel(QWidget):
         condition_grid = QGridLayout()
         condition_grid.setHorizontalSpacing(8)
         condition_grid.setVerticalSpacing(8)
-        condition_grid.addWidget(QLabel("目标名称"), 0, 0)
+        condition_grid.addWidget(QLabel(tr("目标名称")), 0, 0)
         self.target_name_edit = QLineEdit()
         condition_grid.addWidget(self.target_name_edit, 0, 1)
-        condition_grid.addWidget(QLabel("敌方等级"), 0, 2)
+        condition_grid.addWidget(QLabel(tr("敌方等级")), 0, 2)
         self.enemy_level_spin = self._number_spin(1.0, 999.0, decimals=0)
         condition_grid.addWidget(self.enemy_level_spin, 0, 3)
-        condition_grid.addWidget(QLabel("场景"), 0, 4)
+        condition_grid.addWidget(QLabel(tr("场景")), 0, 4)
         self.scene_combo = NoWheelComboBox()
-        self.scene_combo.addItem("轨外之境", "outer_realm")
-        self.scene_combo.addItem("大世界", "open_world")
+        self.scene_combo.addItem(tr("轨外之境"), "outer_realm")
+        self.scene_combo.addItem(tr("大世界"), "open_world")
         condition_grid.addWidget(self.scene_combo, 0, 5)
-        condition_grid.addWidget(QLabel("敌方防御降低"), 0, 6)
+        condition_grid.addWidget(QLabel(tr("敌方防御降低")), 0, 6)
         self.defense_reduction_spin = self._percent_spin(-100.0, 100.0)
         condition_grid.addWidget(self.defense_reduction_spin, 0, 7)
-        condition_grid.addWidget(QLabel("敌方易伤"), 0, 8)
+        condition_grid.addWidget(QLabel(tr("敌方易伤")), 0, 8)
         self.vulnerability_spin = self._percent_spin(-100.0, 1000.0)
         condition_grid.addWidget(self.vulnerability_spin, 0, 9)
-        condition_grid.addWidget(QLabel("实际 DefBase"), 3, 0)
+        condition_grid.addWidget(QLabel(tr("实际 DefBase")), 3, 0)
         self.enemy_defense_base_spin = self._number_spin(
             0.0,
             1_000_000_000.0,
@@ -129,7 +131,7 @@ class BattleTargetVitalPanel(QWidget):
             editor = self._percent_spin(-500.0, 500.0)
             self.resistance_spins[damage_type] = editor
             condition_grid.addWidget(editor, row, column + 1)
-        self.save_condition_button = QPushButton("保存环境配置")
+        self.save_condition_button = QPushButton(tr("保存环境配置"))
         self.save_condition_button.setObjectName("btnPrimary")
         self.save_condition_button.clicked.connect(self._request_condition_save)
         self.save_condition_button.clicked.connect(self.environment_dialog.accept)
@@ -207,9 +209,9 @@ class BattleTargetVitalPanel(QWidget):
         )
         layout.addWidget(self.event_table)
         self.note = QLabel(
-            "生命上限结算 = 变化前同半场、同实例、同旧上限的附近逐击中最小 "
+            tr("生命上限结算 = 变化前同半场、同实例、同旧上限的附近逐击中最小 "
             "HPAfter ÷ 旧 HPMax × HPMax 下降量。正式逐击不改写；"
-            "观测耗血 = 分析有效伤害 + 未解释差额。"
+            "观测耗血 = 分析有效伤害 + 未解释差额。")
         )
         self.note.setWordWrap(True)
         self.note.setStyleSheet(themed_style("color:#d29922;font-size:12px"))
@@ -218,7 +220,7 @@ class BattleTargetVitalPanel(QWidget):
     def clear(self) -> None:
         self.target_table.setRowCount(0)
         self.event_table.setRowCount(0)
-        self.condition_note.setText("尚未加载敌方条件。")
+        self.condition_note.setText(tr("尚未加载敌方条件。"))
 
     def set_catalog(self, catalog: dict[str, object]) -> None:
         self.condition_selector.set_catalog(catalog)
@@ -344,9 +346,9 @@ class BattleTargetVitalPanel(QWidget):
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 if column == 10:
                     item.setToolTip(
-                        "正数表示观测耗血仍高于已解释伤害；负数表示分析伤害"
+                        tr("正数表示观测耗血仍高于已解释伤害；负数表示分析伤害"
                         "高于观测耗血，常见于溢出、回血抵消、并发样本或复合事件。"
-                        "该差额只用于闭合账本，不分摊给角色或技能。"
+                        "该差额只用于闭合账本，不分摊给角色或技能。")
                     )
                 self.target_table.setItem(row, column, item)
 
@@ -496,6 +498,6 @@ class BattleTargetVitalPanel(QWidget):
         for damage_type, editor in self.resistance_spins.items():
             editor.setValue(float(resistances.get(damage_type, 0.0)) * 100.0)
         self.condition_note.setText(
-            "已从官方静态目录载入当前对象及属性包；争锋加成已叠加到战前参数。"
-            "仍可在下方人工补正，点击保存后才参与逐击重放。"
+            tr("已从官方静态目录载入当前对象及属性包；争锋加成已叠加到战前参数。"
+            "仍可在下方人工补正，点击保存后才参与逐击重放。")
         )

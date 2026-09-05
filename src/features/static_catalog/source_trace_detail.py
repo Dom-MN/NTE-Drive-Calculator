@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
@@ -33,22 +35,22 @@ class SourceTraceDetail(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-        self.title_label = QLabel("来源追溯")
+        self.title_label = QLabel(tr("来源追溯"))
         self.title_label.setObjectName("cardTitle")
         layout.addWidget(self.title_label)
-        self.explanation_label = QLabel("请选择带来源标识的资料。")
+        self.explanation_label = QLabel(tr("请选择带来源标识的资料。"))
         self.explanation_label.setWordWrap(True)
         layout.addWidget(self.explanation_label)
-        self.metadata_group = QGroupBox("保留的来源元数据")
+        self.metadata_group = QGroupBox(tr("保留的来源元数据"))
         self.metadata_form = QFormLayout(self.metadata_group)
         self.metadata_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         layout.addWidget(self.metadata_group)
-        self.rows_group = QGroupBox("来源行")
+        self.rows_group = QGroupBox(tr("来源行"))
         self.rows_layout = QVBoxLayout(self.rows_group)
-        self.rows_placeholder = QLabel("点击“加载来源行”后按页读取。")
+        self.rows_placeholder = QLabel(tr("点击“加载来源行”后按页读取。"))
         self.rows_layout.addWidget(self.rows_placeholder)
         layout.addWidget(self.rows_group)
-        self.load_more_button = QPushButton("加载来源行")
+        self.load_more_button = QPushButton(tr("加载来源行"))
         self.load_more_button.setObjectName("btnAction")
         self.load_more_button.clicked.connect(self._request_more)
         layout.addWidget(self.load_more_button)
@@ -72,7 +74,7 @@ class SourceTraceDetail(QWidget):
         for label, value, copyable in fields:
             self.metadata_form.addRow(label, self._value_widget(value, copyable))
         self.load_more_button.setEnabled(trace.declared_row_count > 0)
-        self.load_more_button.setText("加载来源行")
+        self.load_more_button.setText(tr("加载来源行"))
 
     def append_rows(self, page: CatalogRelationPage) -> None:
         if page.offset == 0:
@@ -119,12 +121,12 @@ class SourceTraceDetail(QWidget):
         label.setWordWrap(True)
         label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(label, 1)
-        marker = QLabel("来源元数据")
+        marker = QLabel(tr("来源元数据"))
         marker.setObjectName("statusBadge")
         marker.setProperty("tone", "neutral")
         layout.addWidget(marker, 0, Qt.AlignTop)
         if copyable and value != "—":
-            button = QPushButton("复制")
+            button = QPushButton(tr("复制"))
             button.setObjectName("btnSm")
             button.clicked.connect(
                 lambda _checked=False, text=value: QApplication.clipboard().setText(text)

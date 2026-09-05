@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 
 from PySide6.QtWidgets import QDialog, QMessageBox, QWidget
@@ -84,7 +86,7 @@ class BattleBuildSnapshotController:
                 self._reload_report(record_id)
                 QMessageBox.information(
                     self._dialog_parent,
-                    "同步完成",
+                    tr("同步完成"),
                     (
                         "当前角色页养成及当前空幕/驱动已保存为本场修改副本并启用；"
                         "角色页数据没有被改写。"

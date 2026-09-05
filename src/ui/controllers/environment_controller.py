@@ -99,7 +99,7 @@ def _refresh_equipment_plugin_status(self):
         pass
     if bundle_label is not None:
         if bundled_plugin is None:
-            bundle_label.setText("打包插件缺失：请重新安装完整应用包")
+            bundle_label.setText(tr("打包插件缺失：请重新安装完整应用包"))
         else:
             loader_text = "Loader 状态未知"
             if loader_snapshot is not None:
@@ -136,13 +136,13 @@ def _refresh_equipment_plugin_status(self):
         )
     if loader_snapshot is not None and loader_snapshot.phase == "running":
         plugin_label.setText(
-            "Mod Loader 监控进程正在运行；只有诊断确认装备 IPC 管道存在，"
-            "才表示游戏插件已经加载。"
+            tr("Mod Loader 监控进程正在运行；只有诊断确认装备 IPC 管道存在，"
+            "才表示游戏插件已经加载。")
         )
     elif not executable.text().strip():
-        plugin_label.setText("尚未选择 HTGame.exe")
+        plugin_label.setText(tr("尚未选择 HTGame.exe"))
     elif bundled_plugin is None:
-        plugin_label.setText("应用根目录缺少打包的 dwmapi.dll，无法部署")
+        plugin_label.setText(tr("应用根目录缺少打包的 dwmapi.dll，无法部署"))
     elif method == "loader" and (
         loader_snapshot is None
         or loader_snapshot.phase in {"missing_loader", "unsupported"}
@@ -207,7 +207,7 @@ def _detect_equipment_plugin_game_executable(self):
     def finish(candidates):
         if button is not None:
             button.setEnabled(True)
-            button.setText("自动检测")
+            button.setText(tr("自动检测"))
         if not context_is_current():
             log_event(
                 "INFO",
@@ -227,12 +227,12 @@ def _detect_equipment_plugin_game_executable(self):
         if not choices:
             QMessageBox.information(
                 self,
-                "检测游戏位置",
-                "已检查异环安装注册表和常见游戏库目录，但未找到 HTGame.exe。"
+                tr("检测游戏位置"),
+                tr("已检查异环安装注册表和常见游戏库目录，但未找到 HTGame.exe。"
                 "你可以手动填写或选择文件，定位步骤如下：\n\n"
                 "1. 右键点击桌面游戏图标，选择“打开文件所在位置”。\n"
                 "2. 进入 Client\\WindowsNoEditor\\HT\\Binaries\\Win64，找到 HTGame.exe。\n"
-                "3. 右键点击 HTGame.exe，选择“复制文件地址”，再粘贴到游戏主程序方框。",
+                "3. 右键点击 HTGame.exe，选择“复制文件地址”，再粘贴到游戏主程序方框。"),
             )
             return
         selected = choices[0]
@@ -254,7 +254,7 @@ def _detect_equipment_plugin_game_executable(self):
     def failed(error):
         if button is not None:
             button.setEnabled(True)
-            button.setText("自动检测")
+            button.setText(tr("自动检测"))
         if not context_is_current():
             log_event(
                 "INFO",
@@ -398,9 +398,9 @@ def _show_nte_core_diagnostic_report(
         def select_capture_device() -> None:
             proceed = QMessageBox.question(
                 dialog,
-                "高级排障",
-                "手动指定网卡会覆盖自动选择，并可能导致同步失败。"
-                "仅在自动选择反复失败时继续。",
+                tr("高级排障"),
+                tr("手动指定网卡会覆盖自动选择，并可能导致同步失败。"
+                "仅在自动选择反复失败时继续。"),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
@@ -420,15 +420,15 @@ def _show_nte_core_diagnostic_report(
             if capture_device_edit is None:
                 QMessageBox.warning(
                     self,
-                    "高级排障",
-                    "未找到“抓取网卡”设置，请重新打开设置页面后重试。",
+                    tr("高级排障"),
+                    tr("未找到“抓取网卡”设置，请重新打开设置页面后重试。"),
                 )
                 return
             capture_device_edit.setText(selected)
             QMessageBox.information(
                 self,
-                "高级排障",
-                "已填入抓取网卡。请点击“保存同步设置”后重新启动同步。",
+                tr("高级排障"),
+                tr("已填入抓取网卡。请点击“保存同步设置”后重新启动同步。"),
             )
 
         select_device_button.clicked.connect(select_capture_device)
@@ -521,11 +521,11 @@ def _diagnose_dwmapi(self):
 
 def _show_dwmapi_diagnostic_report(self: Any, report: str) -> None:
     dialog = QDialog(self)
-    dialog.setWindowTitle("Mods 插件加载诊断结果")
+    dialog.setWindowTitle(tr("Mods 插件加载诊断结果"))
     dialog.resize(760, 540)
     layout = QVBoxLayout(dialog)
     hint = QLabel(
-        "以下信息可直接复制后发送用于排查；本操作不会执行装备、启动 Loader、复制或修改 DLL。"
+        tr("以下信息可直接复制后发送用于排查；本操作不会执行装备、启动 Loader、复制或修改 DLL。")
     )
     hint.setWordWrap(True)
     layout.addWidget(hint)
@@ -558,7 +558,7 @@ def _deploy_equipment_plugin(self):
         source = packaged_plugin_dll(self.app_context.paths.root)
         workspace_source = packaged_mod_workspace(self.app_context.paths.root)
     except (EquipmentPluginDeploymentError, ModPluginLoadingError) as exc:
-        QMessageBox.warning(self, "部署装备插件", str(exc))
+        QMessageBox.warning(self, tr("部署装备插件"), str(exc))
         return
     if QMessageBox.question(
         self,

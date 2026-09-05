@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Iterable
 
 from PySide6.QtCore import Qt, Signal
@@ -79,13 +81,13 @@ class CharacterDetailPanel(QWidget):
         root.setSpacing(10)
 
         heading = QHBoxLayout()
-        self.title_label = QLabel("选择角色查看资料")
+        self.title_label = QLabel(tr("选择角色查看资料"))
         self.title_label.setStyleSheet(themed_style(
             "font-size:20px;font-weight:800;color:#f0f6fc"
         ))
         heading.addWidget(self.title_label)
         heading.addStretch()
-        self.dataset_label = QLabel("只读发行静态库")
+        self.dataset_label = QLabel(tr("只读发行静态库"))
         self.dataset_label.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
         heading.addWidget(self.dataset_label)
         root.addLayout(heading)
@@ -100,10 +102,10 @@ class CharacterDetailPanel(QWidget):
         self.overview_layout.setSpacing(10)
         self.overview_layout.addStretch()
         self.overview_scroll.setWidget(self.overview_content)
-        self.tabs.addTab(self.overview_scroll, "概览与养成")
+        self.tabs.addTab(self.overview_scroll, tr("概览与养成"))
 
         self.growth_tab = self._build_growth_tab()
-        self.tabs.addTab(self.growth_tab, "1–80 级面板")
+        self.tabs.addTab(self.growth_tab, tr("1–80 级面板"))
         self.combat_tab = self._build_combat_tab()
         self.tabs.addTab(self.combat_tab, "GA / GE / Buff")
         self.tabs.currentChanged.connect(self._tab_changed)
@@ -113,7 +115,7 @@ class CharacterDetailPanel(QWidget):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(0, 8, 0, 0)
-        self.growth_hint = QLabel("选择此页后按需加载等级曲线")
+        self.growth_hint = QLabel(tr("选择此页后按需加载等级曲线"))
         self.growth_hint.setStyleSheet(themed_style("color:#8b949e"))
         layout.addWidget(self.growth_hint)
         self.growth_table = self._table((
@@ -121,16 +123,16 @@ class CharacterDetailPanel(QWidget):
         ))
         layout.addWidget(self.growth_table, 1)
         controls = QHBoxLayout()
-        self.growth_previous = QPushButton("上一页")
+        self.growth_previous = QPushButton(tr("上一页"))
         self.growth_previous.clicked.connect(lambda: self._request_growth(-1))
-        self.growth_next = QPushButton("下一页")
+        self.growth_next = QPushButton(tr("下一页"))
         self.growth_next.clicked.connect(lambda: self._request_growth(1))
-        self.growth_page_label = QLabel("未加载")
+        self.growth_page_label = QLabel(tr("未加载"))
         controls.addWidget(self.growth_previous)
         controls.addWidget(self.growth_next)
         controls.addWidget(self.growth_page_label)
         controls.addStretch()
-        copy_button = QPushButton("复制选中单元格")
+        copy_button = QPushButton(tr("复制选中单元格"))
         copy_button.clicked.connect(lambda: self._copy_selected(self.growth_table))
         controls.addWidget(copy_button)
         layout.addLayout(controls)
@@ -141,7 +143,7 @@ class CharacterDetailPanel(QWidget):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(0, 8, 0, 0)
-        self.combat_hint = QLabel("关系较多；选择此页后分页加载正式资源关联")
+        self.combat_hint = QLabel(tr("关系较多；选择此页后分页加载正式资源关联"))
         self.combat_hint.setStyleSheet(themed_style("color:#8b949e"))
         layout.addWidget(self.combat_hint)
         self.combat_table = self._table((
@@ -149,16 +151,16 @@ class CharacterDetailPanel(QWidget):
         ))
         layout.addWidget(self.combat_table, 1)
         controls = QHBoxLayout()
-        self.combat_previous = QPushButton("上一页")
+        self.combat_previous = QPushButton(tr("上一页"))
         self.combat_previous.clicked.connect(lambda: self._request_combat(-1))
-        self.combat_next = QPushButton("下一页")
+        self.combat_next = QPushButton(tr("下一页"))
         self.combat_next.clicked.connect(lambda: self._request_combat(1))
-        self.combat_page_label = QLabel("未加载")
+        self.combat_page_label = QLabel(tr("未加载"))
         controls.addWidget(self.combat_previous)
         controls.addWidget(self.combat_next)
         controls.addWidget(self.combat_page_label)
         controls.addStretch()
-        copy_button = QPushButton("复制选中单元格")
+        copy_button = QPushButton(tr("复制选中单元格"))
         copy_button.clicked.connect(lambda: self._copy_selected(self.combat_table))
         controls.addWidget(copy_button)
         layout.addLayout(controls)
@@ -189,8 +191,8 @@ class CharacterDetailPanel(QWidget):
         self.combat_table.setRowCount(0)
         self._clear_layout(self.overview_layout)
         if detail is None:
-            self.title_label.setText("选择角色查看资料")
-            self.dataset_label.setText("只读发行静态库")
+            self.title_label.setText(tr("选择角色查看资料"))
+            self.dataset_label.setText(tr("只读发行静态库"))
             self.overview_layout.addWidget(self._empty_label("暂无角色详情"))
             self.overview_layout.addStretch()
         else:
@@ -363,7 +365,7 @@ class CharacterDetailPanel(QWidget):
                 _source_label(point.breakthrough_source or point.level_curve_source),
             )
             self._set_row(self.growth_table, row_index, values)
-        self.growth_hint.setText("官方基础面板；临界等级的突破前后为独立行")
+        self.growth_hint.setText(tr("官方基础面板；临界等级的突破前后为独立行"))
         self._update_growth_controls()
 
     def set_combat_page(self, page: CombatLinkPage) -> None:
@@ -387,7 +389,7 @@ class CharacterDetailPanel(QWidget):
                 _source_label(link.source),
             )
             self._set_row(self.combat_table, row_index, values)
-        self.combat_hint.setText("正式角色绑定、GA 资源、事件到 GE/Buff，以及角色所属 Buff")
+        self.combat_hint.setText(tr("正式角色绑定、GA 资源、事件到 GE/Buff，以及角色所属 Buff"))
         self._update_combat_controls()
 
     def _tab_changed(self, index: int) -> None:
@@ -475,7 +477,7 @@ class CharacterDetailPanel(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
         value_widget.setWordWrap(True)
-        button = QPushButton("复制")
+        button = QPushButton(tr("复制"))
         button.setMaximumWidth(58)
         button.clicked.connect(
             lambda _checked=False, text=value: QApplication.clipboard().setText(text)

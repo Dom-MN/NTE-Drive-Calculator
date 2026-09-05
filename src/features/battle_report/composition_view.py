@@ -189,7 +189,7 @@ class BattleDamageCompositionPanel(QWidget):
     def _system_card(self, composition: BattleDamageComposition) -> QFrame:
         card, layout = self._card_shell()
         header = QHBoxLayout()
-        badge = QLabel("系统 / 环境")
+        badge = QLabel(tr("系统 / 环境"))
         badge.setAlignment(Qt.AlignCenter)
         badge.setFixedSize(84, 30)
         badge.setStyleSheet(
@@ -199,7 +199,7 @@ class BattleDamageCompositionPanel(QWidget):
             )
         )
         header.addWidget(badge)
-        description = QLabel("已识别机制，但没有角色伤害所有者")
+        description = QLabel(tr("已识别机制，但没有角色伤害所有者"))
         description.setStyleSheet(themed_style("font-size:12px;color:#8b949e"))
         header.addWidget(description)
         header.addStretch()
@@ -222,7 +222,7 @@ class BattleDamageCompositionPanel(QWidget):
     def _unattributed_card(self, composition: BattleDamageComposition) -> QFrame:
         card, layout = self._card_shell()
         header = QHBoxLayout()
-        badge = QLabel("未归因")
+        badge = QLabel(tr("未归因"))
         badge.setAlignment(Qt.AlignCenter)
         badge.setFixedSize(62, 30)
         badge.setStyleSheet(

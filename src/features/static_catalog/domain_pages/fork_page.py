@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 from pathlib import Path
 
@@ -146,7 +148,7 @@ class ForkGalleryCard(QFrame):
         art.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pixmap = QPixmap(str(art_path)) if art_path is not None else QPixmap()
         if pixmap.isNull():
-            art.setText("弧盘图标\n当前正式资源未提供")
+            art.setText(tr("弧盘图标\n当前正式资源未提供"))
             art.setStyleSheet(themed_style(
                 "color:#6e7681;background:#0d1117;border:1px dashed #30363d;"
                 "border-radius:12px;font-size:11px"
@@ -280,12 +282,12 @@ class ForkCatalogPage(QWidget):
         eyebrow.setStyleSheet(themed_style(
             "color:#a371f7;font-size:10px;font-weight:900;letter-spacing:2px"
         ))
-        title = QLabel("弧盘图鉴", hero)
+        title = QLabel(tr("弧盘图鉴"), hero)
         title.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:25px;font-weight:900"
         ))
         subtitle = QLabel(
-            "限定特刊优先，点击卡片查看等级面板、混频技能、特效关系和完整养成路线。",
+            tr("限定特刊优先，点击卡片查看等级面板、混频技能、特效关系和完整养成路线。"),
             hero,
         )
         subtitle.setWordWrap(True)
@@ -299,10 +301,10 @@ class ForkCatalogPage(QWidget):
         self.search_edit = QLineEdit(host)
         self.search_edit.setObjectName("forkCatalogSearch")
         self.search_edit.setClearButtonEnabled(True)
-        self.search_edit.setPlaceholderText("搜索弧盘名称或 ID")
+        self.search_edit.setPlaceholderText(tr("搜索弧盘名称或 ID"))
         self.search_edit.textChanged.connect(self.set_search_query)
         toolbar.addWidget(self.search_edit, 1)
-        self.filter_toggle = QPushButton("筛选  ▾", host)
+        self.filter_toggle = QPushButton(tr("筛选  ▾"), host)
         self.filter_toggle.setCheckable(True)
         self.filter_toggle.setObjectName("forkFilterToggle")
         self.filter_toggle.clicked.connect(self._toggle_filters)
@@ -341,8 +343,8 @@ class ForkCatalogPage(QWidget):
         grid.setContentsMargins(12, 9, 12, 9)
         grid.setHorizontalSpacing(7)
         grid.setVerticalSpacing(7)
-        quality_label = QLabel("品质", panel)
-        type_label = QLabel("类型", panel)
+        quality_label = QLabel(tr("品质"), panel)
+        type_label = QLabel(tr("类型"), panel)
         for label in (quality_label, type_label):
             label.setStyleSheet(themed_style(
                 "color:#8b949e;font-size:11px;font-weight:900"
@@ -435,7 +437,7 @@ class ForkCatalogPage(QWidget):
         if regular:
             self._create_section("首发弧盘 · 品质 / 类型 / 名称", regular)
         if not self._visible:
-            empty = QLabel("没有找到符合条件的弧盘", self._gallery_host)
+            empty = QLabel(tr("没有找到符合条件的弧盘"), self._gallery_host)
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setStyleSheet(themed_style(
                 "color:#8b949e;background:#161b22;border:1px dashed #30363d;"

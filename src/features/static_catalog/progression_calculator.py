@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable, Mapping
 
 from PySide6.QtCore import QCoreApplication, QSize, Qt
@@ -55,7 +57,7 @@ class _Disclosure(QFrame):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(5)
-        toggle = QPushButton("更多信息  ▾", self)
+        toggle = QPushButton(tr("更多信息  ▾"), self)
         toggle.setObjectName("progressionDisclosureToggle")
         toggle.setCheckable(True)
         content = QFrame(self)
@@ -105,7 +107,7 @@ class _MaterialCard(QFrame):
         top.addWidget(requirement)
         root.addLayout(top)
         owned_row = QHBoxLayout()
-        owned_label = QLabel("当前持有", self)
+        owned_label = QLabel(tr("当前持有"), self)
         self.owned = QSpinBox(self)
         self.owned.setObjectName("progressionOwnedQuantity")
         self.owned.setRange(0, 99_999_999)
@@ -130,7 +132,7 @@ class ProgressionCalculatorDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("progressionCalculatorDialog")
-        self.setWindowTitle("养成材料与活力")
+        self.setWindowTitle(tr("养成材料与活力"))
         self.setModal(False)
         self._orchestrator = ProgressionCalculatorOrchestrator(
             service=service,
@@ -154,10 +156,10 @@ class ProgressionCalculatorDialog(QDialog):
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(15, 13, 15, 13)
         hero_layout.setSpacing(4)
-        self.title = QLabel("养成材料与活力", hero)
+        self.title = QLabel(tr("养成材料与活力"), hero)
         self.title.setObjectName("progressionTitle")
         subtitle = QLabel(
-            "编辑猎人等级和现有材料，按正式副本产出计算最低活力。",
+            tr("编辑猎人等级和现有材料，按正式副本产出计算最低活力。"),
             hero,
         )
         subtitle.setObjectName("progressionSubtitle")
@@ -171,12 +173,12 @@ class ProgressionCalculatorDialog(QDialog):
         level_layout = QHBoxLayout(level_card)
         level_layout.setContentsMargins(12, 10, 12, 10)
         level_layout.setSpacing(10)
-        hunter_label = QLabel("猎人等级", level_card)
+        hunter_label = QLabel(tr("猎人等级"), level_card)
         self.hunter_level = QSpinBox(level_card)
         self.hunter_level.setObjectName("progressionHunterLevel")
         self.hunter_level.setRange(1, 60)
         self.hunter_level.setValue(60)
-        identification_label = QLabel("生效鉴别等级", level_card)
+        identification_label = QLabel(tr("生效鉴别等级"), level_card)
         self.identification_level = QComboBox(level_card)
         self.identification_level.setObjectName("progressionIdentificationLevel")
         level_layout.addWidget(hunter_label)
@@ -193,7 +195,7 @@ class ProgressionCalculatorDialog(QDialog):
         self.body = QVBoxLayout(scroll_host)
         self.body.setContentsMargins(1, 1, 1, 1)
         self.body.setSpacing(9)
-        materials_heading = QLabel("材料清单", scroll_host)
+        materials_heading = QLabel(tr("材料清单"), scroll_host)
         materials_heading.setObjectName("progressionSectionTitle")
         self.body.addWidget(materials_heading)
         self.materials_host = QFrame(scroll_host)
@@ -220,9 +222,9 @@ class ProgressionCalculatorDialog(QDialog):
         self.validation = QLabel("", self)
         self.validation.setObjectName("progressionValidation")
         self.validation.setWordWrap(True)
-        self.calculate_button = QPushButton("计算最低活力", self)
+        self.calculate_button = QPushButton(tr("计算最低活力"), self)
         self.calculate_button.setObjectName("btnPrimary")
-        close_button = QPushButton("关闭", self)
+        close_button = QPushButton(tr("关闭"), self)
         actions.addWidget(self.validation, 1)
         actions.addWidget(self.calculate_button)
         actions.addWidget(close_button)
@@ -296,7 +298,7 @@ class ProgressionCalculatorDialog(QDialog):
         self._clear_layout(self.materials_layout)
         self._material_cards.clear()
         if not session.materials:
-            empty = QLabel("当前正式数据未提供可计算的材料需求。", self)
+            empty = QLabel(tr("当前正式数据未提供可计算的材料需求。"), self)
             empty.setObjectName("progressionEmptyState")
             empty.setWordWrap(True)
             self.materials_layout.addWidget(empty)
@@ -309,7 +311,7 @@ class ProgressionCalculatorDialog(QDialog):
     def _calculate(self) -> None:
         session = self._session
         if session is None:
-            self.validation.setText("请先从角色或弧盘养成页打开计算器。")
+            self.validation.setText(tr("请先从角色或弧盘养成页打开计算器。"))
             return
         owned = {
             key: card.owned.value() for key, card in self._material_cards.items()
@@ -327,7 +329,7 @@ class ProgressionCalculatorDialog(QDialog):
         token = object()
         self._calculation_token = token
         self._set_calculation_busy(True)
-        self.validation.setText("正在计算最低活力…")
+        self.validation.setText(tr("正在计算最低活力…"))
         run_calculation = self._orchestrator.run_calculation
         worker = WorkerThread(
             target=lambda frozen=calculation, run=run_calculation: run(frozen),
@@ -369,7 +371,7 @@ class ProgressionCalculatorDialog(QDialog):
             return
         self._calculation_token = None
         self._set_calculation_busy(False)
-        self.validation.setText("养成计算失败，请稍后重试。")
+        self.validation.setText(tr("养成计算失败，请稍后重试。"))
 
     def _calculation_finished(
         self,
@@ -404,7 +406,7 @@ class ProgressionCalculatorDialog(QDialog):
                 self.result_host,
             )
         else:
-            total = QLabel("完整活力暂不可用", self.result_host)
+            total = QLabel(tr("完整活力暂不可用"), self.result_host)
         total.setObjectName("progressionResultTotal")
         self.result_layout.addWidget(total)
         for run in result.runs:

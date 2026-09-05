@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -268,9 +270,9 @@ class StaticCatalogMenu(QWidget):
         eyebrow.setStyleSheet(themed_style(
             "color:#58a6ff;font-size:10px;font-weight:900;letter-spacing:2px"
         ))
-        title = QLabel("游戏资料库", hero)
+        title = QLabel(tr("游戏资料库"), hero)
         title.setStyleSheet(themed_style("color:#f0f6fc;font-size:21px;font-weight:900"))
-        subtitle = QLabel("选择一个档案领域。每个入口只呈现与该领域有关的正式数据和关系。", hero)
+        subtitle = QLabel(tr("选择一个档案领域。每个入口只呈现与该领域有关的正式数据和关系。"), hero)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
         copy.addWidget(eyebrow)
