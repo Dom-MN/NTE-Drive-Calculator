@@ -110,7 +110,8 @@ def _refresh_equipment_plugin_status(self):
                     else "Loader 不可用"
                 )
             bundle_label.setText(
-                f"打包插件与 Mod 脚本：{bundled_plugin}；{loader_text}"
+                tr("打包插件与 Mod 脚本：{plugin}；{loader}",
+                   plugin=bundled_plugin, loader=loader_text)
             )
     method = selected_plugin_loading_method(self)
     if loader_snapshot is not None and loader_snapshot.phase == "running":
@@ -128,11 +129,11 @@ def _refresh_equipment_plugin_status(self):
     stop = getattr(self, "_equipment_plugin_stop_button", None)
     if primary is not None:
         primary.setText(
-            "启动 Mod Loader" if method == "loader" else "部署代理 DLL"
+            tr("启动 Mod Loader") if method == "loader" else tr("部署代理 DLL")
         )
     if stop is not None:
         stop.setText(
-            "停止 Mod Loader" if method == "loader" else "还原游戏目录"
+            tr("停止 Mod Loader") if method == "loader" else tr("还原游戏目录")
         )
     if loader_snapshot is not None and loader_snapshot.phase == "running":
         plugin_label.setText(
@@ -153,15 +154,15 @@ def _refresh_equipment_plugin_status(self):
             else "无法读取 Loader 状态"
         )
         plugin_label.setText(
-            "Mod Loader 当前不可用：" + loader_detail
+            tr("Mod Loader 当前不可用：{detail}", detail=loader_detail)
         )
     else:
         plugin_label.setText(
-            "已选择游戏目录；"
+            tr("已选择游戏目录；")
             + (
-                "启动 Loader 前请先确认游戏目录没有代理 dwmapi.dll"
+                tr("启动 Loader 前请先确认游戏目录没有代理 dwmapi.dll")
                 if method == "loader"
-                else "部署代理 DLL 前仍需确认"
+                else tr("部署代理 DLL 前仍需确认")
             )
         )
 
@@ -248,7 +249,7 @@ def _detect_equipment_plugin_game_executable(self):
         self._save_ui_preferences()
         self._refresh_equipment_plugin_status()
         self._equipment_plugin_status_label.setText(
-            f"已自动找到并保存游戏主程序：{selected}"
+            tr("已自动找到并保存游戏主程序：{path}", path=selected)
         )
 
     def failed(error):

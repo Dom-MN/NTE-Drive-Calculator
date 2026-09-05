@@ -458,7 +458,7 @@ class BattleLongAnalysisView(
             self.environment_button.setToolTip(
                 (
                     getattr(analysis, "target_identity_inference_basis", "")
-                    or "环境与目标由完整遭遇的逐目标初始最大生命推断，仍可打开确认。"
+                    or tr("环境与目标由完整遭遇的逐目标初始最大生命推断，仍可打开确认。")
                 ) + outer_tip
             )
         elif condition is not None:
@@ -473,11 +473,11 @@ class BattleLongAnalysisView(
             self.environment_button.setToolTip(summary)
         elif getattr(analysis, "detected_environment_kind", ""):
             self.current_scope_label.setText(
-                getattr(analysis, "detected_environment_name", "") or "已推断环境"
+                getattr(analysis, "detected_environment_name", "") or tr("已推断环境")
             )
             self.environment_button.setToolTip(
                 getattr(analysis, "target_identity_inference_basis", "")
-                or "已从战报证据推断环境，可打开确认具体对象。"
+                or tr("已从战报证据推断环境，可打开确认具体对象。")
             )
         else:
             self.current_scope_label.setText(tr("未知"))
@@ -666,18 +666,20 @@ class BattleLongAnalysisView(
             for row in hit_replays
         )
         self.capability_label.setText(
-            f"{capability_name} · "
-            f"{mode_name} {_time(start_display)}—{_time(end_display)} · "
-            f"伤害模型 {analysis.formula_model_version} · "
-            f"输入投影 {len(selected_inputs)} 块 / "
-            f"动作 {len(selected_actions)} 段 · "
-            f"公式重放 {replayed}/{len(hit_replays)} · "
-            f"暴击判定 {crit_resolved} · "
-            f"{getattr(analysis, 'hit_replay_model_version', '') or '公式按需加载'} · "
-            f"{getattr(analysis, 'timeline_projection_version', '未生成时间轴')} · "
-            f"{getattr(analysis, 'target_vital_model_version', '未生成生命轴')} · "
-            f"{getattr(analysis, 'buff_inference_version', '') or 'Buff 按需加载'} · "
-            f"{getattr(analysis, 'buff_attribute_projection_version', '') or 'Buff 投影按需加载'}"
+            tr("{capability} · {mode} {start}—{end} · 伤害模型 {formula} · "
+               "输入投影 {inputs} 块 / 动作 {actions} 段 · 公式重放 {replayed}/{total} · "
+               "暴击判定 {crit} · {replay_model} · {timeline} · {vital} · {buff} · {buff_projection}",
+               capability=capability_name, mode=mode_name,
+               start=_time(start_display), end=_time(end_display),
+               formula=analysis.formula_model_version,
+               inputs=len(selected_inputs), actions=len(selected_actions),
+               replayed=replayed, total=len(hit_replays), crit=crit_resolved,
+               replay_model=getattr(analysis, "hit_replay_model_version", "") or tr("公式按需加载"),
+               timeline=getattr(analysis, "timeline_projection_version", tr("未生成时间轴")),
+               vital=getattr(analysis, "target_vital_model_version", tr("未生成生命轴")),
+               buff=getattr(analysis, "buff_inference_version", "") or tr("Buff 按需加载"),
+               buff_projection=getattr(analysis, "buff_attribute_projection_version", "")
+               or tr("Buff 投影按需加载"))
         )
         self.inferred_fact_label.render_facts(
             tuple(getattr(analysis, "inferred_character_facts", ()))
@@ -704,12 +706,13 @@ class BattleLongAnalysisView(
         )
         zoom_percent = round(float(self.zoom_combo.currentData() or 1.0) * 100)
         self.action_summary_label.setText(
-            f"{mode_name} · {format_time_stop_evidence(analysis)} · "
-            f"缩放 {zoom_percent}% · 当前时段推算输入 "
-            f"{len(selected_inputs):,} 块 / 动作 "
-            f"{len(selected_actions):,} 段 · 引用出伤事件 "
-            f"{len(action_event_ids):,}/{len(outgoing):,}（{event_coverage:.1f}%） · "
-            f"覆盖伤害 {damage_coverage:.1f}%。覆盖率只表示进入模型的证据，不代表动作准确率。"
+            tr("{mode} · {evidence} · 缩放 {zoom}% · 当前时段推算输入 {inputs:,} 块 / "
+               "动作 {actions:,} 段 · 引用出伤事件 {referenced:,}/{outgoing:,}（{coverage:.1f}%） · "
+               "覆盖伤害 {damage:.1f}%。覆盖率只表示进入模型的证据，不代表动作准确率。",
+               mode=mode_name, evidence=format_time_stop_evidence(analysis),
+               zoom=zoom_percent, inputs=len(selected_inputs), actions=len(selected_actions),
+               referenced=len(action_event_ids), outgoing=len(outgoing),
+               coverage=event_coverage, damage=damage_coverage)
         )
         self.start_spin.setValue(start_display / 1_000_000.0)
         self.end_spin.setValue(end_display / 1_000_000.0)

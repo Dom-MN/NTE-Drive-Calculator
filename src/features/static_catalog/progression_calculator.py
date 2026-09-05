@@ -76,7 +76,7 @@ class _Disclosure(QFrame):
 
         def toggle_content(expanded: bool) -> None:
             content.setVisible(expanded)
-            toggle.setText("更多信息  ▴" if expanded else "更多信息  ▾")
+            toggle.setText(tr("更多信息  ▴") if expanded else tr("更多信息  ▾"))
 
         toggle.toggled.connect(toggle_content)
         root.addWidget(toggle, 0, Qt.AlignmentFlag.AlignLeft)
@@ -282,12 +282,12 @@ class ProgressionCalculatorDialog(QDialog):
         self.identification_level.blockSignals(True)
         self.identification_level.clear()
         self.identification_level.addItem(
-            f"鉴别 {projection.native_level}（原生）",
+            tr("鉴别 {level}（原生）", level=projection.native_level),
             projection.native_level,
         )
         if projection.native_level >= 3:
             self.identification_level.addItem(
-                f"鉴别 {projection.native_level - 1}（下调一级）",
+                tr("鉴别 {level}（下调一级）", level=projection.native_level - 1),
                 projection.native_level - 1,
             )
         selected = self.identification_level.findData(previous)
@@ -386,7 +386,7 @@ class ProgressionCalculatorDialog(QDialog):
 
     def _set_calculation_busy(self, busy: bool) -> None:
         self.calculate_button.setEnabled(not busy)
-        self.calculate_button.setText("正在计算…" if busy else "计算最低活力")
+        self.calculate_button.setText(tr("正在计算…") if busy else tr("计算最低活力"))
 
     def _render_result(self, result: ProgressionStaminaResult) -> None:
         self._clear_layout(self.result_layout)
@@ -399,10 +399,10 @@ class ProgressionCalculatorDialog(QDialog):
         status.setObjectName("progressionResultStatus")
         self.result_layout.addWidget(status)
         if result.total_stamina is not None:
-            total = QLabel(f"最低活力  {result.total_stamina}", self.result_host)
+            total = QLabel(tr("最低活力  {value}", value=result.total_stamina), self.result_host)
         elif result.known_stamina > 0:
             total = QLabel(
-                f"已知部分活力  {result.known_stamina} · 完整总量不可用",
+                tr("已知部分活力  {value} · 完整总量不可用", value=result.known_stamina),
                 self.result_host,
             )
         else:
@@ -411,7 +411,8 @@ class ProgressionCalculatorDialog(QDialog):
         self.result_layout.addWidget(total)
         for run in result.runs:
             row = QLabel(
-                f"{run.label}  × {run.runs} 次  ·  {run.total_stamina} 活力",
+                tr("{label}  × {runs} 次  ·  {stamina} 活力",
+                   label=run.label, runs=run.runs, stamina=run.total_stamina),
                 self.result_host,
             )
             row.setObjectName("progressionRunCard")

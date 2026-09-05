@@ -90,7 +90,7 @@ def _replace_breakthrough_choices(
     combo.clear()
     for index, row in enumerate(choices):
         combo.addItem(
-            "突破前" if index == 0 else "突破后",
+            tr("突破前") if index == 0 else tr("突破后"),
             int(row.get(stage_key) or 0),
         )
     if selected is not None:
@@ -175,9 +175,8 @@ def _build_base_group(window, character_id: int, detail: dict, editor: dict) -> 
         f"{_attribute_name(detail, property_id)} {_display_property_value(detail, property_id, value)}"
         for property_id, value in likeability_properties.items()
     ]
-    likeability = QCheckBox(
-        "好感度 10 级" + (f"（{'、'.join(likeability_parts)}）" if likeability_parts else "")
-    )
+    suffix = tr("（{parts}）", parts=tr("、").join(likeability_parts)) if likeability_parts else ""
+    likeability = QCheckBox(tr("好感度 10 级") + suffix)
     likeability.setChecked(
         bool(profile.get("likeability_level_10_enabled"))
         and bool(likeability_properties)
@@ -343,7 +342,7 @@ def _build_awakening_group(
         check = QCheckBox(f"{index}. {title}")
         check.setChecked(effect_id in selected_ids)
         layout.addWidget(check)
-        description = QLabel(_plain_effect_text(effect.get("description_zh")) or "暂无效果说明")
+        description = QLabel(_plain_effect_text(effect.get("description_zh")) or tr("暂无效果说明"))
         description.setWordWrap(True)
         description.setContentsMargins(24, 0, 8, 2)
         description.setStyleSheet("color:#8b949e;")
@@ -485,11 +484,11 @@ def _show_skill_detail(
         if row is not None:
             rows.append((damage, row))
     dialog = QDialog(window)
-    dialog.setWindowTitle(f"{_skill_name(skill)} - 技能倍率详情")
+    dialog.setWindowTitle(tr("{name} - 技能倍率详情", name=_skill_name(skill)))
     dialog_layout = QVBoxLayout(dialog)
     summary = QLabel(
-        f"基础等级 {base_level}"
-        + (f" + 觉醒 {delta} = 生效等级 {effective_level}" if delta else "")
+        tr("基础等级 {base}", base=base_level)
+        + (tr(" + 觉醒 {delta} = 生效等级 {level}", delta=delta, level=effective_level) if delta else "")
     )
     summary.setStyleSheet("font-weight:bold;color:#58a6ff;")
     dialog_layout.addWidget(summary)
@@ -599,9 +598,9 @@ def _build_skill_group(
             )
             effective_level = skill_levels[skill_id] + delta
             effective_labels[skill_id].setText(
-                f"生效 {effective_level} 级（3觉 +1）"
+                tr("生效 {level} 级（3觉 +1）", level=effective_level)
                 if delta
-                else f"生效 {effective_level} 级"
+                else tr("生效 {level} 级", level=effective_level)
             )
 
     editor.setdefault("awakening_refreshers", []).append(refresh_effective_levels)

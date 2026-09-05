@@ -377,7 +377,7 @@ class BattleReportPage(QWidget):
         )
         self._capture_running = state.running
         stopping = state.phase == "stopping"
-        self.capture_button.setText("结束保存" if state.running else "开始采集")
+        self.capture_button.setText(tr("结束保存") if state.running else tr("开始采集"))
         object_name = "btnDanger" if state.running else "btnPrimary"
         if self.capture_button.objectName() != object_name:
             self.capture_button.setObjectName(object_name)
@@ -388,7 +388,7 @@ class BattleReportPage(QWidget):
         self.rerecord_button.setEnabled(state.phase == "running")
         self.history_button.setEnabled(not state.running)
         is_manual = state.retention_kind == "manual"
-        self.save_result_button.setText("已手动保存" if is_manual else "保存伤害结果")
+        self.save_result_button.setText(tr("已手动保存") if is_manual else tr("保存伤害结果"))
         self.save_result_button.setEnabled(
             not state.running
             and state.battle_record_id is not None
@@ -405,8 +405,8 @@ class BattleReportPage(QWidget):
 
     def set_rerecord_hotkey_label(self, hotkey: str) -> None:
         self.rerecord_button.setToolTip(
-            "丢弃本次尚未保存的战报，并立即重新开始采集。"
-            f"全局快捷键：连续按两次 {hotkey}。"
+            tr("丢弃本次尚未保存的战报，并立即重新开始采集。全局快捷键：连续按两次 {hotkey}。",
+               hotkey=hotkey)
         )
 
     def show_rerecord_hotkey_confirmation(
@@ -415,7 +415,8 @@ class BattleReportPage(QWidget):
         seconds: float,
     ) -> None:
         self.status_detail.setText(
-            f"请在 {seconds:g} 秒内再次按 {hotkey}，确认放弃当前战报并重录。"
+            tr("请在 {seconds:g} 秒内再次按 {hotkey}，确认放弃当前战报并重录。",
+               seconds=seconds, hotkey=hotkey)
         )
 
     def set_overlay_checked(self, visible: bool) -> None:
@@ -605,7 +606,8 @@ class BattleReportPage(QWidget):
         self.set_detail_scope(self._detail_scope)
         quality = summary.quality
         self.quality_label.setText(
-            f"{quality.source} · {quality.packet_count:,}包 · {quality.hit_count:,}击"
+            tr("{source} · {packets:,}包 · {hits:,}击",
+               source=quality.source, packets=quality.packet_count, hits=quality.hit_count)
         )
 
     def _select_detail_scope(self, mode: str) -> None:

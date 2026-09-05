@@ -174,10 +174,10 @@ def _build_sync_card(window):
         bool(settings["raw_capture_enabled"])
     )
     window._sync_raw_capture_toggle.setToolTip(
-        "背包同步和战报采集都会按各自启动时的设置保存原始包；"
-        "文件仅保存到当前账号的 logs/nte_core/raw_capture。"
-        "采集结束后自动保留最近 5 份，并优先将历史文件压至 512 MiB；"
-        "正在写入和最新的一份不会被删除。"
+        tr("背包同步和战报采集都会按各自启动时的设置保存原始包；"
+           "文件仅保存到当前账号的 logs/nte_core/raw_capture。"
+           "采集结束后自动保留最近 5 份，并优先将历史文件压至 512 MiB；"
+           "正在写入和最新的一份不会被删除。")
     )
     raw_capture_row = QHBoxLayout()
     raw_capture_row.addWidget(window._sync_raw_capture_toggle)
@@ -249,10 +249,10 @@ def _build_environment_card(window):
     equipment_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(equipment_title)
     equipment_description = QLabel(
-        "<b>简单原理：</b>默认把 dwmapi.dll 放入游戏目录，由游戏代理加载；"
-        "少数环境不加载代理 DLL 时，可显式改用管理员 Mod Loader。"
-        "<br><span style='color:#d29922'><b>风险提示：</b>该功能会介入游戏进程，但不会直接篡改"
-        "游戏数据；仍可能触发游戏保护，产生兼容问题或账号风险。</span>"
+        tr("<b>简单原理：</b>默认把 dwmapi.dll 放入游戏目录，由游戏代理加载；"
+           "少数环境不加载代理 DLL 时，可显式改用管理员 Mod Loader。"
+           "<br><span style='color:#d29922'><b>风险提示：</b>该功能会介入游戏进程，但不会直接篡改"
+           "游戏数据；仍可能触发游戏保护，产生兼容问题或账号风险。</span>")
     )
     equipment_description.setTextFormat(Qt.RichText)
     equipment_description.setWordWrap(True)
@@ -263,10 +263,10 @@ def _build_environment_card(window):
     form = QFormLayout()
     window._equipment_plugin_loading_method_combo = NoWheelComboBox()
     window._equipment_plugin_loading_method_combo.addItem(
-        "代理 DLL（推荐）", "proxy"
+        tr("代理 DLL（推荐）"), "proxy"
     )
     window._equipment_plugin_loading_method_combo.addItem(
-        "Mod Loader（备用）", "loader"
+        tr("Mod Loader（备用）"), "loader"
     )
     loading_method = str(
         (getattr(window, "_ui_preferences", {}) or {}).get(
@@ -342,13 +342,13 @@ def _build_environment_card(window):
     )
     card.layout().addWidget(window._equipment_plugin_status_label)
     actions = QHBoxLayout()
-    window._equipment_plugin_primary_button = QPushButton("部署代理 DLL")
+    window._equipment_plugin_primary_button = QPushButton(tr("部署代理 DLL"))
     window._equipment_plugin_primary_button.setObjectName("btnPrimary")
     window._equipment_plugin_primary_button.clicked.connect(
         window._activate_equipment_plugin_loading_method
     )
     actions.addWidget(window._equipment_plugin_primary_button)
-    window._equipment_plugin_stop_button = QPushButton("还原游戏目录")
+    window._equipment_plugin_stop_button = QPushButton(tr("还原游戏目录"))
     window._equipment_plugin_stop_button.setObjectName("btnDanger")
     window._equipment_plugin_stop_button.clicked.connect(
         window._deactivate_equipment_plugin_loading_method
@@ -528,9 +528,9 @@ def build_settings_page(
     )
     window._hk_battle_rerecord_edit.setMaximumWidth(160)
     window._hk_battle_rerecord_edit.setToolTip(
-        "战报采集中需在 1.5 秒内连续按两次才会放弃当前战报并重录。"
+        tr("战报采集中需在 1.5 秒内连续按两次才会放弃当前战报并重录。")
     )
-    rerecord_row.addWidget(QLabel("战报重录按键:"))
+    rerecord_row.addWidget(QLabel(tr("战报重录按键:")))
     rerecord_row.addWidget(window._hk_battle_rerecord_edit)
     rerecord_row.addStretch()
     form.addRow(rerecord_row)

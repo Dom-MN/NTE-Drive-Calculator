@@ -342,7 +342,7 @@ class CultivationCalculatorDialog(QDialog):
             if not self._forks:
                 self._forks = self._service.list_forks()
         except Exception as exc:
-            QMessageBox.warning(self, tr("养成计算器"), f"读取弧盘列表失败：{exc}")
+            QMessageBox.warning(self, tr("养成计算器"), tr("读取弧盘列表失败：{error}", error=exc))
             return
         selected = select_cultivation_item(
             self,
@@ -366,7 +366,7 @@ class CultivationCalculatorDialog(QDialog):
                 character_id=self._seed.character_id if self._seed else None,
             ))
         except Exception as exc:
-            QMessageBox.warning(self, tr("养成计算器"), f"读取弧盘养成状态失败：{exc}")
+            QMessageBox.warning(self, tr("养成计算器"), tr("读取弧盘养成状态失败：{error}", error=exc))
 
     def _apply_fork_seed(self, seed: CultivationForkSeed | None) -> None:
         self._fork_seed = seed
@@ -502,7 +502,7 @@ class CultivationCalculatorDialog(QDialog):
             QMessageBox.warning(self, tr("养成计算器"), str(exc))
             return
         except Exception as exc:
-            QMessageBox.warning(self, tr("养成计算器"), f"计算材料失败：{exc}")
+            QMessageBox.warning(self, tr("养成计算器"), tr("计算材料失败：{error}", error=exc))
             return
         self._last_plan = plan
         self._copy_button.setEnabled(True)
@@ -512,7 +512,7 @@ class CultivationCalculatorDialog(QDialog):
         self._clear_result()
         complete = plan.status == MaterialSummaryStatus.COMPLETE
         summary = QLabel(
-            "材料数据完整" if complete else "材料数据不完整，以下为已识别的材料",
+            tr("材料数据完整") if complete else tr("材料数据不完整，以下为已识别的材料"),
             self._result_body,
         )
         summary.setStyleSheet(themed_style(
@@ -522,7 +522,8 @@ class CultivationCalculatorDialog(QDialog):
         if plan.required_experience:
             overflow = f"，经验书最小溢出 {plan.experience_overflow:,}" if plan.experience_overflow else ""
             self._result_layout.addWidget(QLabel(
-                f"角色升级经验 {plan.required_experience:,}{overflow}", self._result_body
+                tr("角色升级经验 {value:,}{overflow}",
+                   value=plan.required_experience, overflow=overflow), self._result_body
             ))
         for section in plan.sections:
             card = QFrame(self._result_body)
@@ -560,7 +561,8 @@ class CultivationCalculatorDialog(QDialog):
         total_heading.setStyleSheet(themed_style("color:#58a6ff;font-size:14px;font-weight:900"))
         total_layout.addWidget(total_heading)
         total_text = QLabel(
-            " · ".join(f"{item.name} × {item.quantity:,}" for item in plan.totals) or "本次目标没有新增材料",
+            " · ".join(f"{item.name} × {item.quantity:,}" for item in plan.totals)
+            or tr("本次目标没有新增材料"),
             total,
         )
         total_text.setWordWrap(True)
@@ -607,9 +609,10 @@ def _participation_toggle(parent: QWidget, label: str) -> QToolButton:
     toggle.setObjectName("cultivationParticipationToggle")
     toggle.setCheckable(True)
     toggle.setChecked(True)
-    toggle.setToolTip(f"{label}：参与计算（点击关闭）")
+    toggle.setToolTip(tr("{label}：参与计算（点击关闭）", label=label))
     toggle.toggled.connect(lambda enabled: toggle.setToolTip(
-        f"{label}：{'参与计算（点击关闭）' if enabled else '不参与计算（点击开启）'}"
+        tr("{label}：参与计算（点击关闭）", label=label) if enabled
+        else tr("{label}：不参与计算（点击开启）", label=label)
     ))
     toggle.setCursor(Qt.PointingHandCursor)
     toggle.setFixedSize(36, 26)
