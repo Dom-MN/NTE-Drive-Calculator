@@ -69,7 +69,7 @@ class BattleBuildSnapshotControl(QWidget):
         self.status.setText(text)
         self.edit_button.setToolTip(text)
         self.activation_button.setText(
-            "恢复原始快照" if active else "使用修改副本"
+            tr("恢复原始快照") if active else tr("使用修改副本")
         )
 
     def set_environment_state(self, *, status: str, summary: str = "") -> None:
@@ -79,9 +79,9 @@ class BattleBuildSnapshotControl(QWidget):
             "unconfigured": "未配置",
         }
         label = labels.get(status, "未配置")
-        self.environment_button.setText(f"环境配置 · {label}")
+        self.environment_button.setText(tr("环境配置 · {label}", label=label))
         self.environment_button.setToolTip(
-            summary or "确认战斗模式、对象、难度、争锋加成与魔女赐福。"
+            summary or tr("确认战斗模式、对象、难度、争锋加成与魔女赐福。")
         )
 
     def _request_activation(self) -> None:

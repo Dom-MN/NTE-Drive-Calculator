@@ -110,7 +110,8 @@ class MonsterDetailView(QWidget):
         self.buff_cards = []
         self.drop_cards = []
         self.crumb.setText(
-            "怪物与玩法 / " + (context.play if context else _clean_subtitle(detail))
+            tr("怪物与玩法 / {name}",
+               name=context.play if context else _clean_subtitle(detail))
         )
         self.body.addWidget(self._hero(detail, icon, context))
         profile_sections = tuple(
@@ -152,7 +153,7 @@ class MonsterDetailView(QWidget):
                 for section_index, section in ordered:
                     level = _profile_level(section)
                     self.world_level_combo.addItem(
-                        f"等级 {level:g}", section_index,
+                        tr("等级 {level:g}", level=level), section_index,
                     )
                 self.world_level_combo.currentIndexChanged.connect(
                     self._show_selected_profile
@@ -328,8 +329,8 @@ class MonsterDetailView(QWidget):
         layout.addWidget(art)
         copy = QVBoxLayout()
         label = QLabel(
-            "玩法规则" if detail.entry.key.startswith(("witch_buff|", "outer_buff|"))
-            else "敌方档案",
+            tr("玩法规则") if detail.entry.key.startswith(("witch_buff|", "outer_buff|"))
+            else tr("敌方档案"),
             hero,
         )
         label.setStyleSheet(themed_style("color:#58a6ff;font-size:10px;font-weight:900"))
@@ -385,8 +386,9 @@ class MonsterDetailView(QWidget):
             resistance_grid.addWidget(card, index // columns, index % columns)
         layout.addLayout(resistance_grid)
         penetration = QLabel(
-            f"防御忽略 {_value_text(values.get('防御忽略'))}  ·  "
-            f"攻击档 {_value_text(values.get('攻击档'))}",
+            tr("防御忽略 {ignore}  ·  攻击档 {tier}",
+               ignore=_value_text(values.get("防御忽略")),
+               tier=_value_text(values.get("攻击档"))),
             frame,
         )
         penetration.setWordWrap(True)

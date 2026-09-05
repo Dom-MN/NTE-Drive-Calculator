@@ -279,15 +279,15 @@ class CharacterDetailView(QWidget):
         character = detail.character
         self.name.setText(character.name_zh)
         self.identity.setText(f"ID  {character.character_id}")
-        self.element_badge.setText(f"{character.element_label}属性")
+        self.element_badge.setText(tr("{element}属性", element=character.element_label))
         acquisition_label = _acquisition_name(release)
         if character.classification == "scheduled_character":
             acquisition_label += " · 待上线"
         self.availability_badge.setText(acquisition_label)
         self.quality_badge.setText(
-            f"{release.quality} 级"
+            tr("{quality} 级", quality=release.quality)
             if release is not None and release.quality
-            else "品质未提供"
+            else tr("品质未提供")
         )
         if release is not None and release.release_date:
             prefix = (
@@ -361,9 +361,10 @@ class CharacterDetailView(QWidget):
     ) -> None:
         self._clear(self.overview_layout)
         summary = QLabel(
-            f"{detail.character.skill_count} 项技能  ·  "
-            f"{detail.character.awakening_count} 项觉醒  ·  "
-            + ("有毕业模板" if detail.character.has_graduation else "暂无毕业模板"),
+            tr("{skills} 项技能  ·  {awakenings} 项觉醒  ·  ",
+               skills=detail.character.skill_count,
+               awakenings=detail.character.awakening_count)
+            + (tr("有毕业模板") if detail.character.has_graduation else tr("暂无毕业模板")),
         )
         summary.setStyleSheet(themed_style(
             "color:#8b949e;background:transparent;font-size:11px"

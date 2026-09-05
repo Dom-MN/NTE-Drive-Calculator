@@ -201,7 +201,9 @@ class CharacterDetailPanel(QWidget):
             )
             dataset = detail.dataset
             self.dataset_label.setText(
-                f"{dataset.dataset_id} · schema {dataset.schema_version} · importer {dataset.importer_version} · 只读"
+                tr("{dataset} · schema {schema} · importer {importer} · 只读",
+                   dataset=dataset.dataset_id, schema=dataset.schema_version,
+                   importer=dataset.importer_version)
             )
             self._render_overview(detail)
         self._update_growth_controls()
@@ -224,9 +226,12 @@ class CharacterDetailPanel(QWidget):
         if detail.breakthroughs:
             for stage in detail.breakthroughs:
                 label = QLabel(
-                    f"{stage.level} 级 · 阶段 {stage.stage}　"
-                    f"突破前 HP/ATK/DEF {_number(stage.before.hp_base)} / {_number(stage.before.atk_base)} / {_number(stage.before.def_base)}　→　"
-                    f"突破后 {_number(stage.after.hp_base)} / {_number(stage.after.atk_base)} / {_number(stage.after.def_base)}"
+                    tr("{level} 级 · 阶段 {stage}　突破前 HP/ATK/DEF {before}　→　突破后 {after}",
+                       level=stage.level, stage=stage.stage,
+                       before=f"{_number(stage.before.hp_base)} / {_number(stage.before.atk_base)}"
+                              f" / {_number(stage.before.def_base)}",
+                       after=f"{_number(stage.after.hp_base)} / {_number(stage.after.atk_base)}"
+                             f" / {_number(stage.after.def_base)}")
                 )
                 label.setTextInteractionFlags(
                     Qt.TextInteractionFlag.TextSelectableByMouse
@@ -269,8 +274,10 @@ class CharacterDetailPanel(QWidget):
         for effect in detail.awakenings:
             title = effect.title_zh or effect.effect_id
             summary = QLabel(
-                f"{effect.ordinal + 1}. {title}　[{effect.awaken_type}]　"
-                f"结构字段 {len(effect.structured_effects)} · GE {len(effect.gameplay_effect_ids)}"
+                tr("{ordinal}. {title}　[{kind}]　结构字段 {fields} · GE {effects}",
+                   ordinal=effect.ordinal + 1, title=title, kind=effect.awaken_type,
+                   fields=len(effect.structured_effects),
+                   effects=len(effect.gameplay_effect_ids))
             )
             summary.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse

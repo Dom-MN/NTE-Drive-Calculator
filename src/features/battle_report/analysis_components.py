@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractScrollArea,
@@ -79,7 +81,7 @@ def apply_inferred_scope_warning(
         if not target_name or target_name in environment_name
         else f" · {target_name}"
     )
-    label.setText(f"候选冲突：{environment_name}{suffix}")
+    label.setText(tr("候选冲突：{name}{suffix}", name=environment_name, suffix=suffix))
     label.setStyleSheet(themed_style("color:#f85149;font-weight:700"))
 
 

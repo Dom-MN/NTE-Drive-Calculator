@@ -121,7 +121,7 @@ class EquipmentEffectDetail(QWidget):
         if field.copy_kind is not None and field.value != "—":
             button = QPushButton(tr("复制"))
             button.setObjectName("btnSm")
-            button.setToolTip(f"复制{field.label}")
+            button.setToolTip(tr("复制{label}", label=field.label))
             button.clicked.connect(
                 lambda _checked=False, text=field.value: self._copy(text)
             )

@@ -127,7 +127,7 @@ def build_home_page(window) -> QScrollArea:
     hero_layout = QHBoxLayout(hero)
     hero_layout.setContentsMargins(22, 18, 22, 18)
     title_column = QVBoxLayout()
-    title = QLabel(f"NTE Drive Calc {_WORKBENCH_VERSION} 工作台")
+    title = QLabel(tr("NTE Drive Calc {version} 工作台", version=_WORKBENCH_VERSION))
     title.setStyleSheet(themed_style("color:#f0f6fc;font-size:21px;font-weight:700"))
     window.home_account_label = QLabel(tr("正在读取账号数据…"))
     window.home_account_label.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))

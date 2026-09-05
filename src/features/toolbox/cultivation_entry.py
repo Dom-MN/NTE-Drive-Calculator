@@ -78,7 +78,7 @@ def show_cultivation_calculator(
     try:
         service = service_factory()
     except Exception as exc:
-        QMessageBox.warning(parent, tr("养成计算器"), f"读取养成数据失败：{exc}")
+        QMessageBox.warning(parent, tr("养成计算器"), tr("读取养成数据失败：{error}", error=exc))
         return
     CultivationCalculatorDialog(service, parent).exec()
 

@@ -71,7 +71,8 @@ class BattleHitBuffDialog(QDialog):
             hit.skill_name,
             hit.ability_id,
         )
-        self.title_label.setText(f"{hit.character_name} · {damage_name} · 逐击详情")
+        self.title_label.setText(tr("{role} · {damage} · 逐击详情",
+                                    role=hit.character_name, damage=damage_name))
         hp_before = "—" if hit.target_hp_before is None else f"{hit.target_hp_before:,.0f}"
         hp_after = "—" if hit.target_hp_after is None else f"{hit.target_hp_after:,.0f}"
         raw_lines = (

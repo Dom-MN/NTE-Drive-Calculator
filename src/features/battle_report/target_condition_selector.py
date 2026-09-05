@@ -431,8 +431,9 @@ class BattleTargetConditionSelector(QGroupBox):
                 "target_id",
             )
         self.clone_targets_label.setText(
-            "本难度对象：" + "、".join(target["name_zh"] for target in targets)
-            if targets else "本难度没有可用的刷怪模板；可继续人工补充目标参数。"
+            tr("本难度对象：{names}",
+               names=tr("、").join(target["name_zh"] for target in targets))
+            if targets else tr("本难度没有可用的刷怪模板；可继续人工补充目标参数。")
         )
         self._emit_preset()
 
@@ -793,7 +794,7 @@ class BattleTargetConditionSelector(QGroupBox):
             self.summary_label.setText(tr("请选择至少一个对象；保存前不会参与逐击重放。"))
         else:
             self.summary_label.setText(
-                f"已选 {selected_count} 个对象；逐击将按 targetId 与血量映射各自属性。"
-                "主要目标只用于默认展示。"
+                tr("已选 {count} 个对象；逐击将按 targetId 与血量映射各自属性。"
+                   "主要目标只用于默认展示。", count=selected_count)
             )
         self.preset_changed.emit(preset)

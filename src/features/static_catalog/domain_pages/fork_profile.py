@@ -276,12 +276,12 @@ class ForkProfileView(QWidget):
         summary = detail.summary
         self.name.setText(summary.name_zh)
         self.quality_badge.setText(self._item_names.quality_name(summary.quality))
-        self.type_badge.setText(summary.fork_type_name_zh or "类型未提供")
+        self.type_badge.setText(summary.fork_type_name_zh or tr("类型未提供"))
         campaign = self._display_campaigns.get(summary.fork_id)
         campaign_title = campaign.title.display_name if campaign else "首发弧盘"
-        self.release_badge.setText(campaign_title or "名称暂未提供")
+        self.release_badge.setText(campaign_title or tr("名称暂未提供"))
         self.description.setText(
-            plain_text(summary.description_zh) or "说明 · 当前正式数据未提供"
+            plain_text(summary.description_zh) or tr("说明 · 当前正式数据未提供")
         )
         art_path = self._asset_catalog.fork_icon(summary.fork_id)
         pixmap = QPixmap(str(art_path)) if art_path is not None else QPixmap()
@@ -392,8 +392,9 @@ class ForkProfileView(QWidget):
         exp_text = f"升级经验 {growth.need_exp}" if growth is not None else "升级经验未提供"
         material_text = breakthrough_cost_text(stage, self._item_names)
         self.current_level_cost.setText(
-            f"Lv.{self._level} · {stage_text} · {exp_text}\n{material_text}\n"
-            "逐级升级消耗：当前正式数据未提供；不会伪装为 0。"
+            tr("Lv.{level} · {stage} · {exp}\n{material}\n"
+               "逐级升级消耗：当前正式数据未提供；不会伪装为 0。",
+               level=self._level, stage=stage_text, exp=exp_text, material=material_text)
         )
         self._refresh_refinement()
         self._refresh_node_states()
@@ -433,7 +434,7 @@ class ForkProfileView(QWidget):
             (item for item in detail.refinement_levels if item.level == self._refinement),
             None,
         )
-        self.refinement_title.setText(f"混频 {self._refinement}")
+        self.refinement_title.setText(tr("混频 {value}", value=self._refinement))
         if refinement is None:
             self.refinement_description.setText(tr("弧盘技能 · 当前正式数据未提供"))
         else:
@@ -489,9 +490,9 @@ class ForkProfileView(QWidget):
             by_id[item].name_zh for item in sorted(recommended_ids) if item in by_id
         ]
         if owner_names:
-            self.owner_label.setText(f"专属弧盘 · {'、'.join(owner_names)}")
+            self.owner_label.setText(tr("专属弧盘 · {names}", names=tr("、").join(owner_names)))
         elif recommended_names:
-            self.owner_label.setText(f"养成推荐 · {'、'.join(recommended_names)}")
+            self.owner_label.setText(tr("养成推荐 · {names}", names=tr("、").join(recommended_names)))
         else:
             self.owner_label.setText(tr("通用弧盘 · 无专属角色"))
         compatible = tuple(

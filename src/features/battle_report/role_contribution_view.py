@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Sequence
 
 from PySide6.QtCore import QRectF, QSize, Qt
@@ -90,7 +92,7 @@ class BattleRoleShareBar(QWidget):
         self._color = QColor(color)
         self.setMinimumWidth(104)
         self.setFixedHeight(28)
-        self.setToolTip(f"该角色占选定时段总伤害的 {self._share_percent:.2f}%")
+        self.setToolTip(tr("该角色占选定时段总伤害的 {share:.2f}%", share=self._share_percent))
 
     def sizeHint(self) -> QSize:
         return QSize(126, 28)

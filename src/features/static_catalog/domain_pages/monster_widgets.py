@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import display_term, tr
+
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -95,7 +97,7 @@ class ResistanceCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(11, 8, 11, 8)
         row = QHBoxLayout()
-        name = QLabel(label.removeprefix("抗性 "), self)
+        name = QLabel(display_term(label.removeprefix("抗性 ")), self)
         name.setStyleSheet(themed_style("color:#c9d1d9;font-size:10px;font-weight:800"))
         number = QLabel(value, self)
         number.setStyleSheet(themed_style("color:#39d0d8;font-size:10px"))
@@ -196,7 +198,7 @@ def set_art(label: QLabel, path: Path | None, size: int, *, unavailable: bool) -
         painter.drawText(pixmap.rect(), Qt.AlignCenter, "暂无正式图片")
         painter.end()
     label.setPixmap(pixmap)
-    label.setToolTip("正式图标不可用；未按名称猜测" if unavailable else "正式怪物图标")
+    label.setToolTip(tr("正式图标不可用；未按名称猜测") if unavailable else tr("正式怪物图标"))
 
 
 def clear_layout(layout) -> None:

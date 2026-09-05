@@ -72,7 +72,7 @@ def equipment_plugin_loading_method_changed(window: Any, _index: int) -> None:
             QMessageBox.warning(
                 window,
                 tr("切换加载方式"),
-                "无法完成 Loader 会话清理，已保留 Loader 方式：" + str(exc),
+                tr("无法完成 Loader 会话清理，已保留 Loader 方式：{error}", error=exc),
             )
             return
     _save_plugin_preference(window, "equipment_plugin_loading_method", method)
@@ -208,9 +208,9 @@ def start_equipment_mod_loader(window: Any) -> None:
         QMessageBox.information(
             window,
             tr("Mod Loader 监控已启动"),
-            "已向 Loader 明确提供当前游戏安装中的官方启动器。Loader 进程运行"
-            "不等于游戏插件已经加载；请正常启动游戏，然后使用“诊断 dwmapi”"
-            "确认 nte-mods-plugin-v7 管道出现。"
+            tr("已向 Loader 明确提供当前游戏安装中的官方启动器。Loader 进程运行"
+               "不等于游戏插件已经加载；请正常启动游戏，然后使用“诊断 dwmapi”"
+               "确认 nte-mods-plugin-v7 管道出现。")
             + proxy_message,
         )
     except (EquipmentPluginDeploymentError, ModPluginLoadingError) as exc:
@@ -254,7 +254,8 @@ def stop_equipment_mod_loader(window: Any) -> None:
         QMessageBox.information(
             window,
             tr("停止 Mod Loader"),
-            "Mod Loader 已停止。" if stopped else "本次应用会话没有正在运行的 Mod Loader。",
+            tr("Mod Loader 已停止。") if stopped
+            else tr("本次应用会话没有正在运行的 Mod Loader。"),
         )
     except ModPluginLoadingError as exc:
         log_event(

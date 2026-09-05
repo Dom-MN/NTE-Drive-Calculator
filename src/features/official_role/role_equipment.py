@@ -385,7 +385,9 @@ def _build_drive_summary_group(
         calculation_detail = _calculation_detail(detail, editor)
         modules = _equipment_items(detail, context_key, core=False) if context_key != "theory" else list((detail.get("equipment_plan") or {}).get("module_item_ids") or ())
         cores = _equipment_items(detail, context_key, core=True) if context_key != "theory" else ([1] if detail["equipment_contexts"]["theory"].get("core_item_id") else [])
-        count_label.setText(f"已装配驱动: {len(modules)}    空幕: {'已装配' if cores else '未装配'}")
+        count_label.setText(tr("已装配驱动: {count}    空幕: {core}",
+                           count=len(modules),
+                           core=tr("已装配") if cores else tr("未装配")))
         score_context = calculation_detail["equipment_contexts"][context_key]
         score_items = list(
             score_context.get("calculation_items")
@@ -405,7 +407,8 @@ def _build_drive_summary_group(
                 for item in score_items
             )
             score_label.setText(
-                f"配装评分: {total_score:.1f} · {loadout_total_grade(total_score)}"
+                tr("配装评分: {score:.1f} · {grade}",
+                   score=total_score, grade=loadout_total_grade(total_score))
             )
         gain = calculate_official_role_equipment_gain(calculation_detail, context_key)
         if gain:

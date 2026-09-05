@@ -88,8 +88,8 @@ class BattleMarginalDerivedSettlementView(QFrame):
             else 0.0
         )
         self.summary.setText(
-            f"五觉相对零觉新增：{len(rows)} 次结算，共 {total_gain:+,.2f} 伤害；"
-            f"折合全队 {team_gain:+.2f}%。"
+            tr("五觉相对零觉新增：{count} 次结算，共 {gain:+,.2f} 伤害；折合全队 {team:+.2f}%。",
+               count=len(rows), gain=total_gain, team=team_gain)
         )
         role_baselines = {
             role.character_id: role.baseline_damage

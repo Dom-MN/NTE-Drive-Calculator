@@ -332,7 +332,7 @@ class CharacterCatalogPage(QWidget):
     def _set_filter_expanded(self, expanded: bool) -> None:
         self.filter_body.setVisible(expanded)
         self.filter_toggle.setText(
-            "收起筛选  ▴" if expanded else "展开筛选  ▾"
+            tr("收起筛选  ▴") if expanded else tr("展开筛选  ▾")
         )
 
     @staticmethod
@@ -415,12 +415,12 @@ class CharacterCatalogPage(QWidget):
         self._visible_ids = visible
         for character_id, card in self._cards.items():
             card.setVisible(character_id in visible)
-        self.result_count.setText(f"{len(visible)} 位角色")
+        self.result_count.setText(tr("{count} 位角色", count=len(visible)))
         self.filter_summary.setText(" · ".join((
-            self._checked_text(self.availability_group, "全部角色"),
-            self._checked_text(self.element_group, "全属性"),
-            self._checked_text(self.quality_group, "全品质"),
-            self._checked_text(self.acquisition_group, "全获取"),
+            self._checked_text(self.availability_group, tr("全部角色")),
+            self._checked_text(self.element_group, tr("全属性")),
+            self._checked_text(self.quality_group, tr("全品质")),
+            self._checked_text(self.acquisition_group, tr("全获取")),
         )))
         self._relayout_cards(force=True)
 

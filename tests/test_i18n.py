@@ -387,17 +387,12 @@ class StatListKeyTests(unittest.TestCase):
         self.assertNotIn("skills", payload)
         self.assertFalse(hasattr(i18n, "display_skill"))
 
-    # Upstream's 2.2.0 UI arrived unwrapped. What remains needs a named-field
-    # rewrite (f-strings and concatenations). The backlog is recorded so the gate
-    # still catches anything NEW, and must only ever go down.
-    UNWRAPPED_BACKLOG = 158
-
-    def test_unwrapped_chinese_does_not_grow(self) -> None:
+    def test_no_chinese_reaches_a_widget_unwrapped(self) -> None:
         """The catalogue test cannot see text that was never wrapped at all.
 
-        A clean report is not achievable right after an upstream sync, so this
-        pins the known backlog instead: new unwrapped copy fails, and localising
-        any of the backlog requires lowering the number.
+        An upstream merge can add hardcoded Chinese that renders untranslated in
+        English; this is the gate that fails on it. Its blind spot is text
+        assembled through a helper before reaching a widget.
         """
         sys.path.insert(0, str(ROOT / "tools" / "quality"))
         try:
@@ -406,17 +401,12 @@ class StatListKeyTests(unittest.TestCase):
             sys.path.pop(0)
 
         findings = i18n_coverage.collect(i18n_coverage.UI_ROOTS, i18n_coverage.scan_ui)
-        count = sum(len(hits) for hits in findings.values())
-        self.assertLessEqual(
-            count,
-            self.UNWRAPPED_BACKLOG,
-            f"{count - self.UNWRAPPED_BACKLOG} newly unwrapped Chinese strings reach a widget; "
-            "wrap them in tr() or justify the increase",
-        )
-        if count < self.UNWRAPPED_BACKLOG:
-            self.fail(
-                f"backlog is now {count}; lower UNWRAPPED_BACKLOG to {count} to lock the progress in"
-            )
+        report = [
+            f"{name}:{lineno} {text[:40]}"
+            for name, hits in findings.items()
+            for lineno, text in hits
+        ]
+        self.assertEqual([], report)
 
     def test_first_launch_asks_once_and_records_the_answer(self) -> None:
         """Absent is not the same as zh_CN: only the former should ask."""

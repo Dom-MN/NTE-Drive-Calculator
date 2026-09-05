@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Sequence
 
 from PySide6.QtWidgets import QLabel
@@ -24,10 +26,11 @@ class BattleInferredFactLabel(QLabel):
             self.clear_facts()
             return
         self.setText(
-            "推断事实（默认用于本场计算，不改写觉醒选择）："
+            tr("推断事实（默认用于本场计算，不改写觉醒选择）：")
             + "；".join(
-                f"角色 {fact.character_id} · {fact.fact_value} · "
-                f"{fact.source_gameplay_effect_id} · 置信度{fact.confidence}"
+                tr("角色 {role} · {value} · {effect} · 置信度{confidence}",
+                   role=fact.character_id, value=fact.fact_value,
+                   effect=fact.source_gameplay_effect_id, confidence=fact.confidence)
                 for fact in facts
             )
         )

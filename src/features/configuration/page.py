@@ -215,7 +215,7 @@ def _add_extra_shape_row(window, data, role_name, role_data, form_layout):
     value.setCurrentText(current_label)
     value.setPlaceholderText(tr("选择额外形状标签"))
     ownership = "点击“保存”后写入当前账号的自建角色数据。"
-    value.setToolTip(f"选择额外形状标签；{ownership}")
+    value.setToolTip(tr("选择额外形状标签；{ownership}", ownership=ownership))
     value.currentTextChanged.connect(
         lambda text, rn=role_name: save_extra_shape_label(window, rn, text, data)
     )
@@ -243,7 +243,7 @@ def _add_extra_shape_buff_row(
     selected_index = property_combo.findData(str(selected_property))
     property_combo.setCurrentIndex(selected_index if selected_index >= 0 else 0)
     ownership = "点击“保存”后写入当前账号的自建角色数据。"
-    property_combo.setToolTip(f"选择额外形状提供的属性；{ownership}")
+    property_combo.setToolTip(tr("选择额外形状提供的属性；{ownership}", ownership=ownership))
     row.addWidget(property_combo, 1)
     value_spin = NoWheelDoubleSpinBox()
     value_spin.setRange(0, 1000000)

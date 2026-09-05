@@ -139,7 +139,8 @@ class CharacterGalleryCard(QFrame):
             portraits.addWidget(art, 1)
             avatar_labels.append(art)
         avatar_caption = QLabel(
-            f"{len(portrait_paths)} 种形象" if len(portrait_paths) > 1 else "角色头像",
+            tr("{count} 种形象", count=len(portrait_paths))
+            if len(portrait_paths) > 1 else tr("角色头像"),
             visual,
         )
         avatar_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -171,7 +172,7 @@ class CharacterGalleryCard(QFrame):
             release_prefix + (
                 metadata.release_date
                 if metadata is not None and metadata.release_date
-                else "当前正式数据未提供"
+                else tr("当前正式数据未提供")
             ),
             self,
         )

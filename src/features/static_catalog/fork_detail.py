@@ -133,7 +133,7 @@ class ForkCatalogWidget(QWidget):
         detail_layout.addLayout(detail_actions)
         self.detail_tree = QTreeWidget()
         self.detail_tree.setColumnCount(3)
-        self.detail_tree.setHeaderLabels(("字段 / 关系", "值", "来源"))
+        self.detail_tree.setHeaderLabels((tr("字段 / 关系"), tr("值"), tr("来源")))
         self.detail_tree.setAlternatingRowColors(True)
         self.detail_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.detail_tree.setUniformRowHeights(True)
@@ -146,9 +146,11 @@ class ForkCatalogWidget(QWidget):
     def _load_filters(self) -> None:
         metadata = self._service.metadata()
         self.metadata_label.setText(
-            f"dataset {metadata.dataset_id} · schema {metadata.schema_version} · "
-            f"importer {metadata.importer_version} · 只读 · "
-            f"source payload {'已保留' if metadata.source_payloads_preserved else '已省略'}"
+            tr("dataset {dataset} · schema {schema} · importer {importer} · 只读 · "
+               "source payload {payload}",
+               dataset=metadata.dataset_id, schema=metadata.schema_version,
+               importer=metadata.importer_version,
+               payload=tr("已保留") if metadata.source_payloads_preserved else tr("已省略"))
         )
         self.type_combo.clear()
         self.type_combo.addItem(tr("全部类型"), None)
@@ -218,7 +220,8 @@ class ForkCatalogWidget(QWidget):
                 selected_row = index
         self.catalog_list.blockSignals(False)
         self.page_label.setText(
-            f"第 {page.page} / {page.total_pages} 页 · {page.total_items} 条"
+            tr("第 {page} / {pages} 页 · {items} 条",
+               page=page.page, pages=page.total_pages, items=page.total_items)
         )
         self.previous_button.setEnabled(page.page > 1)
         self.next_button.setEnabled(page.page < page.total_pages)

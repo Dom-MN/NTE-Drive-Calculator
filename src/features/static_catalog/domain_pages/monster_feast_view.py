@@ -163,7 +163,8 @@ class FeastEncounterView(QWidget):
         self._loader = loader
         self._blessing_loader = blessing_loader
         self.heading.setText(
-            f"争锋赏宴 · {setup.period_label} · 挑战 {setup.challenge_ordinal}"
+            tr("争锋赏宴 · {period} · 挑战 {ordinal}",
+               period=setup.period_label, ordinal=setup.challenge_ordinal)
         )
         self.subtitle.setText(
             f"{setup.title} · {setup.boss_name} · {setup.schedule_label}"
@@ -226,11 +227,11 @@ class FeastEncounterView(QWidget):
 
     def _toggle_options(self, expanded: bool) -> None:
         self.options_host.setVisible(expanded)
-        self.conditions_toggle.setText("收起条件" if expanded else "挑战条件")
+        self.conditions_toggle.setText(tr("收起条件") if expanded else tr("挑战条件"))
 
     def _toggle_blessing(self, expanded: bool) -> None:
         self.blessing_host.setVisible(expanded)
-        self.blessing_toggle.setText("收起赐福" if expanded else "魔女赐福")
+        self.blessing_toggle.setText(tr("收起赐福") if expanded else tr("魔女赐福"))
 
     def _refresh_blessing(self) -> None:
         if self._loading:
@@ -264,8 +265,8 @@ class FeastEncounterView(QWidget):
             if combo.currentData()
         )
         self.condition_summary.setText(
-            f"已启用 {len(selected)} 项"
-            if selected else (self._setup.condition_note or "未启用挑战条件")
+            tr("已启用 {count} 项", count=len(selected))
+            if selected else (self._setup.condition_note or tr("未启用挑战条件"))
         )
         detail = self._loader(
             self._setup.period_id,

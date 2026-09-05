@@ -555,7 +555,7 @@ class BattleReportController(
             QMessageBox.information(
                 dialog,
                 tr("导出完成"),
-                f"已导出 {outcome.report_count} 场战报。\n保存位置：{target}",
+                tr("已导出 {count} 场战报。\n保存位置：{path}", count=outcome.report_count, path=target),
             )
         finally:
             dialog.set_busy(False)
@@ -585,8 +585,8 @@ class BattleReportController(
                 dialog,
                 tr("读取完成"),
                 (
-                    f"已导入 {len(outcome.imported_record_ids)} 场战报；"
-                    f"跳过 {outcome.skipped_existing_count} 场已有战报。"
+                    tr("已导入 {imported} 场战报；跳过 {skipped} 场已有战报。",
+                       imported=len(outcome.imported_record_ids), skipped=outcome.skipped_existing_count)
                 ),
             )
             self._refresh_history_dialog()

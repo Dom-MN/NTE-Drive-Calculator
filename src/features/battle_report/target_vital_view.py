@@ -127,7 +127,7 @@ class BattleTargetVitalPanel(QWidget):
         for index, (damage_type, label) in enumerate(_RESISTANCE_LABELS):
             row = 1 + index // 4
             column = (index % 4) * 2
-            condition_grid.addWidget(QLabel(f"{label}（战前）"), row, column)
+            condition_grid.addWidget(QLabel(tr("{label}（战前）", label=label)), row, column)
             editor = self._percent_spin(-500.0, 500.0)
             self.resistance_spins[damage_type] = editor
             condition_grid.addWidget(editor, row, column + 1)
@@ -309,13 +309,13 @@ class BattleTargetVitalPanel(QWidget):
             editor.setValue(float(resistances.get(damage_type, 0.20)) * 100.0)
         self.condition_note.setText(
             (
-                "已保存用户确认的单目标条件；战前抗性包含模式追加/弱点，"
-                "不包含战斗中的临时减抗。实际 DefBase 非零时优先使用绑定属性包，"
-                "否则才按等级与场景近似；易伤默认 0。"
+                tr("已保存用户确认的单目标条件；战前抗性包含模式追加/弱点，"
+                   "不包含战斗中的临时减抗。实际 DefBase 非零时优先使用绑定属性包，"
+                   "否则才按等级与场景近似；易伤默认 0。")
                 if condition is not None
-                else "当前战报没有目标实例/怪物 ID。以上战前抗性 20% 仅是"
-                "编辑初值，保存前不参与需要敌方参数的计算；不要把战斗中"
-                "临时减抗重复填入。"
+                else tr("当前战报没有目标实例/怪物 ID。以上战前抗性 20% 仅是"
+                        "编辑初值，保存前不参与需要敌方参数的计算；不要把战斗中"
+                        "临时减抗重复填入。")
             )
         )
         self.target_table.setRowCount(len(analysis.targets))

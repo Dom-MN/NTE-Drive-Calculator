@@ -251,7 +251,7 @@ class CombatMechanicsCatalogPage(QWidget):
 
     def _refresh_gallery(self) -> None:
         self._cards = self._service.browse(self._family_key, self.search.text())
-        self.result_count.setText(f"{len(self._cards)} 项")
+        self.result_count.setText(tr("{count} 项", count=len(self._cards)))
         self._card_widgets = []
         _clear_layout(self.gallery_grid)
         if not self._cards:
@@ -397,7 +397,7 @@ class CombatMechanicsCatalogPage(QWidget):
         self.family_scroll.setVisible(not narrow)
         self.family_combo.setVisible(narrow)
         self.gallery_subtitle.setVisible(not narrow)
-        self.search.setPlaceholderText("搜索公式" if narrow else "搜索公式或中文名词")
+        self.search.setPlaceholderText(tr("搜索公式") if narrow else tr("搜索公式或中文名词"))
         QTimer.singleShot(0, self._reflow_cards)
 
     def dispose(self) -> None:

@@ -67,11 +67,10 @@ def _save_hotkeys(self, *, announce=False):
         QMessageBox.information(
             self,
             tr("保存"),
-            "快捷键已保存！\n"
-            f"全局截图: {self._hk_capture}\n"
-            f"截图完成: {self._hk_finish}\n"
-            f"停止: {self._hk_stop}\n"
-            f"战报重录: {self._hk_battle_rerecord}",
+            tr("快捷键已保存！\n全局截图: {capture}\n截图完成: {finish}\n"
+               "停止: {stop}\n战报重录: {rerecord}",
+               capture=self._hk_capture, finish=self._hk_finish,
+               stop=self._hk_stop, rerecord=self._hk_battle_rerecord),
         )
     return True
 

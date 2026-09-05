@@ -161,7 +161,7 @@ class CharacterBuildView(QWidget):
                 card,
             )
             title.setStyleSheet(themed_style("color:#f0f6fc;font-weight:800"))
-            note = QLabel(description or "正式推荐弧盘", card)
+            note = QLabel(description or tr("正式推荐弧盘"), card)
             note.setWordWrap(True)
             note.setStyleSheet(themed_style("color:#8b949e;font-size:10px"))
             card.layout().addWidget(title)
@@ -423,7 +423,7 @@ class CharacterAwakeningView(QWidget):
         ))
         card.layout().insertWidget(0, stage)
         description = QLabel(
-            _plain(awakening.description_zh) or "当前正式数据未提供说明",
+            _plain(awakening.description_zh) or tr("当前正式数据未提供说明"),
             card,
         )
         description.setWordWrap(True)

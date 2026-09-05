@@ -266,7 +266,9 @@ class EquipmentDetailView(QScrollArea):
             plot.set_curve(curve)
             if isinstance(curve, AttributeCurve):
                 number = CurvePlot.number(curve.max_value, curve.show_percent)
-                value.setText(f"满级 {curve.label}  {number}{'%' if curve.show_percent else ''}")
+                value.setText(tr("满级 {label}  {number}{percent}", label=curve.label,
+                                 number=number,
+                                 percent="%" if curve.show_percent else ""))
             else:
                 value.setText(tr("当前装备没有可展示的强化曲线"))
         selector.currentIndexChanged.connect(select_curve)
@@ -578,9 +580,9 @@ class EquipmentCatalogPage(QWidget):
                     continue
                 cards.append(self._shape_card(shape, owned))
         self.result_count.setText(
-            "库存暂不可用"
+            tr("库存暂不可用")
             if owned_only and self._controller.inventory is None
-            else f"{len(cards)} 项"
+            else tr("{count} 项", count=len(cards))
         )
         columns = 3 if self.width() >= 1050 else 2 if self.width() >= 650 else 1
         for index, card in enumerate(cards):

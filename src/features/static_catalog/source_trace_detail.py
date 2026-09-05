@@ -91,7 +91,7 @@ class SourceTraceDetail(QWidget):
             self.rows_layout.addWidget(group)
         self._next_offset = page.offset + len(page.rows)
         self.load_more_button.setEnabled(page.has_more)
-        self.load_more_button.setText("加载下一页" if page.has_more else "已加载全部来源行")
+        self.load_more_button.setText(tr("加载下一页") if page.has_more else tr("已加载全部来源行"))
 
     def _request_more(self) -> None:
         if self._source_file_id is not None:

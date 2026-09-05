@@ -176,8 +176,8 @@ class BattleDamageCompositionPanel(QWidget):
         header.addWidget(name)
         header.addStretch()
         total = QLabel(
-            f"总伤害  {_format_damage(role.total_damage)}  ·  "
-            f"{role.share_percent:.1f}% 总伤害"
+            tr("总伤害  {damage}  ·  {share:.1f}% 总伤害",
+               damage=_format_damage(role.total_damage), share=role.share_percent)
         )
         total.setStyleSheet(themed_style("font-size:12px;color:#8b949e"))
         header.addWidget(total)
@@ -204,8 +204,9 @@ class BattleDamageCompositionPanel(QWidget):
         header.addWidget(description)
         header.addStretch()
         total = QLabel(
-            f"{_format_damage(composition.system_total_damage)}  ·  "
-            f"{composition.system_share_percent:.1f}% 时段伤害"
+            tr("{damage}  ·  {share:.1f}% 时段伤害",
+               damage=_format_damage(composition.system_total_damage),
+               share=composition.system_share_percent)
         )
         total.setStyleSheet(themed_style("font-size:12px;color:#8b949e"))
         header.addWidget(total)
@@ -233,18 +234,19 @@ class BattleDamageCompositionPanel(QWidget):
         )
         header.addWidget(badge)
         description = QLabel(
-            "倾陷逐角色公式尚未加载"
+            tr("倾陷逐角色公式尚未加载")
             if composition.pending_topple_attribution
-            else "倾陷缺少明确目标或公式证据"
+            else tr("倾陷缺少明确目标或公式证据")
             if composition.unresolved_topple_attribution
-            else "完整、正常归属的战报这里应为 0"
+            else tr("完整、正常归属的战报这里应为 0")
         )
         description.setStyleSheet(themed_style("font-size:12px;color:#8b949e"))
         header.addWidget(description)
         header.addStretch()
         total = QLabel(
-            f"{_format_damage(composition.other_total_damage)}  ·  "
-            f"{composition.other_share_percent:.1f}% 时段伤害"
+            tr("{damage}  ·  {share:.1f}% 时段伤害",
+               damage=_format_damage(composition.other_total_damage),
+               share=composition.other_share_percent)
         )
         total.setStyleSheet(themed_style("font-size:12px;color:#8b949e"))
         header.addWidget(total)

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -51,7 +53,7 @@ class BattleAnalysisProgressBar(QFrame):
         self.progress.setRange(0, 0)
         self.progress.setTextVisible(False)
         self.message_label.setText(
-            _DETAIL_COPY.get(kind, "正在重建当前范围的战报分析…")
+            _DETAIL_COPY.get(kind, tr("正在重建当前范围的战报分析…"))
         )
         self.show()
 

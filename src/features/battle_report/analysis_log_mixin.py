@@ -189,7 +189,8 @@ class BattleAnalysisLogMixin:
                     item.setFont(font)
                 self.log_table.setItem(row, column, item)
         self.log_page_label.setText(
-            f"{self._log_page + 1} / {page_count} · {len(hits):,} 条"
+            tr("{page} / {pages} · {count:,} 条",
+               page=self._log_page + 1, pages=page_count, count=len(hits))
         )
         self.prev_button.setEnabled(self._log_page > 0)
         self.next_button.setEnabled(self._log_page + 1 < page_count)

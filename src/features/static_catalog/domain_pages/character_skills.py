@@ -421,7 +421,7 @@ class SkillActionCard(QFrame):
         if skill is None or level is None:
             self.drawer_layout.addWidget(self._muted("当前正式数据未提供可分级倍率"))
             return
-        title = QLabel(f"当前等级倍率 · Lv.{level}", self.drawer)
+        title = QLabel(tr("当前等级倍率 · Lv.{level}", level=level), self.drawer)
         title.setObjectName("characterSkillMultiplierTitle")
         title.setStyleSheet(themed_style(
             "color:#58a6ff;font-size:14px;font-weight:900"
@@ -453,7 +453,7 @@ class SkillActionCard(QFrame):
             self.drawer_layout.addWidget(row)
 
     def _render_passive(self, passive: CharacterPassive) -> None:
-        title = QLabel(f"突破 {passive.unlock_stage} 解锁", self.drawer)
+        title = QLabel(tr("突破 {stage} 解锁", stage=passive.unlock_stage), self.drawer)
         title.setStyleSheet(themed_style(
             "color:#58a6ff;font-size:14px;font-weight:900"
         ))
@@ -693,8 +693,8 @@ class CharacterSkillTrainingView(QWidget):
                     _number(item.quantity) if not item.hidden_amount else "数量未提供"
                 )
                 for item, projection in zip(level.costs, projections)
-            ) or "消耗暂未提供"
-            label = QLabel(f"升至 Lv.{cost_level + 1}    {text}", self)
+            ) or tr("消耗暂未提供")
+            label = QLabel(tr("升至 Lv.{level}    {text}", level=cost_level + 1, text=text), self)
             label.setWordWrap(True)
             label.setStyleSheet(themed_style(
                 "color:#c9d1d9;border-bottom:1px solid #30363d;padding:6px 2px"

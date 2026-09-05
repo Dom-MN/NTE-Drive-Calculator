@@ -376,7 +376,7 @@ class AttributeSummaryPanel(QFrame):
         ))
         layout.addWidget(header)
         if not rows:
-            empty = QLabel("无变化" if value_index == 2 else "暂无属性变化")
+            empty = QLabel(tr("无变化") if value_index == 2 else tr("暂无属性变化"))
             empty.setStyleSheet(themed_style(
                 "color:#6e7681;border:none;background:transparent"
             ))

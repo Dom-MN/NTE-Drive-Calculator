@@ -171,7 +171,7 @@ class BattleReportTransferDialog(QDialog):
         self.table.setRowCount(len(entries))
         self.table.setVisible(bool(entries))
         self.empty_label.setVisible(not entries)
-        self.count_label.setText(f"{len(entries)} 场可导出")
+        self.count_label.setText(tr("{count} 场可导出", count=len(entries)))
         self.export_button.setEnabled(bool(entries))
         self.select_all_button.setEnabled(bool(entries))
         self.clear_selection_button.setEnabled(bool(entries))

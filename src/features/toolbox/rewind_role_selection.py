@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import display_term, tr
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QToolButton
 
@@ -32,12 +34,13 @@ def configure_rewind_role_score_card(
     grade = loadout_total_grade(role.calculation_score)
     color = GRADE_COLORS.get(grade, "#58a6ff")
     score = f"{role.calculation_score:.2f}".rstrip("0").rstrip(".")
-    label.setText(f"最高分 {score} · {grade}")
+    label.setText(tr("最高分 {score} · {grade}", score=score, grade=grade))
     label.setStyleSheet(
         f"color:{color};font-size:11px;font-weight:800;"
         "border:none;background:transparent;padding:0"
     )
     card.setToolTip(
-        f"{role.name}\n当前计算配装最高分：{score}（{grade}）"
+        tr("{name}\n当前计算配装最高分：{score}（{grade}）",
+           name=display_term(role.name), score=score, grade=grade)
     )
     return label

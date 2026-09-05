@@ -588,7 +588,7 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
             if card.category
         )))
         for index, category in enumerate(categories):
-            button = QPushButton("全部" if not category else category, self.category_host)
+            button = QPushButton(tr("全部") if not category else category, self.category_host)
             button.setCheckable(True)
             button.setChecked(index == 0)
             button.clicked.connect(
@@ -658,7 +658,7 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
                 )
             self.browser_body.addWidget(host)
             if len(limited) < len(cards):
-                expand = QPushButton(f"展开全部往期（{len(cards)}）", self.browser_host)
+                expand = QPushButton(tr("展开全部往期（{count}）", count=len(cards)), self.browser_host)
                 expand.clicked.connect(
                     lambda _checked=False, value=section.title: self._expand_section(value)
                 )

@@ -187,14 +187,15 @@ class CharacterGrowthView(QWidget):
         ))
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
-        title = QLabel(f"Lv.{stage.level} · 突破 {stage.stage}", card)
+        title = QLabel(tr("Lv.{level} · 突破 {stage}", level=stage.level, stage=stage.stage), card)
         title.setStyleSheet(themed_style(
             "color:#58a6ff;font-size:13px;font-weight:900"
         ))
         delta = QLabel(
-            f"生命 +{_number(stage.after.hp_base - stage.before.hp_base)}   "
-            f"攻击 +{_number(stage.after.atk_base - stage.before.atk_base)}   "
-            f"防御 +{_number(stage.after.def_base - stage.before.def_base)}",
+            tr("生命 +{hp}   攻击 +{atk}   防御 +{df}",
+               hp=_number(stage.after.hp_base - stage.before.hp_base),
+               atk=_number(stage.after.atk_base - stage.before.atk_base),
+               df=_number(stage.after.def_base - stage.before.def_base)),
             card,
         )
         delta.setWordWrap(True)

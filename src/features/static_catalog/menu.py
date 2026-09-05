@@ -123,7 +123,7 @@ class CatalogMenuCard(QFrame):
         description = QLabel(self._entry.description, self)
         description.setWordWrap(True)
         description.setStyleSheet(themed_style("color:#8b949e;font-size:11px;line-height:1.35"))
-        state = QLabel("进入  ›" if self._available else "当前发行不可用", self)
+        state = QLabel(tr("进入  ›") if self._available else tr("当前发行不可用"), self)
         state.setStyleSheet(themed_style(
             f"color:{self._entry.accent if self._available else '#6e7681'};"
             "font-size:11px;font-weight:800;margin-top:4px"

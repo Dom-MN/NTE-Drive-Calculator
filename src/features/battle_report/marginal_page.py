@@ -449,15 +449,15 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
                 "—" if projected_damage is None else _number(projected_damage)
             )
             self.metric_subtitles["damage"].setText(
-                "等待候选重算"
-                if gain is None
-                else f"{gain:+.2f}% · 基线 {_number(comparison.baseline_damage)}"
+                tr("等待候选重算") if gain is None
+                else tr("{gain:+.2f}% · 基线 {baseline}", gain=gain,
+                        baseline=_number(comparison.baseline_damage))
             )
             self.metric_labels["structured"].setText(
                 f"{comparison.structured_percent:.1f}%"
             )
             self.metric_subtitles["structured"].setText(
-                f"估计 {max(0.0, 100.0 - comparison.structured_percent):.1f}%"
+                tr("估计 {value:.1f}%", value=max(0.0, 100.0 - comparison.structured_percent))
             )
             render_counterfactual_roles(
                 self.roles_table, self.roles_pie,
@@ -644,7 +644,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
         if self._draft_dirty:
             summary += " · 配置已变化，待重算"
         self.change_summary.setText(summary)
-        self.change_summary.setToolTip("当前候选：" + summary)
+        self.change_summary.setToolTip(tr("当前候选：{summary}", summary=summary))
 
     def _ensure_editor(self, index: int) -> OfficialRoleProfileEditor:
         existing = self._editors[index]
@@ -772,9 +772,9 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
                 "—" if projected_damage is None else _number(projected_damage)
             )
             self.metric_subtitles["role"].setText(
-                "等待候选重算"
-                if gain is None
-                else f"{gain:+.2f}% · 基线 {_number(role.baseline_damage)}"
+                tr("等待候选重算") if gain is None
+                else tr("{gain:+.2f}% · 基线 {baseline}", gain=gain,
+                        baseline=_number(role.baseline_damage))
             )
 
     def _render_attributes(self, baseline: BattleCharacterBaseline | None) -> None:

@@ -123,7 +123,7 @@ class ForkGalleryCard(QFrame):
             f"color:{color};background:#0d1117;border:1px solid {color};"
             "border-radius:9px;padding:2px 8px;font-size:10px;font-weight:900"
         ))
-        fork_type = QLabel(self.summary.fork_type_name_zh or "未分类", self)
+        fork_type = QLabel(self.summary.fork_type_name_zh or tr("未分类"), self)
         fork_type.setStyleSheet(themed_style(
             "color:#c9d1d9;background:#21262d;border:1px solid #30363d;"
             "border-radius:9px;padding:2px 8px;font-size:10px;font-weight:800"
@@ -133,7 +133,7 @@ class ForkGalleryCard(QFrame):
         badges.addStretch(1)
         campaign_title = campaign.title.display_name if campaign else "首发"
         limited = QLabel(
-            campaign_title or "名称暂未提供",
+            campaign_title or tr("名称暂未提供"),
             self,
         )
         limited.setStyleSheet(themed_style(
@@ -421,8 +421,9 @@ class ForkCatalogPage(QWidget):
             self._quality_filter is not None
         )
         self.filter_toggle.setText(
-            f"筛选{' · ' + str(active_count) if active_count else ''}  "
-            f"{'▴' if self.filter_toggle.isChecked() else '▾'}"
+            tr("筛选{count}  {arrow}",
+               count=f" · {active_count}" if active_count else "",
+               arrow="▴" if self.filter_toggle.isChecked() else "▾")
         )
         limited = tuple(
             item for item in self._visible

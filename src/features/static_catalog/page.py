@@ -591,7 +591,7 @@ class StaticCatalogPage:
         rows_layout = QVBoxLayout()
         rows_layout.setSpacing(7)
         layout.addLayout(rows_layout)
-        button = QPushButton(f"加载{group.label}", host)
+        button = QPushButton(tr("加载{label}", label=group.label), host)
         button.setObjectName("staticCatalogLoadRelations")
         layout.addWidget(button)
         state = {"offset": 0}
@@ -605,7 +605,7 @@ class StaticCatalogPage:
                     offset=state["offset"],
                 )
             except Exception as exc:
-                button.setText(f"加载失败：{exc}")
+                button.setText(tr("加载失败：{error}", error=exc))
                 button.setEnabled(False)
                 return
             for row in page.rows:
@@ -614,8 +614,8 @@ class StaticCatalogPage:
             has_more = state["offset"] < page.total
             button.setEnabled(has_more)
             button.setText(
-                f"加载下一页（{state['offset']} / {page.total}）"
-                if has_more else f"已加载全部（{page.total}）"
+                tr("加载下一页（{offset} / {total}）", offset=state["offset"], total=page.total)
+                if has_more else tr("已加载全部（{total}）", total=page.total)
             )
 
         button.clicked.connect(load_page)

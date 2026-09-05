@@ -80,8 +80,9 @@ class MonsterCatalogPanel(QWidget):
         heading.addWidget(title)
         heading.addStretch()
         metadata = QLabel(
-            f"{dataset.dataset_id} · schema {dataset.schema_version} · "
-            f"importer {dataset.importer_version} · 只读"
+            tr("{dataset} · schema {schema} · importer {importer} · 只读",
+               dataset=dataset.dataset_id, schema=dataset.schema_version,
+               importer=dataset.importer_version)
         )
         metadata.setTextInteractionFlags(Qt.TextSelectableByMouse)
         metadata.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
@@ -206,7 +207,7 @@ class MonsterCatalogPanel(QWidget):
         try:
             page = self._service.list_entries(filters)
         except Exception as exc:  # UI boundary: present query failure without hiding it.
-            self.result_status.setText(f"读取失败：{exc}")
+            self.result_status.setText(tr("读取失败：{error}", error=exc))
             self.load_more_button.setEnabled(False)
             return
         for entry in page.items:
@@ -219,7 +220,7 @@ class MonsterCatalogPanel(QWidget):
                 item.setToolTip(tr("中文文本在发行静态库中不可用；未做补猜。"))
             self.result_list.addItem(item)
         self.result_status.setText(
-            f"已加载 {self.result_list.count()} / {page.total} 条"
+            tr("已加载 {loaded} / {total} 条", loaded=self.result_list.count(), total=page.total)
         )
         self.load_more_button.setEnabled(page.has_more)
         self.load_more_button.setVisible(page.has_more)
