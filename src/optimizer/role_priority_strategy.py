@@ -11,6 +11,7 @@ from src.solver.blueprint_utils import dedupe_blueprints_by_piece_signature
 
 from src.optimizer.deferred_drive_reservations import DeferredDriveReservationMixin
 from src.optimizer.role_priority_group_strategy import RolePriorityGroupStrategyMixin
+from src.optimizer.reservation_matching import match_reserved_group_slots
 
 class RolePriorityStrategy(
     CritConstraintRepairMixin,
@@ -519,6 +520,8 @@ class RolePriorityStrategy(
         assigned_tapes: Dict[str, Tape],
         crit_priority_modes: Dict[str, dict],
         crit_rate_caps: Dict[str, float] | None = None,
+        *,
+        reservation_candidates: tuple[tuple[str, ...], ...] | None = None,
     ) -> AllocationResult:
         valid_group = []
         role_blueprints = []
@@ -597,7 +600,16 @@ class RolePriorityStrategy(
             if slots is None:
                 continue
 
-            row_ind, col_ind = linear_sum_assignment(-ranking_matrix)
+            if reservation_candidates is None:
+                row_ind, col_ind = linear_sum_assignment(-ranking_matrix)
+            else:
+                matching = match_reserved_group_slots(
+                    ranking_matrix, profit_matrix,
+                    tuple(drive.uid for drive in drives_pool), reservation_candidates,
+                )
+                if matching is None:
+                    continue
+                row_ind, col_ind = matching
             temp_alloc = self._init_temp_alloc(valid_group, assigned_tapes)
             is_valid = True
             assignments = []

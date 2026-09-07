@@ -59,6 +59,15 @@ class DeferredDriveReservationState:
     def consumed_uids(self) -> frozenset[str]:
         return frozenset(self._consumed_uids)
 
+    @property
+    def remaining_candidate_uids(self) -> tuple[tuple[str, ...], ...]:
+        """Freeze the remaining candidate relation in deterministic slot order."""
+
+        return tuple(
+            tuple(uid for uid in slot.candidate_uids if uid not in self._consumed_uids)
+            for slot in sorted(self._slots, key=lambda slot: (slot.group_index, slot.key))
+        )
+
     def slot(self, key: str) -> DeferredDriveSlot:
         for slot in self._slots:
             if slot.key == key:

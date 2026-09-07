@@ -215,6 +215,23 @@ def _choose_group_allocation(
 
     if best_allocation is not None:
         return best_allocation
+    if (
+        fallback is not None
+        and not strategy._group_uses_crit_thresholds(group, crit_priority_modes)
+        and not reservations.can_consume(strategy._allocated_drive_uids(fallback))
+    ):
+        # Keep every successful bounded-search result unchanged. Only the former
+        # conflicting failure retries with all earlier slots in the same matching.
+        recovered = strategy._find_best_group_fit(
+            group, drives_pool, custom_sets, assigned_tapes,
+            crit_priority_modes, crit_rate_caps,
+            reservation_candidates=reservations.remaining_candidate_uids,
+        )
+        if all(recovered.get(role, {}).get("valid") for role in group) and reservations.can_consume(
+            strategy._allocated_drive_uids(recovered)
+        ):
+            logger.info("同级组预留联合匹配恢复完成: 角色数={}", len(group))
+            return recovered
     return fallback or {role_name: {"valid": False} for role_name in group}
 
 
