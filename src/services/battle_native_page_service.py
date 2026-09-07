@@ -66,7 +66,10 @@ class BattleNativePageService:
             frozen_files += (Path(self._client.executable).resolve(),)
         def identities():
             return tuple(file_identity(path) for path in frozen_files)
-        frozen_identity = identities()
+        try:
+            frozen_identity = identities()
+        except FileNotFoundError:
+            raise NativeAnalysisError('战报分析发行资源缺失，请重新安装完整配套版本后重试') from None
         overall = BattlePageOverallProgress(request)
 
         def publish(event):

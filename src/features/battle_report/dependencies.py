@@ -57,7 +57,7 @@ class BattleReportServiceFactory:
             direct_formula_backend=client,
             native_page_loader=BattleNativePageService(
                 client=client, dependencies=dependencies,
-                semantics_path=self._app_context.paths.config_dir / 'gameplay_effect_semantics.json',
+                semantics_path=self._app_context.paths.bundled_config_dir / 'gameplay_effect_semantics.json',
                 context_is_current=self._context_is_current,
             ),
         )
