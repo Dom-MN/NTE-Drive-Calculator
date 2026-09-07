@@ -148,6 +148,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
         self.custom_sets: dict[str, str] = {}
         self.custom_weapons: dict[str, str] = {}
         self.crit_rate_caps: dict[str, float] = {}
+        self.crit_rate_cap_sources: dict[str, str] = {}
         self.tape_main_filters: dict[str, list[str]] = {}
         self.tape_main_filter_override_roles: set[str] = set()
         self.stat_priority_configs: dict[str, dict] = {}
@@ -434,22 +435,25 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
             self.custom_weapons[name] = weapon
         else:
             self.custom_weapons.pop(name, None)
-        cap = self._automatic_crit_rate_cap(name, weapon)
+        self.orderChanged.emit()
+
+    def _set_automatic_crit_rate_cap(self, name, weapon_name):
+        cap = self._automatic_crit_rate_cap(name, weapon_name)
         if cap is not None:
             self.crit_rate_caps[name] = cap
+            self.crit_rate_cap_sources[name] = "automatic"
+        else:
+            self.crit_rate_caps.pop(name, None)
+            self.crit_rate_cap_sources.pop(name, None)
         self.orderChanged.emit()
 
     def _set_crit_rate_cap(self, name, value):
         try:
             cap = float(value)
         except (TypeError, ValueError):
-            self.crit_rate_caps.pop(name, None)
-            self.orderChanged.emit()
-            return
-        if cap < 0:
-            self.crit_rate_caps.pop(name, None)
-        else:
-            self.crit_rate_caps[name] = round(min(cap, 100.0), 4)
+            cap = 0.0
+        self.crit_rate_caps[name] = round(min(max(cap, 0.0), 100.0), 4)
+        self.crit_rate_cap_sources[name] = "manual"
         self.orderChanged.emit()
 
     def _weapon_crit_rate_cap(self, weapon_name):

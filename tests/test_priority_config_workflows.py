@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 class PriorityGroupWorkflowTests(unittest.TestCase):
-    def test_auto_selected_fork_crit_bonus_reduces_equipment_cap(self):
+    def test_manual_cap_written_after_automatic_cap_overrides_it(self):
         from PySide6.QtWidgets import QApplication
 
         from src.features.allocation.role_selector import RoleSelector
@@ -26,8 +26,8 @@ class PriorityGroupWorkflowTests(unittest.TestCase):
         selector.selected = ["A"]
 
         self.assertEqual({"A": 68.0}, selector.get_crit_rate_caps())
-        selector.crit_rate_caps["A"] = 80.0
-        self.assertEqual({"A": 68.0}, selector.get_crit_rate_caps())
+        selector._set_crit_rate_cap("A", 80.0)
+        self.assertEqual({"A": 80.0}, selector.get_crit_rate_caps())
 
     def test_release_demon_blade_automatic_cap_is_sixty(self):
         from PySide6.QtWidgets import QApplication
@@ -51,8 +51,8 @@ class PriorityGroupWorkflowTests(unittest.TestCase):
         self.assertEqual(40.0, model["sub_stats"]["暴击率%"])  # 24 + 常驻 16
         self.assertEqual({"A": 60.0}, selector.get_crit_rate_caps())
         self.assertEqual({"A": 40.0}, selector.get_crit_rate_baselines())
-        selector.crit_rate_caps["A"] = 76.0  # 历史自动上限被保存为旧覆盖。
-        self.assertEqual({"A": 60.0}, selector.get_crit_rate_caps())
+        selector._set_crit_rate_cap("A", 76.0)
+        self.assertEqual({"A": 76.0}, selector.get_crit_rate_caps())
 
     def test_explicit_empty_protagonist_preferences_round_trip(self):
         from PySide6.QtWidgets import QApplication

@@ -272,17 +272,21 @@ class RoleSelectorPreferencesMixin:
             self.custom_weapons.get(name, "") or default_weapon
         )
         configured_cap = self.crit_rate_caps.get(name)
-        current_cap = automatic_cap if configured_cap is None else configured_cap
-        if automatic_cap is not None and configured_cap is not None:
-            current_cap = min(float(automatic_cap), float(configured_cap))
+        cap_source = self.crit_rate_cap_sources.get(name)
+        current_cap = automatic_cap if cap_source == "automatic" else configured_cap
+        if current_cap is None:
+            current_cap = automatic_cap
         if current_cap is not None:
             crit_cap_edit.setText(f"{float(current_cap):g}")
         crit_cap_edit.setPlaceholderText("留空不限制")
 
+        cap_text_edited = False
+        weapon_changed = False
+
         def apply_weapon_cap(text):
+            nonlocal cap_text_edited, weapon_changed
+            weapon_changed = True
             raw = str(text or "").strip()
-            if not raw:
-                return
             resolved = resolve_optional_priority_choice(weapon_names, raw)
             cap = (
                 self._automatic_crit_rate_cap(name, resolved)
@@ -290,8 +294,16 @@ class RoleSelectorPreferencesMixin:
             )
             if cap is not None:
                 crit_cap_edit.setText(f"{float(cap):g}")
+            else:
+                crit_cap_edit.clear()
+            cap_text_edited = False
+
+        def mark_cap_text_edited(_text):
+            nonlocal cap_text_edited
+            cap_text_edited = True
 
         weapon_combo.currentTextChanged.connect(apply_weapon_cap)
+        crit_cap_edit.textEdited.connect(mark_cap_text_edited)
         crit_row.addWidget(crit_cap_edit, 1)
         crit_row.addWidget(QLabel("%"))
         crit_cap_help = QPushButton("?")
@@ -319,7 +331,14 @@ class RoleSelectorPreferencesMixin:
                 weapon_value,
             )
             selected_weapon = resolved_weapon if resolved_weapon in weapon_names else ""
-            self._set_custom_weapon(name, selected_weapon)
+            if weapon_changed:
+                self._set_custom_weapon(name, selected_weapon)
+                if cap_text_edited:
+                    self._set_crit_rate_cap(name, crit_cap_edit.text().strip())
+                else:
+                    self._set_automatic_crit_rate_cap(name, selected_weapon)
+            elif cap_text_edited:
+                self._set_crit_rate_cap(name, crit_cap_edit.text().strip())
             self._set_tape_main_filter(name, selected_main_stats)
             self._set_stat_priority_config(
                 name,
@@ -331,9 +350,6 @@ class RoleSelectorPreferencesMixin:
                 crit_threshold_edit.text().strip(),
                 blacklist_zero_weight=blacklist_zero_weight.isChecked(),
             )
-            cap_text = crit_cap_edit.text().strip()
-            if cap_text or not selected_weapon:
-                self._set_crit_rate_cap(name, cap_text)
             self._set_set_effect_mode(name, effect_combo.currentData())
             self._render_grid(self.search.text())
 
@@ -344,6 +360,7 @@ class RoleSelectorPreferencesMixin:
         self.custom_sets.clear()
         self.custom_weapons.clear()
         self.crit_rate_caps.clear()
+        self.crit_rate_cap_sources.clear()
         self.tape_main_filters.clear()
         self.tape_main_filter_override_roles.clear()
         self.stat_priority_configs.clear()
@@ -436,7 +453,8 @@ class RoleSelectorPreferencesMixin:
         return {
             name: float(self.crit_rate_caps.get(name))
             for name in self.selected
-            if name in self.crit_rate_caps
+            if self.crit_rate_cap_sources.get(name) == "manual"
+            and float(self.crit_rate_caps.get(name, 0.0)) > 0.0
         }
 
     def get_crit_priority_mode_overrides(self):
@@ -469,14 +487,14 @@ class RoleSelectorPreferencesMixin:
         caps = {}
         for name in self.selected:
             configured_cap = self.crit_rate_caps.get(name)
-            automatic_cap = self._automatic_crit_rate_cap(
-                name,
-                self._effective_weapon_for_role(name)
-            )
-            cap = automatic_cap if configured_cap is None else configured_cap
-            if automatic_cap is not None and configured_cap is not None:
-                cap = min(float(configured_cap), float(automatic_cap))
-            if cap is not None:
+            cap_source = self.crit_rate_cap_sources.get(name)
+            if cap_source == "automatic":
+                cap = self._automatic_crit_rate_cap(name, self._effective_weapon_for_role(name))
+            elif configured_cap is not None:
+                cap = configured_cap
+            else:
+                cap = self._automatic_crit_rate_cap(name, self._effective_weapon_for_role(name))
+            if cap is not None and float(cap) > 0.0:
                 caps[name] = float(cap)
         return caps
 
@@ -517,7 +535,16 @@ class RoleSelectorPreferencesMixin:
             "custom_sets": self.get_custom_sets(),
             "custom_set_overrides": self.get_custom_sets(),
             "custom_weapons": self.get_custom_weapons(),
-            "crit_rate_caps": self.get_crit_rate_caps(),
+            "crit_rate_caps": {
+                name: float(self.crit_rate_caps[name])
+                for name in self.selected
+                if name in self.crit_rate_caps
+            },
+            "crit_rate_cap_sources": {
+                name: self.crit_rate_cap_sources[name]
+                for name in self.selected
+                if self.crit_rate_cap_sources.get(name) in {"automatic", "manual"}
+            },
             "tape_main_filters": {
                 name: list(self.tape_main_filters[name])
                 for name in self.selected
@@ -558,6 +585,7 @@ class RoleSelectorPreferencesMixin:
         self.custom_sets.clear()
         self.custom_weapons.clear()
         self.crit_rate_caps.clear()
+        self.crit_rate_cap_sources.clear()
         self.tape_main_filters.clear()
         self.tape_main_filter_override_roles.clear()
         self.stat_priority_configs.clear()
@@ -577,13 +605,27 @@ class RoleSelectorPreferencesMixin:
                 if role in self.all_roles and weapon and (not self.weapons_db or weapon in self.weapons_db)
             }
             self.crit_rate_caps = {}
+            self.crit_rate_cap_sources = {}
+            raw_cap_sources = data.get("crit_rate_cap_sources", {})
             for role, value in data.get("crit_rate_caps", {}).items():
                 if role not in self.all_roles:
                     continue
                 try:
-                    self.crit_rate_caps[role] = round(min(max(float(value), 0.0), 100.0), 4)
+                    cap = round(min(max(float(value), 0.0), 100.0), 4)
                 except (TypeError, ValueError):
                     continue
+                source = raw_cap_sources.get(role) if isinstance(raw_cap_sources, dict) else None
+                if source not in {"automatic", "manual"}:
+                    automatic_cap = self._automatic_crit_rate_cap(
+                        role, self._effective_weapon_for_role(role)
+                    )
+                    source = (
+                        "automatic"
+                        if automatic_cap is not None and abs(cap - automatic_cap) < 0.0001
+                        else "manual"
+                    )
+                self.crit_rate_caps[role] = cap
+                self.crit_rate_cap_sources[role] = source
             raw_filters = data.get("tape_main_filters", {})
             self.tape_main_filters = {}
             self.tape_main_filter_override_roles = {
