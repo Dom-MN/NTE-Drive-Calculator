@@ -663,9 +663,10 @@ def _build_fork_group(
     identity.addWidget(refinement)
     margin_label = QLabel("直伤收益: --")
     margin_label.setStyleSheet("color:#ffaa00;font-weight:bold;font-size:13px;")
-    margin_label.setVisible(show_direct_damage_margin)
     identity.addWidget(margin_label)
     layout.addLayout(identity)
+    # 先挂入 group，避免可见标签短暂成为顶层窗口。
+    margin_label.setVisible(show_direct_damage_margin)
     base_label = QLabel("基础加成（橙色为精炼无条件常驻）：")
     base_label.setStyleSheet("font-weight:bold;color:#58a6ff;")
     layout.addWidget(base_label)

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QScrollArea, QVBoxLayout, QW
 
 from src.features.official_role import role_shell
 from src.features.official_role import role_equipment
+from src.features.official_role import role_growth
 from src.services.world_bonus_settings_service import WorldBonusSettings
 
 
@@ -145,6 +146,48 @@ class OfficialRoleShellTests(unittest.TestCase):
         selector = group.findChild(QWidget, "officialRoleEquipmentContextSelector")
         self.assertIsNotNone(selector)
         self.assertFalse(selector.isWindow())
+
+    def test_fork_damage_margin_is_owned_before_becoming_visible(self) -> None:
+        observed_window_state: list[bool] = []
+        original = QLabel.setVisible
+
+        def observe(label, visible: bool) -> None:
+            if label.text() == "直伤收益: --":
+                observed_window_state.append(label.isWindow())
+            original(label, visible)
+
+        detail = {
+            "profile": {
+                "fork_id": None,
+                "fork_level": 80,
+                "fork_breakthrough_stage": None,
+                "fork_refinement_level": 1,
+            },
+            "forks": (),
+        }
+        with patch.object(QLabel, "setVisible", new=observe), patch.object(
+            role_growth, "fork_breakthrough_choices", return_value=[]
+        ), patch.object(
+            role_growth, "select_fork_breakthrough", return_value=None
+        ), patch.object(
+            role_growth, "fork_permanent_stats", return_value={}
+        ), patch.object(
+            role_growth, "fork_active_panel_stats", return_value={}
+        ), patch.object(
+            role_growth, "_calculation_detail", return_value={"profile": {}}
+        ), patch.object(
+            role_growth, "calculate_official_role_margins", return_value=None
+        ):
+            group = role_growth._build_fork_group(
+                SimpleNamespace(), 1001, detail, {}
+            )
+
+        self.assertEqual([False], observed_window_state)
+        margin = next(
+            label for label in group.findChildren(QLabel)
+            if label.text() == "直伤收益: --"
+        )
+        self.assertFalse(margin.isWindow())
 
 
 if __name__ == "__main__":
