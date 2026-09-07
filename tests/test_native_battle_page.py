@@ -6,6 +6,7 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 import tempfile
+import traceback
 import unittest
 from unittest.mock import Mock, patch
 
@@ -45,15 +46,53 @@ class NativeBattlePageTests(unittest.TestCase):
 
     def test_production_factory_injects_database_page_loader(self):
         from types import SimpleNamespace
+        from src.app.context import ApplicationPaths
         from src.features.battle_report.dependencies import BattleReportServiceFactory
+        root = self.static_path.parent
+        bundle = root / '_internal'
+        paths = ApplicationPaths.from_roots(
+            root=bundle, app_dir=root, data_root=root / 'user-data',
+            bundled_config_dir=bundle / 'config', asset_dir=bundle / 'assets',
+            app_icon_path=bundle / 'assets/app_icon.ico', static_database_path=self.static_path,
+        )
+        semantics_path = paths.bundled_config_dir / 'gameplay_effect_semantics.json'
+        semantics_path.parent.mkdir(parents=True)
+        semantics_path.write_text('{}', encoding='utf-8')
+        dependencies = BattleReportPersistenceDependencies('fixture', root / 'user.sqlite3', 8, self.static_path)
+        context = SimpleNamespace(paths=paths, generation=8, account=SimpleNamespace(
+            active_account_id='fixture', user_database_path=dependencies.user_database_path,
+        ))
+        client = Mock(supports_battle_page=True, load_battle_page=Mock(return_value={}))
+        for user_override in (False, True):
+            with self.subTest(user_override=user_override):
+                if user_override:
+                    paths.config_dir.mkdir(parents=True)
+                    (paths.config_dir / semantics_path.name).write_text('invalid override', encoding='utf-8')
+                with patch('src.features.battle_report.dependencies.create_bundled_analysis_client', return_value=client):
+                    with patch('src.features.battle_report.dependencies.BattleReportHistoryService') as history:
+                        BattleReportServiceFactory(context).history_service(dependencies)
+                loader = history.call_args.kwargs['native_page_loader']
+                self.assertIsInstance(loader, BattleNativePageService)
+                self.assertIs(history.call_args.kwargs['direct_formula_backend'], client)
+                with patch('src.services.battle_native_page_service.decode_page', return_value='rendered'):
+                    self.assertEqual(loader.load(BattleReportAnalysisLoadRequest(7)), 'rendered')
+                payload = client.load_battle_page.call_args.args[0]
+                self.assertEqual(Path(payload['semantics_path']), semantics_path.resolve())
+
+    def test_missing_release_resource_reports_error_and_can_retry_after_repair(self):
         dependencies = BattleReportPersistenceDependencies('fixture', Path('user.sqlite3'), 8, self.static_path)
-        context = SimpleNamespace(paths=SimpleNamespace(config_dir=self.semantics_path.parent))
-        client = Mock(supports_battle_page=True)
-        with patch('src.features.battle_report.dependencies.create_bundled_analysis_client', return_value=client):
-            with patch('src.features.battle_report.dependencies.BattleReportHistoryService') as history:
-                BattleReportServiceFactory(context).history_service(dependencies)
-        self.assertIsInstance(history.call_args.kwargs['native_page_loader'], BattleNativePageService)
-        self.assertIs(history.call_args.kwargs['direct_formula_backend'], client)
+        client = Mock(supports_battle_page=True, load_battle_page=Mock(return_value={}))
+        service = BattleNativePageService(client=client, dependencies=dependencies,
+            semantics_path=self.semantics_path, context_is_current=lambda _: True)
+        self.semantics_path.unlink()
+        with self.assertRaisesRegex(NativeAnalysisError, '发行资源缺失') as raised:
+            service.load(BattleReportAnalysisLoadRequest(7))
+        self.assertNotIn(str(self.semantics_path.parent), str(raised.exception))
+        self.assertNotIn(str(self.semantics_path.parent), ''.join(traceback.format_exception(raised.exception)))
+        client.load_battle_page.assert_not_called()
+        self.semantics_path.write_text('{}', encoding='utf-8')
+        with patch('src.services.battle_native_page_service.decode_page', return_value='rendered'):
+            self.assertEqual(service.load(BattleReportAnalysisLoadRequest(7)), 'rendered')
 
     def test_wire_rejects_unrecognized_fields(self):
         raw = json.loads(json.dumps(asdict(_snapshot())))
