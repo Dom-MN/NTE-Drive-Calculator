@@ -31,9 +31,9 @@ from src.services.battle_fixed_critical_ratio_service import (
     is_continuous_direct_hit,
     is_fixed_half_critical_hit,
 )
-from src.services.battle_hit_counterfactual_ratio_service import (
-    BattleHitCounterfactualRatioService,
-)
+from src.services.battle_native_counterfactual import compare_counterfactual_batch
+from src.services.battle_hit_counterfactual_ratio_service import BattleHitCounterfactualRatioService
+from src.domain.native_analysis import available_battle_compute
 from src.services.battle_marginal_calculation_support import (
     ATTRIBUTE_ELEMENT_PROPERTY as _ATTRIBUTE_ELEMENT_PROPERTY,
     DAMAGE_PENETRATION_PROPERTY as _DAMAGE_PENETRATION_PROPERTY,
@@ -50,13 +50,14 @@ from src.services.battle_marginal_formula_scope import (
     prepare_marginal_formula_scope,
     property_owner_matches,
 )
+from src.services.battle_marginal_calculation_progress import marginal_progress_items
+from src.services.battle_analysis_progress import BattleAnalysisProgressCallback, report_battle_analysis_progress
 from src.services.battle_marginal_display_metrics import marginal_display_metrics
-from src.services.battle_weave_source_service import find_paired_weave_source_hit
-
-
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
+from src.services.battle_topple_marginal import topple_ratio, topple_ratio_batch
+from src.services.battle_weave_source_service import BattleWeaveSourceLookup, find_paired_weave_source_hit
 class BattleMarginalCalculationService:
     """Calculate role margins without mistaking inferred Buffs for raw facts."""
-
     @staticmethod
     def default_units(
         baseline: BattleCharacterBaseline,
@@ -68,7 +69,7 @@ class BattleMarginalCalculationService:
             baseline,
             hits=hits,
             replays=replays,
-            topple_ratio=BattleMarginalCalculationService._topple_ratio,
+            topple_ratio=topple_ratio,
         )
 
     @classmethod
@@ -79,6 +80,8 @@ class BattleMarginalCalculationService:
         character_id: int,
         edited_values: Mapping[str, float],
         units: Mapping[str, float],
+        projection_memo: BattleBuffProjectionMemo | None = None,
+        progress_callback: BattleAnalysisProgressCallback | None = None,
     ) -> tuple[BattleMarginalResult, ...]:
         baseline = next(
             (row for row in analysis.baselines if row.character_id == character_id),
@@ -91,7 +94,7 @@ class BattleMarginalCalculationService:
             **frozen,
             **{str(key): float(value) for key, value in edited_values.items()},
         }
-        scope = prepare_marginal_formula_scope(analysis, character_id)
+        scope = prepare_marginal_formula_scope(analysis, character_id, projection_memo=projection_memo)
         outgoing_hits = scope.outgoing_hits
         role_hits = scope.role_hits
         max_hp_events = tuple(getattr(analysis, "max_hp_events", ()))
@@ -105,7 +108,7 @@ class BattleMarginalCalculationService:
             0.0,
         )
         fallback_role_damage = sum(
-            hit.damage for hit in outgoing_hits if hit.character_id == character_id
+            hit.damage for hit in marginal_progress_items(outgoing_hits, progress_callback) if hit.character_id == character_id
         ) + derived_damage
         composition = BattleDamageCompositionService.calculate_from_hits(
             roles=(),
@@ -115,7 +118,7 @@ class BattleMarginalCalculationService:
             segment_total_damage=max(0.0, float(analysis.effective_damage)),
             role_identities=tuple(sorted({
                 int(hit.character_id): hit.character_name
-                for hit in outgoing_hits
+                for hit in marginal_progress_items(outgoing_hits, progress_callback)
                 if hit.character_id is not None
             }.items())),
         )
@@ -177,8 +180,9 @@ class BattleMarginalCalculationService:
             )
         )
         team_denominator_status = cls._denominator_status(comparison)
-        results = []
-        for property_id, raw_unit in units.items():
+        prepared_units = []
+        comparison_jobs = []
+        for property_id, raw_unit in marginal_progress_items(units.items(), progress_callback, interval=1):
             unit = float(raw_unit)
             changed = dict(edited)
             changed[property_id] = changed.get(property_id, 0.0) + unit
@@ -186,11 +190,11 @@ class BattleMarginalCalculationService:
             changed_baseline = cls._baseline_with_values(baseline, changed)
             relevant_hits = tuple(
                 hit
-                for hit in role_hits
+                for hit in marginal_progress_items(role_hits, progress_callback)
                 if property_owner_matches(
                     property_id,
                     hit,
-                    outgoing_hits,
+                    scope.weave_sources,
                     replays,
                     character_id=character_id,
                     weave_source_properties=_WEAVE_SOURCE_PROPERTIES,
@@ -203,11 +207,12 @@ class BattleMarginalCalculationService:
             )
             hit_ratios: dict[str, BattleCounterfactualRatio] = {}
             property_projections = {}
-            for hit in relevant_hits:
+            job_indices = {}
+            for hit in marginal_progress_items(relevant_hits, progress_callback):
                 formula_hit = cls._attack_formula_hit(
                     property_id,
                     hit,
-                    outgoing_hits,
+                    scope.weave_sources,
                 )
                 if formula_hit is None:
                     property_projections[hit.event_id] = scope.formula_projections[
@@ -216,7 +221,7 @@ class BattleMarginalCalculationService:
                     hit_ratios[hit.event_id] = cls._missing_linked_source_ratio()
                 else:
                     projection_hit = (
-                        find_paired_weave_source_hit(hit, outgoing_hits)
+                        find_paired_weave_source_hit(hit, scope.weave_sources)
                         if property_id == "MagBase"
                         and hit.classification == "weave"
                         else formula_hit
@@ -230,8 +235,9 @@ class BattleMarginalCalculationService:
                     property_projections[hit.event_id] = projection_map[
                         projection_hit.event_id
                     ]
-                    hit_ratios[hit.event_id] = (
-                        BattleHitCounterfactualRatioService.compare(
+                    job_indices[hit.event_id] = len(comparison_jobs)
+                    comparison_jobs.append(
+                        dict(
                             hit=formula_hit,
                             original_baseline=edited_baseline,
                             candidate_baseline=changed_baseline,
@@ -241,13 +247,26 @@ class BattleMarginalCalculationService:
                             target_condition=scope.target_conditions[hit.event_id],
                         )
                     )
+            prepared_units.append((property_id, unit, relevant_hits, property_projections, hit_ratios, job_indices))
+        native = None if projection_memo is None else projection_memo.native
+        computed_ratios = compare_counterfactual_batch(
+            comparison_jobs, backend=available_battle_compute(None if native is None else native.backend),
+            checkpoint=lambda: report_battle_analysis_progress(
+                progress_callback, phase="marginal", message="正在整批计算属性变化的逐击收益…",
+            ),
+        )
+        results = []
+        for property_id, unit, relevant_hits, property_projections, hit_ratios, job_indices in prepared_units:
+            for event_id, index in job_indices.items():
+                hit_ratios[event_id] = computed_ratios[index]
+            for hit in marginal_progress_items(relevant_hits, progress_callback):
                 hit_ratios[hit.event_id] = cls._inherit_anchor_status(
                     hit_ratios[hit.event_id],
                     anchor_quantification(hit),
                 )
             baseline_hit_damage_by_event = {
                 hit.event_id: anchor_damage(hit)
-                for hit in role_hits
+                for hit in marginal_progress_items(role_hits, progress_callback)
             }
             projected_hits = {
                 hit.event_id: HitProjection(
@@ -260,7 +279,7 @@ class BattleMarginalCalculationService:
                     ),
                     quantification=hit_ratios[hit.event_id],
                 )
-                for hit in relevant_hits
+                for hit in marginal_progress_items(relevant_hits, progress_callback)
             }
             comparison_vital = {
                 row.event_id: row
@@ -319,27 +338,20 @@ class BattleMarginalCalculationService:
                         current_vital_quantification,
                     )
                 linked_vital.append(projected_vital)
-            topple_hits = tuple(
-                hit
-                for hit in outgoing_hits
-                if property_id == "UnbalIntensityBase"
-                and cls._topple_ratio(
-                    replays.get(hit.event_id),
-                    character_id=character_id,
-                    unit=0.0,
-                ) is not None
-            )
-            topple_ratios = {
-                hit.event_id: ratio
-                for hit in topple_hits
-                if (
-                    ratio := cls._topple_ratio(
-                        replays.get(hit.event_id),
-                        character_id=character_id,
-                        unit=unit,
-                    )
-                ) is not None
-            }
+            topple_hits, topple_ratios = (), {}
+            if property_id == "UnbalIntensityBase":
+                retained, changed = topple_ratio_batch(
+                    tuple(replays.get(hit.event_id) for hit in outgoing_hits),
+                    character_id=character_id, units=(0.0, unit),
+                    backend=available_battle_compute(None if native is None else native.backend),
+                    checkpoint=lambda: report_battle_analysis_progress(
+                        progress_callback, phase="marginal", message="正在批量比较逐角色倾陷贡献…",
+                    ),
+                )
+                topple_hits = tuple(hit for hit, ratio in zip(outgoing_hits, retained, strict=True) if ratio is not None)
+                topple_ratios = {hit.event_id: ratio for hit, baseline_ratio, ratio
+                                in zip(outgoing_hits, retained, changed, strict=True)
+                                if baseline_ratio is not None and ratio is not None}
             quantification, known_increment = quantify_marginal(
                 role_damage=role_damage,
                 relevant_hits=relevant_hits,
@@ -447,7 +459,7 @@ class BattleMarginalCalculationService:
                     critical_policies=tuple(
                         "fixed" if is_fixed_half_critical_hit(hit)
                         else cls._critical_policy(replays.get(hit.event_id))
-                        for hit in role_hits
+                        for hit in marginal_progress_items(role_hits, progress_callback)
                         if is_fixed_half_critical_hit(hit) or hit.classification
                         in {"direct", "direct_follow_up", "weave"}
                     ),
@@ -470,7 +482,6 @@ class BattleMarginalCalculationService:
             ),
             reverse=True,
         ))
-
     @staticmethod
     def _counterfactual_projection(row: object, *, fallback: float) -> float:
         """Use only complete or known-component projections, never heuristics."""
@@ -480,7 +491,6 @@ class BattleMarginalCalculationService:
             if value is not None:
                 return max(0.0, float(value))
         return max(0.0, float(fallback))
-
     @staticmethod
     def _denominator_status(row: object | None) -> QuantificationStatus:
         if row is None:
@@ -693,7 +703,7 @@ class BattleMarginalCalculationService:
     def _attack_formula_hit(
         property_id: str,
         hit: BattleAnalysisHit,
-        all_hits: Sequence[BattleAnalysisHit],
+        all_hits: BattleWeaveSourceLookup,
     ) -> BattleAnalysisHit | None:
         """Route source-consuming weave fields through the paired direct hit."""
 
@@ -734,56 +744,6 @@ class BattleMarginalCalculationService:
             return "character"
         policy = str(getattr(replay, "critical_policy", "unknown"))
         return policy if policy in {"character", "fixed", "disabled"} else "unknown"
-
-    @staticmethod
-    def _topple_ratio(
-        replay: BattleHitReplayResult | None,
-        *,
-        character_id: int,
-        unit: float,
-    ) -> float | None:
-        """Scale one retained team-topple cell without rebuilding its formula."""
-
-        if replay is None or replay.critical_state == "unreplayable":
-            return None
-        contributions = tuple(
-            factor
-            for factor in replay.factors
-            if factor.factor_id.startswith("topple_character:")
-        )
-        source = next(
-            (
-                factor
-                for factor in contributions
-                if factor.factor_id == f"topple_character:{character_id}"
-            ),
-            None,
-        )
-        total = sum(max(0.0, float(factor.value)) for factor in contributions)
-        if source is None or total <= 0.0:
-            return None
-
-        def term_total(*property_ids: str) -> float:
-            accepted = set(property_ids)
-            return sum(
-                float(term.value)
-                for term in source.terms
-                if term.property_id in accepted
-            )
-
-        base = max(0.0, term_total("UnbalIntensityBase"))
-        up = term_total("UnbalIntensityUp")
-        add = term_total("UnbalIntensityAdd")
-        damage_up = term_total("UnbalDamageUp", "ToppleDamageUp")
-        strength = base * (1.0 + up) + add
-        changed_strength = max(0.0, base + unit) * (1.0 + up) + add
-        current_zone = 1.0 + strength / 300.0 + damage_up
-        changed_zone = 1.0 + changed_strength / 300.0 + damage_up
-        if current_zone <= 0.0 or changed_zone < 0.0:
-            return None
-        changed_source = max(0.0, float(source.value)) * changed_zone / current_zone
-        changed_total = total - max(0.0, float(source.value)) + changed_source
-        return changed_total / total
 
     @staticmethod
     def _label(property_id: str, baseline: BattleCharacterBaseline) -> str:

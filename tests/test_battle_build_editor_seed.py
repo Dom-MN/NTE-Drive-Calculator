@@ -87,6 +87,7 @@ class BattleBuildEditorSeedTests(unittest.TestCase):
     def setUp(self) -> None:
         dao = _FakeBattleDao()
         service = object.__new__(BattleReportHistoryService)
+        service.native_page_loader = None
         service._dependencies = SimpleNamespace(
             user_database_path=Path("account.sqlite3"),
             static_database_path=Path("static.sqlite3"),

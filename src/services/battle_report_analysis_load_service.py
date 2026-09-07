@@ -8,6 +8,8 @@ from pathlib import Path
 
 from src.domain.battle_marginal_benefit import BattleMarginalBenefits
 from src.domain.battle_report import BattleAnalysisSnapshot
+from src.domain.battle_hit_details import BattlePageHitDetails
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
 from src.services.battle_build_counterfactual_service import (
     BattleBuildCounterfactualService,
 )
@@ -15,10 +17,12 @@ from src.services.battle_build_timeline_projection_service import (
     BattleBuildTimelineProjectionService,
 )
 from src.services.battle_report_history_service import BattleReportHistoryService
+from src.services.battle_report_analysis_inputs import BattleReportAnalysisInputs
 from src.services.battle_marginal_candidate_service import BattleMarginalCandidate
 from src.services.battle_marginal_benefit_service import (
     BattleMarginalBenefitService,
 )
+from src.services.battle_marginal_panel_service import BattleMarginalPanelResult, BattleMarginalPanelService
 from src.services.battle_analysis_progress import (
     BattleAnalysisProgressCallback,
     report_battle_analysis_progress,
@@ -41,6 +45,7 @@ class BattleReportAnalysisLoadRequest:
         compare=False,
         repr=False,
     )
+    marginal_drive_units: tuple[tuple[str, float], ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +54,9 @@ class BattleReportAnalysisLoadResult:
     target_catalog: dict[str, object] | None
     target_catalog_error: Exception | None = None
     marginal_benefits: BattleMarginalBenefits | None = None
+    marginal_panel: BattleMarginalPanelResult | None = None
+    candidate_display_analysis: BattleAnalysisSnapshot | None = None
+    hit_details: BattlePageHitDetails | None = None
 
 
 class BattleReportAnalysisLoadService:
@@ -62,6 +70,8 @@ class BattleReportAnalysisLoadService:
         *,
         progress_callback: BattleAnalysisProgressCallback | None,
         progress_options: dict[str, BattleAnalysisProgressCallback],
+        projection_memo: BattleBuffProjectionMemo,
+        frozen_inputs: BattleReportAnalysisInputs,
     ) -> BattleAnalysisSnapshot:
         """Turn the enabled saved edit into the authoritative current axis."""
 
@@ -79,6 +89,8 @@ class BattleReportAnalysisLoadService:
             include_buff_inference=True,
             include_hit_replays=True,
             include_buff_counterfactuals=False,
+            frozen_inputs=frozen_inputs,
+            projection_memo=projection_memo,
             **progress_options,
         )
         if frozen_original is None:
@@ -91,6 +103,7 @@ class BattleReportAnalysisLoadService:
         comparison = BattleBuildCounterfactualService.compare(
             original=frozen_original,
             candidate=effective,
+            projection_memo=projection_memo,
             **progress_options,
         )
         projected = BattleBuildTimelineProjectionService.project(
@@ -107,6 +120,8 @@ class BattleReportAnalysisLoadService:
         progress_callback: BattleAnalysisProgressCallback | None = None,
     ) -> BattleReportAnalysisLoadResult:
         detail_level = request.detail_level
+        if history.native_page_loader is not None:
+            return history.native_page_loader.load(request, progress_callback=progress_callback)
         if detail_level not in {"overview", "hit", "buff", "marginal"}:
             raise ValueError(f"unsupported battle analysis detail: {detail_level}")
         candidate = request.marginal_candidate
@@ -139,6 +154,17 @@ class BattleReportAnalysisLoadService:
             if progress_callback is None
             else {"progress_callback": progress_callback}
         )
+        projection_memo = history.new_projection_memo(progress_callback=progress_callback) if detail_level == "marginal" else None
+        input_options = {}
+        if detail_level == "marginal":
+            report_battle_analysis_progress(
+                progress_callback, phase="load",
+                message="正在冻结本次候选共用的战报事实…",
+            )
+            input_options = {
+                "frozen_inputs": history.freeze_analysis_inputs(request.battle_record_id),
+                "projection_memo": projection_memo,
+            }
         analysis = history.load_analysis(
             request.battle_record_id,
             start_us=request.start_us,
@@ -149,6 +175,7 @@ class BattleReportAnalysisLoadService:
             include_buff_counterfactuals=include_buff_counterfactuals,
             **progress_options,
             **candidate_options,
+            **input_options,
         )
         materialize_baseline = (
             BattleReportAnalysisLoadService._materialize_marginal_baseline
@@ -164,6 +191,8 @@ class BattleReportAnalysisLoadService:
                 analysis,
                 progress_callback=progress_callback,
                 progress_options=progress_options,
+                projection_memo=projection_memo,
+                frozen_inputs=input_options["frozen_inputs"],
             )
         elif detail_level == "marginal" and analysis is not None:
             baseline = request.comparison_baseline
@@ -206,6 +235,7 @@ class BattleReportAnalysisLoadService:
                     include_hit_replays=True,
                     include_buff_counterfactuals=False,
                     **progress_options,
+                    **input_options,
                 )
                 baseline = (
                     None
@@ -216,6 +246,8 @@ class BattleReportAnalysisLoadService:
                         effective,
                         progress_callback=progress_callback,
                         progress_options=progress_options,
+                        projection_memo=projection_memo,
+                        frozen_inputs=input_options["frozen_inputs"],
                     )
                 )
             if baseline is not None:
@@ -229,6 +261,7 @@ class BattleReportAnalysisLoadService:
                     build_counterfactual=BattleBuildCounterfactualService.compare(
                         original=baseline,
                         candidate=analysis,
+                        projection_memo=projection_memo,
                         **progress_options,
                     ),
                 )
@@ -253,6 +286,7 @@ class BattleReportAnalysisLoadService:
                     include_hit_replays=True,
                     include_buff_counterfactuals=False,
                     **progress_options,
+                    **input_options,
                 )
 
             marginal_benefits = BattleMarginalBenefitService.calculate(
@@ -262,12 +296,31 @@ class BattleReportAnalysisLoadService:
                 static_database_path=request.static_database_path,
                 load_variant=load_variant,
                 progress_callback=progress_callback,
+                projection_memo=projection_memo,
             )
+        marginal_panel = None
+        if (detail_level == "marginal" and analysis is not None
+                and request.selected_character_id is not None and request.marginal_drive_units is not None):
+            report_battle_analysis_progress(progress_callback, phase="marginal_panel", message="正在计算人物动态面板与属性边际…")
+            marginal_panel = BattleMarginalPanelService.calculate(
+                analysis=analysis, character_id=request.selected_character_id,
+                drive_units=dict(request.marginal_drive_units), projection_memo=projection_memo,
+                progress_callback=progress_callback,
+            )
+            report_battle_analysis_progress(progress_callback, phase="marginal_panel", message="人物动态面板与属性边际已完成")
+        display_comparison = getattr(analysis, "build_counterfactual", None)
+        candidate_display_analysis = (
+            BattleBuildTimelineProjectionService.project(analysis, display_comparison)
+            if analysis is not None and display_comparison is not None
+            else None
+        )
         if analysis is None or not analysis.timeline_hits:
             return BattleReportAnalysisLoadResult(
                 analysis,
                 None,
                 marginal_benefits=marginal_benefits,
+                marginal_panel=marginal_panel,
+                candidate_display_analysis=candidate_display_analysis,
             )
         report_battle_analysis_progress(
             progress_callback,
@@ -282,9 +335,13 @@ class BattleReportAnalysisLoadService:
                 target_catalog=None,
                 target_catalog_error=error,
                 marginal_benefits=marginal_benefits,
+                marginal_panel=marginal_panel,
+                candidate_display_analysis=candidate_display_analysis,
             )
         return BattleReportAnalysisLoadResult(
             analysis,
             target_catalog,
             marginal_benefits=marginal_benefits,
+            marginal_panel=marginal_panel,
+            candidate_display_analysis=candidate_display_analysis,
         )

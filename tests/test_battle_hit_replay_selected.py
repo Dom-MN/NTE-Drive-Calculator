@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.domain.battle_report import (
+    BattleAnalysisHit,
     BattleHitReplayResult,
     BattleInferredBuffInterval,
     BattleSkillDamageEvidence,
@@ -32,14 +33,16 @@ from src.services.battle_topple_hit_replay_service import (
 @dataclass(frozen=True)
 class _ReplayAnalysis:
     hits: tuple[object, ...]
+    timeline_hits: tuple[object, ...] = ()
     baselines: tuple[object, ...] = ()
     buff_intervals: tuple[object, ...] = ()
     target_condition: BattleTargetCondition | None = None
 
 
-def _hit(event_id: str, *, classification: str = "direct") -> SimpleNamespace:
-    return SimpleNamespace(
+def _hit(event_id: str, *, classification: str = "direct") -> BattleAnalysisHit:
+    return BattleAnalysisHit(
         event_id=event_id,
+        sequence=1,
         direction="outgoing",
         classification=classification,
         is_follow_up=False,

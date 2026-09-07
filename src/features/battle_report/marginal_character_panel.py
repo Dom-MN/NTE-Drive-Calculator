@@ -26,11 +26,9 @@ from src.domain.battle_report import (
 from src.features.battle_report.marginal_result_table_view import (
     render_attribute_results,
 )
-from src.services.battle_marginal_calculation_service import (
-    BattleMarginalCalculationService,
-)
-from src.services.battle_marginal_calculation_support import (
-    drive_substat_marginal_units,
+from src.services.battle_marginal_panel_service import (
+    BattleMarginalPanelResult,
+    CHARACTER_PANEL_DYNAMIC_PROPERTIES as _DYNAMIC_PROPERTIES,
 )
 
 
@@ -99,37 +97,13 @@ _PANEL_PROPERTIES = (
     _PanelProperty("UltraEnergyAdd", "额外终结技能量"),
 )
 _DERIVED_PROPERTIES = frozenset({"PanelAtk", "PanelHP", "PanelDef"})
-_DYNAMIC_PROPERTIES = frozenset({
-    "CritBase", "CritDamageBase", "DamageUpGeneralBase", "MagBase",
-    "AtkUp", "AtkAdd", "HPMaxUp", "HPMaxAdd", "DefUp", "DefAdd",
-    "DefIgnore", "UnbalIntensityBase",
-    *(row.property_id for row in _ELEMENT_PROPERTIES),
-    *(row.property_id for row in _PENETRATION_PROPERTIES),
-})
-
-
-def character_panel_marginal_units(
-    drive_units: Mapping[str, float],
-) -> dict[str, float]:
-    """Add zero-delta rows needed only to project the current dynamic panel."""
-
-    return {
-        **{str(key): float(value) for key, value in drive_units.items()},
-        **{
-            property_id: 0.0
-            for property_id in _DYNAMIC_PROPERTIES
-            if property_id not in drive_units
-        },
-    }
-
-
 def render_character_panel_and_margins(
     panel: "BattleMarginalCharacterPanel",
     attribute_table: QTableWidget,
     *,
     analysis: BattleAnalysisSnapshot | None,
     baseline: BattleCharacterBaseline | None,
-    scoring_engine: object | None,
+    marginal_panel: BattleMarginalPanelResult | None,
 ) -> None:
     """Render both views from one shared fixed-axis marginal calculation."""
 
@@ -137,16 +111,9 @@ def render_character_panel_and_margins(
         panel.clear()
         attribute_table.setRowCount(0)
         return
-    stat_catalog = getattr(scoring_engine, "stat_catalog", None)
-    drive_units = drive_substat_marginal_units(
-        getattr(stat_catalog, "gold_base_values", None),
-    )
-    results = BattleMarginalCalculationService.calculate(
-        analysis=analysis,
-        character_id=baseline.character_id,
-        edited_values={},
-        units=character_panel_marginal_units(drive_units),
-    )
+    current = marginal_panel if marginal_panel is not None and marginal_panel.character_id == baseline.character_id else None
+    results = () if current is None else current.results
+    drive_property_ids = () if current is None else current.drive_property_ids
     panel.render(
         baseline,
         results,
@@ -154,7 +121,7 @@ def render_character_panel_and_margins(
     )
     render_attribute_results(
         attribute_table,
-        tuple(row for row in results if row.property_id in drive_units),
+        tuple(row for row in results if row.property_id in drive_property_ids),
     )
 
 
@@ -332,6 +299,5 @@ class BattleMarginalCharacterPanel(QFrame):
 
 __all__ = [
     "BattleMarginalCharacterPanel",
-    "character_panel_marginal_units",
     "render_character_panel_and_margins",
 ]

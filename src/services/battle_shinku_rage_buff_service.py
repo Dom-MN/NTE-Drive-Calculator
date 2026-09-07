@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from math import isfinite
 from typing import Any
+from src.services.battle_state_payload import HIT_FIELDS, state_rows, state_row
+from src.domain.native_analysis import BattleComputeBackend
+from src.services.battle_character_state_compute import compute_character_state
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -62,6 +65,8 @@ class BattleShinkuRageBuffService:
         build: Mapping[str, Any] | None,
         hits: Sequence[BattleAnalysisHit],
         config: BattleShinkuRageConfig | None,
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleInferredBuffInterval, ...]:
         character = next((
             row for row in (build or {}).get("characters") or ()
@@ -75,19 +80,39 @@ class BattleShinkuRageBuffService:
             row.get("effect_id") == "resonance_3"
             for row in active_awaken_effects(profile, config.awakenings)
         )
+        native = compute_character_state("shinku", {
+            "hits": state_rows(hits, HIT_FIELDS), "resonance": resonance,
+            "config": state_row(config, ("damage_up", "resonance_damage_up")) if config is not None else None,
+            "damage_ids": sorted(SHINKU_RAGE_DAMAGE_IDS),
+        }, backend=compute_backend, checkpoint=checkpoint) if (
+            isinstance(compute_backend, BattleComputeBackend) and compute_backend.supports_battle_compute
+        ) else None
         grouped: dict[int, list[str]] = {}
-        for hit in hits:
-            if (
-                hit.character_id == 1076
-                and hit.direction == "outgoing"
-                and hit.gameplay_effect_id.casefold() in SHINKU_RAGE_DAMAGE_IDS
-            ):
-                grouped.setdefault(hit.relative_time_us, []).append(hit.event_id)
+        if native is None:
+            for hit in hits:
+                if (
+                    hit.character_id == 1076
+                    and hit.direction == "outgoing"
+                    and hit.gameplay_effect_id.casefold() in SHINKU_RAGE_DAMAGE_IDS
+                ):
+                    grouped.setdefault(hit.relative_time_us, []).append(hit.event_id)
+        else:
+            groups = native.get("groups")
+            if not isinstance(groups, list):
+                raise ValueError("invalid_character_state_result")
+            for group in groups:
+                if (not isinstance(group, list) or len(group) != 2 or type(group[0]) is not int
+                    or not isinstance(group[1], list) or not all(isinstance(item, str) for item in group[1])):
+                    raise ValueError("invalid_character_state_result")
+                grouped[group[0]] = group[1]
         if config is None:
             value = None
             basis = "缺少真红升腾正式曲线，增伤数值保持未知。"
         else:
-            value = config.damage_up + (config.resonance_damage_up if resonance else 0.0)
+            value = (native.get("value") if native is not None else
+                     config.damage_up + (config.resonance_damage_up if resonance else 0.0))
+            if native is not None and (type(value) not in (int, float) or not isfinite(value)):
+                raise ValueError("invalid_character_state_result")
             basis = (
                 f"正式曲线 Shinku_Rage_DmgUp={config.damage_up:g}"
                 + (

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from math import isfinite
 
 from src.domain.battle_report import BattleHitReplayResult
+from src.domain.battle_counterfactual_quantification import BattleCounterfactualRatio
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,3 +79,22 @@ def replay_formula_value(
     if pair is None:
         return None, ""
     return pair.baseline_damage, pair.method
+
+
+def structured_formula_ratio(
+    pair: PairedReplayFormula | None,
+) -> BattleCounterfactualRatio | None:
+    """Use an already replayed pair without resolving its Buff inputs again."""
+    if pair is None or pair.baseline_damage <= 0.0 or pair.candidate_damage < 0.0:
+        return None
+    ratio = pair.candidate_damage / pair.baseline_damage
+    if not isfinite(ratio) or ratio < 0.0:
+        return None
+    return BattleCounterfactualRatio.complete(
+        ratio,
+        method=pair.method,
+        confidence="高",
+        dependency_scope="target_sensitive",
+        included_dimension_ids=("structured_formula",),
+        explanation=pair.explanation,
+    )

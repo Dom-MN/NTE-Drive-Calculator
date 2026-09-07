@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from src.domain.native_analysis import BattleComputeBackend
+from src.services.battle_fork_state_compute import compute_fork_intervals
+from src.services.battle_fork_damage_completion_service import BattleForkDamageCompletionService
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -408,7 +411,23 @@ class BattleForkRefinementService:
         time_stop_intervals: Sequence[tuple[int | None, int | None]] = (),
         treatment_events: Sequence[ForkTreatmentEvent] = (),
         critical_events: Sequence[Any] = (),
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleInferredBuffInterval, ...]:
+        native = compute_fork_intervals(
+            rules, actions=actions, hits=hits, battle_end_us=battle_end_us,
+            time_stop_intervals=time_stop_intervals, treatment_events=treatment_events,
+            critical_events=critical_events, backend=compute_backend, checkpoint=checkpoint,
+        )
+        if native is not None:
+            completed = BattleForkDamageCompletionService.infer_specialized(
+                rules, actions=actions, hits=hits, battle_end_us=battle_end_us,
+                time_stop_intervals=time_stop_intervals,
+                compute_backend=compute_backend, checkpoint=checkpoint,
+            )
+            return tuple(sorted((*native, *completed), key=lambda row: (
+                row.start_us, row.end_us, row.source_character_id, row.buff_asset_path,
+            )))
         results = list(infer_damage_stack_intervals(
             rules,
             hits=hits,

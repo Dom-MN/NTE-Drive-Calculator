@@ -24,7 +24,7 @@ class BattleReportSummaryCorrectionUiTests(unittest.TestCase):
                 set_analysis=lambda *_args, **_kwargs: None
             ),
             marginal_page=SimpleNamespace(
-                set_source_analysis=lambda _analysis: None
+                set_source_analysis=lambda _analysis, hit_details=None: None
             ),
         )
         analysis = SimpleNamespace(
@@ -61,7 +61,7 @@ class BattleReportSummaryCorrectionUiTests(unittest.TestCase):
                 set_analysis=lambda *_args, **_kwargs: None
             ),
             marginal_page=SimpleNamespace(
-                set_source_analysis=lambda _analysis: None
+                set_source_analysis=lambda _analysis, hit_details=None: None
             ),
         )
         analysis = SimpleNamespace(
@@ -94,10 +94,10 @@ class BattleReportSummaryCorrectionUiTests(unittest.TestCase):
             _marginal_baseline_by_scope={},
             metric_labels=labels,
             long_analysis_view=SimpleNamespace(
-                set_analysis=lambda _analysis, selected_character_id=None: None
+                set_analysis=lambda _analysis, selected_character_id=None, hit_details=None: None
             ),
             marginal_page=SimpleNamespace(
-                set_source_analysis=lambda _analysis: None
+                set_source_analysis=lambda _analysis, hit_details=None: None
             ),
         )
         analysis = SimpleNamespace(
@@ -124,7 +124,7 @@ class BattleReportSummaryCorrectionUiTests(unittest.TestCase):
                 for key in ("damage", "dps", "duration")
             },
             long_analysis_view=SimpleNamespace(set_analysis=lambda *_a, **_k: None),
-            marginal_page=SimpleNamespace(set_source_analysis=lambda _analysis: None),
+            marginal_page=SimpleNamespace(set_source_analysis=lambda _analysis, hit_details=None: None),
         )
         analysis = SimpleNamespace(
             axis_complete=True,
@@ -158,7 +158,7 @@ class BattleReportSummaryCorrectionUiTests(unittest.TestCase):
             },
             long_analysis_view=SimpleNamespace(set_analysis=lambda *_args, **_kwargs: None),
             marginal_page=SimpleNamespace(
-                set_source_analysis=lambda _analysis: None
+                set_source_analysis=lambda _analysis, hit_details=None: None
             ),
         )
         analysis = SimpleNamespace(

@@ -263,6 +263,11 @@ Returns the latest complete inventory snapshot without starting capture or
 writing a business inventory file. Before the first complete snapshot it returns
 `INVENTORY_NOT_READY`.
 
+Inventory fragment expiry follows only the supported Bunch packet mode. Other
+packet modes do not seed or advance its sequence clock; independently recognized
+raw character and item records retain their existing handling. Supported packets
+without inventory fragments still advance expiry.
+
 Inventory results and `event.inventory.snapshot` contain `generation`,
 `observed_at_unix_ms`, `complete`, `character_count`, `characters`, `item_count`,
 and `items`. Event notifications also contain the global event `sequence`.
@@ -479,6 +484,16 @@ maximum-HP loss attributed to that hit and remains separate from `total_damage`.
 `team_snapshot_id` is explicitly null
 until a stable team snapshot is available instead of being inferred from current
 UI state.
+
+For authoritative weave follow-up damage, a validated character declaration in
+the same settlement container restricts the preceding-hit candidates to that
+character. Core then uses its existing damage, HP-continuity and unique recent
+hit matching rules and adds the follow-up to the matched row. A character
+declaration alone does not create an independent attributed hit. If no source
+hit can be matched, the existing unattributed-damage representation is retained.
+Equal hits in one frame remain separate when their decoded locations or targets
+differ. Packet and reassembled observations of the same settlement supplement
+the source declaration without counting the damage twice.
 
 Core retains a bounded hit window. Once earlier rows have been trimmed,
 `complete` becomes false and `first_available_cursor` identifies the first

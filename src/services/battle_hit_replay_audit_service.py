@@ -27,6 +27,7 @@ from src.services.battle_analysis_progress import (
 from src.services.battle_hit_local_crit_inference_service import (
     BattleHitLocalCritInferenceService,
 )
+from src.domain.native_analysis import BattleComputeBackend
 
 
 _NIGHTMARE_MARKER = "lacrimosa_blood_damage"
@@ -78,6 +79,7 @@ class BattleHitReplayAuditService:
         results: tuple[BattleHitReplayResult, ...],
         *,
         progress_callback: BattleAnalysisProgressCallback | None = None,
+        compute_backend: BattleComputeBackend | None = None,
     ) -> tuple[BattleHitReplayResult, ...]:
         def report(completed: int, message: str) -> None:
             report_battle_analysis_progress(
@@ -89,7 +91,9 @@ class BattleHitReplayAuditService:
             )
 
         report(0, "正在审计逐击暴击与归属证据…")
-        adjusted = BattleHitLocalCritInferenceService.apply(analysis, results)
+        adjusted = BattleHitLocalCritInferenceService.apply(
+            analysis, results, backend=compute_backend, checkpoint=lambda: report(0, "正在审计逐击暴击证据…"),
+        )
         report(1, "正在检查重复伤害归属…")
         conflicts = cls.damage_attribution_conflict_ids(
             analysis.hits,
@@ -623,6 +627,17 @@ class BattleHitReplayAuditService:
             ),
             key=lambda row: (row.relative_time_us, row.sequence, row.event_id),
         )
+        # 同目标的有序局部列表避免每击复制全轴尾部，也不扫描其他目标。
+        candidates: dict[
+            tuple[str, str], list[tuple[BattleAnalysisHit, str, float, float]]
+        ] = defaultdict(list)
+        for hit in ordered:
+            if hit.target_hp_before is not None and hit.target_hp_after is not None:
+                low, high = sorted((hit.target_hp_after, hit.target_hp_before))
+                candidates[_target_key(hit)].append((
+                    hit, hit.gameplay_effect_id.casefold(), low, high,
+                ))
+        positions: dict[tuple[str, str], int] = defaultdict(int)
         conflicts: set[str] = set()
         for index, first in enumerate(ordered):
             if index % 64 == 0:
@@ -635,34 +650,25 @@ class BattleHitReplayAuditService:
                 )
             if first.target_hp_before is None or first.target_hp_after is None:
                 continue
-            for second in ordered[index + 1:]:
+            target = _target_key(first)
+            group = candidates[target]
+            position = positions[target]
+            positions[target] = position + 1
+            _first, first_effect, first_low, first_high = group[position]
+            tolerance = max(0.5, abs(first.damage) * 0.000_001)
+            for second_index in range(position + 1, len(group)):
+                second, second_effect, second_low, second_high = group[second_index]
                 delta = second.relative_time_us - first.relative_time_us
                 if delta > _DUPLICATE_DAMAGE_WINDOW_US:
                     break
-                if (
-                    _target_key(first) != _target_key(second)
-                    or first.gameplay_effect_id.casefold()
-                    == second.gameplay_effect_id.casefold()
-                    or second.target_hp_before is None
-                    or second.target_hp_after is None
-                ):
+                if first_effect == second_effect:
                     continue
-                tolerance = max(0.5, abs(first.damage) * 0.000_001)
                 if abs(first.damage - second.damage) > tolerance:
                     continue
-                first_low, first_high = sorted((
-                    first.target_hp_after,
-                    first.target_hp_before,
-                ))
-                second_low, second_high = sorted((
-                    second.target_hp_after,
-                    second.target_hp_before,
-                ))
-                hp_tolerance = max(0.5, abs(first.damage) * 0.000_001)
                 overlaps = max(first_low, second_low) < min(first_high, second_high)
                 same_endpoint = abs(
                     first.target_hp_after - second.target_hp_after
-                ) <= hp_tolerance
+                ) <= tolerance
                 if overlaps or same_endpoint:
                     conflicts.update((first.event_id, second.event_id))
         report_battle_analysis_progress(

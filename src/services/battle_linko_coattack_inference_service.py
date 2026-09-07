@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from src.domain.native_analysis import BattleComputeBackend, available_battle_compute
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -315,7 +316,18 @@ class BattleLinkoCoattackInferenceService:
         type6_evidence: Sequence[BattleLinkoType6Evidence] = (),
         allow_legacy_e_fallback: bool = True,
         character_elements: Mapping[int, str] | None = None,
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleLinkoCoattackInference, ...]:
+        backend = available_battle_compute(compute_backend)
+        if backend is not None:
+            from src.services.battle_native_linko_coattack import infer_native_linko_coattack
+            return infer_native_linko_coattack(
+                backend, hits, actions, time_stop_projection=time_stop_projection,
+                animation_candidates=animation_candidates, type6_evidence=type6_evidence,
+                allow_legacy_e_fallback=allow_legacy_e_fallback,
+                character_elements=character_elements, checkpoint=checkpoint,
+            )
         resolved_character_elements = character_elements or {}
         hits_by_event = {hit.event_id: hit for hit in hits}
         qte_actions = _qte_actions(actions, hits_by_event)

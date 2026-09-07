@@ -68,6 +68,7 @@ class BattleHitFormulaDialog(QDialog):
         counterfactual: BattleBuildHitCounterfactual | None = None,
         related_counterfactuals: Sequence[BattleBuildHitCounterfactual] = (),
         related_analysis: BattleAnalysisSnapshot | None = None,
+        projection=None, related_hit_details=None,
     ) -> None:
         damage_name = preferred_battle_damage_name(
             hit.damage_name,
@@ -80,6 +81,7 @@ class BattleHitFormulaDialog(QDialog):
             replay,
             active_buffs=active_buffs,
             counterfactual=counterfactual,
+            projection=projection, allow_projection_fallback=False,
         )]
         related_hits = {
             row.event_id: row for row in (() if related_analysis is None else related_analysis.hits)
@@ -132,25 +134,14 @@ class BattleHitFormulaDialog(QDialog):
             )
             for row in quantified:
                 related_hit = related_hits[row.event_id]
-                related_buffs = tuple(
-                    interval
-                    for interval in related_analysis.buff_intervals
-                    if interval.source_kind != "candidate_derived_awakening_settlement"
-                    and interval.start_us <= related_hit.relative_time_us < interval.end_us
-                    and (
-                        interval.target_scope in {"team", "target", "unknown"}
-                        or interval.target_scope == f"character:{related_hit.character_id}"
-                        or (
-                            interval.target_scope == "self"
-                            and interval.source_character_id == related_hit.character_id
-                        )
-                    )
-                )
+                related_projection, related_buffs = ((None, ()) if related_hit_details is None
+                    else related_hit_details.for_hit(related_hit, formula=True))
                 sections.append(BattleHitReplayExplanationService.build(
                     related_hit,
                     related_replays.get(row.event_id),
                     active_buffs=related_buffs,
                     counterfactual=row,
+                    projection=related_projection, allow_projection_fallback=False,
                 ))
         self.detail.setPlainText(
             "\n\n".join(sections)
@@ -166,6 +157,7 @@ class BattleHitFormulaDialog(QDialog):
         counterfactual: BattleBuildHitCounterfactual | None = None,
         related_counterfactuals: Sequence[BattleBuildHitCounterfactual] = (),
         related_analysis: BattleAnalysisSnapshot | None = None,
+        projection=None, related_hit_details=None,
     ) -> None:
         self.set_hit(
             hit,
@@ -174,6 +166,7 @@ class BattleHitFormulaDialog(QDialog):
             counterfactual=counterfactual,
             related_counterfactuals=related_counterfactuals,
             related_analysis=related_analysis,
+            projection=projection, related_hit_details=related_hit_details,
         )
         fit_dialog_to_available_screen(self, QSize(960, 760))
         self.show()

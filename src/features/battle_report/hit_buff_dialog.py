@@ -63,6 +63,7 @@ class BattleHitBuffDialog(QDialog):
         intervals: Sequence[BattleInferredBuffInterval],
         *,
         replay: BattleHitReplayResult | None = None,
+        projection=None,
     ) -> None:
         damage_name = preferred_battle_damage_name(
             hit.damage_name,
@@ -78,6 +79,7 @@ class BattleHitBuffDialog(QDialog):
             f"组件：{hit.damage_component or '—'}\n攻击类型：{hit.attack_type or '—'}\n"
             f"伤害属性：{hit.damage_attribute or '—'}\n目标 ID：{hit.target_id or '—'}\n"
             f"HP：{hp_before} → {hp_after}\n"
+            "Buff口径：原始逐击归属；公式另按正式来源角色消费属性。\n"
         )
         replay_lines = "公式重放：尚未生成"
         if replay is not None:
@@ -95,7 +97,8 @@ class BattleHitBuffDialog(QDialog):
             )
         self.detail.setPlainText(
             raw_lines + "\n" + replay_lines + "\n\n"
-            + BattleHitBuffExplanationService.build(hit, intervals)
+            + BattleHitBuffExplanationService.build(hit, intervals, projection=projection,
+                                                   allow_projection_fallback=False)
         )
         self.detail.moveCursor(QTextCursor.MoveOperation.Start)
         fit_dialog_to_available_screen(self, QSize(980, 760))

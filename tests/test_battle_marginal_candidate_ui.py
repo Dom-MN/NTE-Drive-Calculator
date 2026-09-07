@@ -19,6 +19,7 @@ from src.features.battle_report.build_change_summary import (
     fork_level_summary,
 )
 from src.features.battle_report.marginal_page import BattleMarginalPage
+from src.services.battle_marginal_panel_service import BattleMarginalPanelResult
 from src.features.battle_report.marginal_result_table_view import (
     render_attribute_results,
     render_buff_benefit_results,
@@ -313,14 +314,13 @@ class BattleMarginalCandidateUiTests(unittest.TestCase):
         page.character_combo.blockSignals(True)
         page.character_combo.addItem("测试角色", 1001)
         page.character_combo.blockSignals(False)
+        page._marginal_panel = BattleMarginalPanelResult(
+            character_id=1001, results=(result,), drive_property_ids=("CritBase",),
+        )
         with patch(
-            "src.features.battle_report.marginal_character_panel."
-            "BattleMarginalCalculationService.default_units",
-            return_value={"CritBase": 0.01},
-        ), patch(
-            "src.features.battle_report.marginal_character_panel."
+            "src.services.battle_marginal_calculation_service."
             "BattleMarginalCalculationService.calculate",
-            return_value=(result,),
+            side_effect=AssertionError("只读展示不得重新计算 worker 面板"),
         ):
             page._render_selected_role()
 

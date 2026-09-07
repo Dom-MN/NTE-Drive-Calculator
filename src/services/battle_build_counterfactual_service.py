@@ -29,23 +29,16 @@ from src.services.battle_damage_composition_service import (
 from src.services.battle_build_quantification_service import (
     BattleBuildQuantificationService,
 )
-from src.services.battle_buff_attribute_projection_service import (
-    BattleBuffAttributeProjectionService,
-)
-from src.services.battle_buff_interval_index import BattleBuffIntervalIndex
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
+from src.services.battle_build_comparison_batch import prepare_build_comparison_ratios
 from src.services.battle_daffodill_marginal_service import (
     DAFFODILL_EFFECT_FIVE_METHOD,
     BattleDaffodillMarginalService,
 )
-from src.services.battle_hit_counterfactual_ratio_service import (
-    BattleHitCounterfactualRatioService,
-)
 from src.services.battle_replay_formula_ratio_service import (
     paired_replay_formula,
     replay_formula_value,
-)
-from src.services.battle_target_instance_mapping_service import (
-    BattleTargetInstanceMappingService,
+    structured_formula_ratio,
 )
 from src.services.battle_analysis_progress import (
     BattleAnalysisProgressCallback,
@@ -78,6 +71,7 @@ class BattleBuildCounterfactualService:
         original: BattleAnalysisSnapshot,
         candidate: BattleAnalysisSnapshot,
         progress_callback: BattleAnalysisProgressCallback | None = None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
     ) -> BattleBuildCounterfactual:
         if original.battle_record_id != candidate.battle_record_id:
             raise ValueError("当前基线与候选配置不属于同一战报")
@@ -87,37 +81,27 @@ class BattleBuildCounterfactualService:
         ):
             raise ValueError("当前基线与候选配置没有冻结到同一分析时段")
 
-        original_hits = {
-            hit.event_id: hit
-            for hit in original.hits
-            if hit.direction == "outgoing"
-        }
-        candidate_hits = {
-            hit.event_id: hit
-            for hit in candidate.hits
-            if hit.direction == "outgoing"
-        }
+        original_hits = {hit.event_id: hit for hit in original.hits if hit.direction == "outgoing"}
+        candidate_hits = {hit.event_id: hit for hit in candidate.hits if hit.direction == "outgoing"}
         original_replays = {row.event_id: row for row in original.hit_replays}
         candidate_replays = {row.event_id: row for row in candidate.hit_replays}
-        original_baselines = {
-            row.character_id: row for row in original.baselines
+        formula_pairs = {
+            event_id: paired_replay_formula(original_replays.get(event_id), candidate_replays.get(event_id))
+            for event_id in original_hits
         }
-        candidate_baselines = {
-            row.character_id: row for row in candidate.baselines
-        }
+        structured_ratios = {key: structured_formula_ratio(pair) for key, pair in formula_pairs.items()}
+        original_baselines = {row.character_id: row for row in original.baselines}
+        candidate_baselines = {row.character_id: row for row in candidate.baselines}
         awakening_gaps = awakening_change_gaps(original_baselines, candidate_baselines)
         build_inputs_unchanged = (
             BattleDaffodillMarginalService.direct_formula_inputs_unchanged(
                 original, candidate,
             )
         )
-        original_interval_index = BattleBuffIntervalIndex(
-            BattleDaffodillMarginalService.direct_formula_intervals(original)
+        comparison_ratios = prepare_build_comparison_ratios(
+            original, candidate, structured_ratios,
+            projection_memo=projection_memo, progress_callback=progress_callback,
         )
-        candidate_interval_index = BattleBuffIntervalIndex(
-            BattleDaffodillMarginalService.direct_formula_intervals(candidate)
-        )
-        routed_by_target: dict[tuple[str, str], BattleAnalysisSnapshot] = {}
         total_hits = len(original_hits)
         report_battle_analysis_progress(
             progress_callback,
@@ -132,34 +116,8 @@ class BattleBuildCounterfactualService:
             original_hits.items(),
             start=1,
         ):
-            formula_pair = paired_replay_formula(
-                original_replays.get(event_id),
-                candidate_replays.get(event_id),
-            )
-            target_key = (hit.scope_half.casefold(), hit.target_id)
-            routed = routed_by_target.get(target_key)
-            if routed is None:
-                routed = BattleTargetInstanceMappingService.analysis_for_hit(
-                    original,
-                    hit,
-                )
-                routed_by_target[target_key] = routed
-            quantification = BattleHitCounterfactualRatioService.compare(
-                hit=hit,
-                original_baseline=original_baselines.get(hit.character_id),
-                candidate_baseline=candidate_baselines.get(hit.character_id),
-                original_projection=BattleBuffAttributeProjectionService.project_hit(
-                    hit,
-                    original_interval_index,
-                ),
-                candidate_projection=BattleBuffAttributeProjectionService.project_hit(
-                    candidate_hits.get(event_id, hit),
-                    candidate_interval_index,
-                ),
-                original_replay=original_replays.get(event_id),
-                candidate_replay=candidate_replays.get(event_id),
-                target_condition=routed.target_condition,
-            )
+            formula_pair = formula_pairs[event_id]
+            quantification = comparison_ratios[event_id]
             if (
                 quantification.status == "unavailable"
                 and build_inputs_unchanged

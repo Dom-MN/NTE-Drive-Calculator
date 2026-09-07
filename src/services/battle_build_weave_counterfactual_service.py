@@ -12,7 +12,7 @@ from src.domain.battle_counterfactual_quantification import (
     BattleQuantificationGap,
 )
 from src.domain.battle_report import BattleAnalysisHit
-from src.services.battle_weave_source_service import find_paired_weave_source_hit
+from src.services.battle_weave_source_service import BattleWeaveSourceIndex
 
 
 def link_weave(
@@ -22,14 +22,14 @@ def link_weave(
     """Multiply Weave's own candidate ratio by its recorded source-hit ratio."""
 
     rows_by_event = {row.event_id: row for row in rows}
-    all_hits = tuple(hits.values())
+    sources = BattleWeaveSourceIndex(tuple(hits.values()))
     linked: list[BattleBuildHitCounterfactual] = []
     for row in rows:
         hit = hits.get(row.event_id)
         source = (
             None
             if hit is None or hit.classification != "weave"
-            else find_paired_weave_source_hit(hit, all_hits)
+            else sources.find(hit)
         )
         source_row = None if source is None else rows_by_event.get(source.event_id)
         if source_row is None:

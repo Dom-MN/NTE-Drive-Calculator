@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from src.domain.native_analysis import available_battle_compute
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -154,9 +155,17 @@ class BattleOuterRealmBuffService:
         hits: Sequence[BattleAnalysisHit],
         battle_end_us: int,
         time_stop_intervals: Sequence[tuple[int | None, int | None]] = (),
+        compute_backend=None,
+        checkpoint=None,
     ) -> tuple[BattleInferredBuffInterval, ...]:
         if config is None or battle_end_us <= 0:
             return ()
+        if (backend := available_battle_compute(compute_backend)) is not None:
+            from src.services.battle_team_state_compute import outer_intervals
+            return outer_intervals(
+                backend, config, hits=hits, battle_end_us=battle_end_us,
+                time_stop_intervals=time_stop_intervals, checkpoint=checkpoint,
+            )
         intervals: list[BattleInferredBuffInterval] = []
         for component in config.components:
             if component.trigger_kind == "whole_battle":

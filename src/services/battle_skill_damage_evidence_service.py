@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
+from src.domain.native_analysis import BattleComputeBackend
 
 from src.domain.battle_report import (
     BattleAnalysisSnapshot,
@@ -82,8 +83,15 @@ def _reaction_level_multiplier(
     static_dao: Any,
     damage_id: str,
     character_level: int,
+    *,
+    curve_cache: dict[str, dict[str, Any] | None] | None = None,
 ) -> tuple[float | None, str]:
-    curve = static_dao.get_reaction_damage_curve(damage_id)
+    if curve_cache is None:
+        curve = static_dao.get_reaction_damage_curve(damage_id)
+    else:
+        if damage_id not in curve_cache:
+            curve_cache[damage_id] = static_dao.get_reaction_damage_curve(damage_id)
+        curve = curve_cache[damage_id]
     points = (curve or {}).get("points") or ()
     if len(points) != 16:
         return None, ""
@@ -151,15 +159,16 @@ def _targets_with_weave(analysis: BattleAnalysisSnapshot) -> set[tuple[int, str]
     }
 
 
-def _is_formal_follow_up(static_dao: Any, damage_id: str) -> bool:
-    if not hasattr(static_dao, "gameplay_effect_has_tag"):
-        return False
-    return bool(
-        static_dao.gameplay_effect_has_tag(
-            damage_id,
-            "Ability.Player.Nanally.XieTongDamage",
+def _is_formal_follow_up(
+    static_dao: Any, damage_id: str, tag_cache: dict[tuple[str, str], bool],
+) -> bool:
+    key = (damage_id, "Ability.Player.Nanally.XieTongDamage")
+    if key not in tag_cache:
+        tag_cache[key] = bool(
+            static_dao.gameplay_effect_has_tag(*key)
+            if hasattr(static_dao, "gameplay_effect_has_tag") else False
         )
-    )
+    return tag_cache[key]
 
 
 def _canonical_reaction_damage_id(
@@ -219,6 +228,7 @@ def _skill_level_ability_id(
     damage_id: str,
     observed_ability_id: str,
     imported_ability_id: str,
+    candidate_cache: dict[tuple[int, str], tuple[str, ...]] | None = None,
 ) -> tuple[str, str]:
     """Resolve a derived GE to the player-levelled parent ability when bounded."""
 
@@ -227,14 +237,20 @@ def _skill_level_ability_id(
 
     if not hasattr(static_dao, "list_skill_level_ability_candidates"):
         return imported_ability_id or observed_ability_id, ""
-    candidates = tuple(
-        str(value)
-        for value in static_dao.list_skill_level_ability_candidates(
-            character_id,
-            damage_id,
+    key = (character_id, damage_id)
+    if candidate_cache is None or key not in candidate_cache:
+        candidates = tuple(
+            str(value)
+            for value in static_dao.list_skill_level_ability_candidates(
+                character_id,
+                damage_id,
+            )
+            if str(value)
         )
-        if str(value)
-    )
+        if candidate_cache is not None:
+            candidate_cache[key] = candidates
+    else:
+        candidates = candidate_cache[key]
     if observed_ability_id in candidates:
         selected = observed_ability_id
     elif len(candidates) == 1:
@@ -280,6 +296,8 @@ class BattleSkillDamageEvidenceService:
         static_dao: Any,
         analysis: BattleAnalysisSnapshot,
         build: Mapping[str, Any] | None,
+        *, compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleSkillDamageEvidence, ...]:
         builds = _character_builds(build)
         shinku_rage_skill_coefficient = (
@@ -299,10 +317,12 @@ class BattleSkillDamageEvidenceService:
         dot_states = reconstruct_dot_stack_states(
             analysis,
             build,
+            compute_backend=compute_backend, checkpoint=checkpoint,
         )
         zankou_q_final_damage = reconstruct_zankou_q_final_damage(
             analysis,
             builds.get(1036),
+            compute_backend=compute_backend, checkpoint=checkpoint,
         )
         co_timed_damage_ids = _co_timed_damage_ids(analysis)
         linko_inferences = {
@@ -311,6 +331,12 @@ class BattleSkillDamageEvidenceService:
         }
         targets_with_weave = _targets_with_weave(analysis)
         cache: dict[str, dict[str, Any] | None] = {}
+        # These raw static facts belong to this DAO/build request only. Hit-level
+        # ability selection, character-level tiers and attribution remain separate.
+        owner_cache: dict[str, tuple[int, ...]] = {}
+        candidate_cache: dict[tuple[int, str], tuple[str, ...]] = {}
+        reaction_curve_cache: dict[str, dict[str, Any] | None] = {}
+        tag_cache: dict[tuple[str, str], bool] = {}
         evidence = []
         for hit in analysis.hits:
             damage_id = hit.gameplay_effect_id.strip()
@@ -361,12 +387,14 @@ class BattleSkillDamageEvidenceService:
                 else hit.character_id
             )
             if hasattr(static_dao, "list_skill_damage_owner_character_ids"):
-                formal_owner_ids = tuple(
-                    int(value)
-                    for value in static_dao.list_skill_damage_owner_character_ids(
-                        damage_id
+                if damage_id not in owner_cache:
+                    owner_cache[damage_id] = tuple(
+                        int(value)
+                        for value in static_dao.list_skill_damage_owner_character_ids(
+                            damage_id
+                        )
                     )
-                )
+                formal_owner_ids = owner_cache[damage_id]
                 if len(formal_owner_ids) == 1:
                     formal_owner_id = formal_owner_ids[0]
                     if formal_owner_id != definition_owner_character_id:
@@ -421,6 +449,7 @@ class BattleSkillDamageEvidenceService:
                     damage_id=damage_id,
                     observed_ability_id=str(hit.ability_id or ""),
                     imported_ability_id=imported_ability_id,
+                    candidate_cache=candidate_cache,
                 )
             if ability_id:
                 effective_level = _effective_level(
@@ -505,6 +534,7 @@ class BattleSkillDamageEvidenceService:
                 static_dao,
                 damage_id,
                 character_level,
+                curve_cache=reaction_curve_cache,
             )
             if reaction_basis:
                 basis += f"；{reaction_basis}"
@@ -621,7 +651,7 @@ class BattleSkillDamageEvidenceService:
                 formula_context_kind=formula_context_kind,
                 formula_context_confidence=formula_context_confidence,
                 formula_context_basis=formula_context_basis,
-                is_formal_follow_up=_is_formal_follow_up(static_dao, damage_id),
+                is_formal_follow_up=_is_formal_follow_up(static_dao, damage_id, tag_cache),
                 target_has_weave=(hit.sequence, hit.target_id) in targets_with_weave,
             ))
         return apply_shinku_watch_state_boundary(

@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
+from src.services.battle_state_payload import HIT_FIELDS, HP_EVENT_FIELDS, state_rows, fadia_character
+from src.domain.native_analysis import BattleComputeBackend
+from src.services.battle_character_state_compute import compute_character_state, restore_fadia_intervals
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -198,9 +201,20 @@ class BattleFadiaHpStackService:
         hits: Sequence[BattleAnalysisHit],
         battle_end_us: int,
         max_hp_events: Sequence[BattleMaxHpReductionEvent] = (),
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleInferredBuffInterval, ...]:
         if not BattleCharacterPassiveService.is_unlocked(build, _FADIA_ID, 2):
             return ()
+        native = compute_character_state("fadia", {
+            "character": fadia_character(_fadia_character(build) or {}),
+            "hits": state_rows(hits, HIT_FIELDS), "battle_end_us": battle_end_us,
+            "max_hp_events": state_rows(max_hp_events, HP_EVENT_FIELDS),
+        }, backend=compute_backend, checkpoint=checkpoint) if (
+            isinstance(compute_backend, BattleComputeBackend) and compute_backend.supports_battle_compute
+        ) else None
+        if native is not None:
+            return restore_fadia_intervals(native)
         source_max_hp = resolve_fadia_source_max_hp(build)
         if source_max_hp is None or battle_end_us <= 0:
             return ()

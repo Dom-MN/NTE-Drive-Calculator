@@ -116,7 +116,7 @@ def unproject_timeline_time_us(
     mode: BattleTimelineTimeMode,
     prefer_interval_end: bool = False,
 ) -> int:
-    """Map a displayed clock value back to raw time using a monotonic search.
+    """Map a displayed clock value back through the merged stop intervals.
 
     Active time has a plateau across each stop. Range starts choose the front
     edge of a plateau while range ends choose its back edge so drag selection
@@ -127,39 +127,19 @@ def unproject_timeline_time_us(
     end = max(start, int(battle_end_us))
     if mode == ELAPSED_TIME_MODE:
         return min(end, max(start, start + int(display_time_us)))
-    maximum = project_timeline_time_us(
-        end,
+    normalized = normalized_time_stop_intervals(
+        intervals,
         battle_start_us=start,
-        intervals=intervals,
-        mode=mode,
+        battle_end_us=end,
     )
+    maximum = end - start - sum(stop_end - stop_start for stop_start, stop_end in normalized)
     target = min(maximum, max(0, int(display_time_us)))
-    if prefer_interval_end:
-        low, high = start, end
-        while low < high:
-            middle = (low + high + 1) // 2
-            projected = project_timeline_time_us(
-                middle,
-                battle_start_us=start,
-                intervals=intervals,
-                mode=mode,
-            )
-            if projected <= target:
-                low = middle
-            else:
-                high = middle - 1
-        return low
-    low, high = start, end
-    while low < high:
-        middle = (low + high) // 2
-        projected = project_timeline_time_us(
-            middle,
-            battle_start_us=start,
-            intervals=intervals,
-            mode=mode,
-        )
-        if projected >= target:
-            high = middle
-        else:
-            low = middle + 1
-    return low
+    stopped = 0
+    for stop_start, stop_end in normalized:
+        plateau = stop_start - start - stopped
+        if target < plateau:
+            return start + target + stopped
+        if target == plateau:
+            return stop_end if prefer_interval_end else stop_start
+        stopped += stop_end - stop_start
+    return min(end, start + target + stopped)

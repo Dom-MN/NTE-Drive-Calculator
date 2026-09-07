@@ -415,10 +415,16 @@ class BattleCaptureAxisServiceTests(unittest.TestCase):
         service.add_state_handler(states.append)
 
         service.start()
-        self.assertTrue(core.capture_started.wait(1.0))
-        self.assertTrue(_wait_until(lambda: core.record_requests > 0))
-        service.close(timeout=2.0)
+        try:
+            self.assertTrue(core.capture_started.wait(1.0))
+            self.assertTrue(_wait_until(lambda: core.record_requests > 0))
+            # Contract rejection owns shutdown; close must not request stopping
+            # between its terminal publication and the capture thread's exit.
+            self.assertTrue(_wait_until(lambda: not service.is_running))
+        finally:
+            service.close(timeout=2.0)
 
+        self.assertFalse(service.is_running)
         self.assertEqual("error", states[-1].phase)
         self.assertIn("低于 v5", states[-1].error)
         self.assertTrue(writer.discarded)

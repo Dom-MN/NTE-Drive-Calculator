@@ -9,6 +9,11 @@ from src.domain.battle_buff_counterfactual import (
     BattleBuffCounterfactualResult,
     BattleDamageCoverage,
 )
+from src.domain.native_analysis import DirectFormulaBackend
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
+from src.services.battle_buff_candidate_projection_batch import (
+    PreparedBuffCandidateProjection, prepare_buff_candidate_projection_batch,
+)
 from src.domain.battle_report import (
     BattleAnalysisHit,
     BattleAnalysisSnapshot,
@@ -143,13 +148,18 @@ class BattleBuffCounterfactualService:
             Mapping[int, BattleToppleCharacterConfig] | None
         ) = None,
         progress_callback: BattleAnalysisProgressCallback | None = None,
+        direct_formula_backend: DirectFormulaBackend | None = None,
         interval_index: BattleBuffIntervalIndex | None = None,
         original_projection_by_event: (
             Mapping[str, BattleHitBuffProjection] | None
         ) = None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
     ) -> tuple[BattleBuffCounterfactualResult, ...]:
         if not analysis.buff_intervals:
             return ()
+        if projection_memo is None:
+            projection_memo = BattleBuffProjectionMemo()
+        projection_memo.bind_backend(direct_formula_backend, progress_callback)
         outgoing_hits = tuple(
             hit for hit in analysis.hits if hit.direction == "outgoing"
         )
@@ -157,6 +167,8 @@ class BattleBuffCounterfactualService:
             analysis,
             skill_evidence,
             topple_character_configs=topple_character_configs,
+            direct_formula_backend=direct_formula_backend,
+            progress_callback=progress_callback,
         )
         audit_inputs = PreparedReplayAuditInputs.prepare(
             analysis,
@@ -175,13 +187,20 @@ class BattleBuffCounterfactualService:
             for plan in group_plans
             for hit in plan.active_hits
         }
-        projection_cache = BattleHitBuffProjectionCache(interval_index)
+        projection_cache = BattleHitBuffProjectionCache(interval_index, memo=projection_memo)
         prepared_projections = dict(original_projection_by_event or {})
+        projection_cache.prepare(hit for event_id, hit in active_hits_by_event.items()
+                                 if event_id not in prepared_projections)
         prepared_projections.update({
             event_id: projection_cache.project(hit)
             for event_id, hit in active_hits_by_event.items()
             if event_id not in prepared_projections
         })
+        prepared_candidates = prepare_buff_candidate_projection_batch(
+            group_plans, outgoing_hits=outgoing_hits, interval_index=interval_index,
+            memo=projection_memo, evidence_by_event=audit_inputs.evidence_by_event,
+            progress_callback=progress_callback,
+        )
         baseline_hit_damage_by_event = {
             hit.event_id: float(hit.damage) for hit in outgoing_hits
         }
@@ -219,6 +238,8 @@ class BattleBuffCounterfactualService:
                 active_hits=plan.active_hits,
                 group_key=plan.group_key,
                 group_intervals=plan.intervals,
+                prepared_candidate=prepared_candidates.pop(plan.group_key, None),
+                projection_memo=projection_memo,
                 interval_index=interval_index,
                 original_projection_by_event=prepared_projections,
                 audit_inputs=audit_inputs,
@@ -230,6 +251,7 @@ class BattleBuffCounterfactualService:
                 character_names=character_names,
                 skill_evidence=skill_evidence,
                 topple_character_configs=topple_character_configs,
+                direct_formula_backend=direct_formula_backend,
                 progress_callback=progress_callback,
             ))
             report_battle_analysis_progress(
@@ -250,6 +272,7 @@ class BattleBuffCounterfactualService:
         active_hits: Sequence[BattleAnalysisHit],
         group_key: str,
         group_intervals: tuple[BattleInferredBuffInterval, ...],
+        projection_memo: BattleBuffProjectionMemo,
         interval_index: BattleBuffIntervalIndex,
         original_projection_by_event: Mapping[str, BattleHitBuffProjection],
         audit_inputs: PreparedReplayAuditInputs,
@@ -262,6 +285,8 @@ class BattleBuffCounterfactualService:
             Mapping[int, BattleToppleCharacterConfig] | None
         ),
         progress_callback: BattleAnalysisProgressCallback | None,
+        direct_formula_backend: DirectFormulaBackend | None = None,
+        prepared_candidate: PreparedBuffCandidateProjection | None = None,
     ) -> BattleBuffCounterfactualResult:
         first = group_intervals[0]
         affected_hits = battle_buff_applied_hits(
@@ -274,11 +299,14 @@ class BattleBuffCounterfactualService:
             outgoing_hits=outgoing_hits,
             active_hits=active_hits,
             group_intervals=group_intervals,
+            prepared_candidate=prepared_candidate,
+            projection_memo=projection_memo,
             interval_index=interval_index,
             original_projection_by_event=original_projection_by_event,
             audit_inputs=audit_inputs,
             skill_evidence=skill_evidence,
             topple_character_configs=topple_character_configs,
+            direct_formula_backend=direct_formula_backend,
             progress_callback=progress_callback,
         )
 

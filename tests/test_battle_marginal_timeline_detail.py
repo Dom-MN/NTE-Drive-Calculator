@@ -54,6 +54,7 @@ class BattleMarginalTimelineDetailTests(unittest.TestCase):
             counterfactual=None,
             related_counterfactuals=(),
             related_analysis=page._candidate_analysis,
+            projection=None, related_hit_details=None,
         )
 
     def test_missing_candidate_row_does_not_make_visible_hit_inert(self) -> None:

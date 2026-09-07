@@ -145,7 +145,8 @@ class BattleReportAnalysisUiTests(unittest.TestCase):
             page.layout().indexOf(footer),
         )
         self.assertEqual(0, footer.progress.minimum())
-        self.assertEqual(0, footer.progress.maximum())
+        self.assertEqual(100, footer.progress.maximum())
+        self.assertEqual(1, footer.progress.value())
         self.assertIn("Buff", footer.message_label.text())
 
         page.end_analysis_details()
@@ -169,10 +170,10 @@ class BattleReportAnalysisUiTests(unittest.TestCase):
             _marginal_baseline_by_scope={},
             metric_labels=labels,
             long_analysis_view=SimpleNamespace(
-                set_analysis=lambda _analysis, selected_character_id=None: None
+                set_analysis=lambda _analysis, selected_character_id=None, hit_details=None: None
             ),
             marginal_page=SimpleNamespace(
-                set_source_analysis=lambda _analysis: None
+                set_source_analysis=lambda _analysis, hit_details=None: None
             ),
         )
         analysis = SimpleNamespace(

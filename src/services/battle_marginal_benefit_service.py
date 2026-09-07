@@ -28,6 +28,7 @@ from src.services.battle_analysis_progress import (
 from src.services.battle_build_counterfactual_service import (
     BattleBuildCounterfactualService,
 )
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
 from src.services.battle_build_awakening_gap_service import (
     awakening_gaps_for_character,
     with_awakening_gaps,
@@ -84,6 +85,7 @@ class BattleMarginalBenefitService:
         static_database_path: str | Path | None,
         load_variant: LoadVariant,
         progress_callback: BattleAnalysisProgressCallback | None = None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
     ) -> BattleMarginalBenefits:
         current = cls._materialize_current(current)
         profile = cls._profile(candidate, character_id)
@@ -101,7 +103,9 @@ class BattleMarginalBenefitService:
                 character_id=character_id,
                 core_notice="当前固定轴缺少该角色面板基线。",
             )
-        role_scope = prepare_marginal_benefit_role_scope(current, character_id)
+        if projection_memo is None:
+            projection_memo = BattleBuffProjectionMemo()
+        role_scope = prepare_marginal_benefit_role_scope(current, character_id, projection_memo=projection_memo)
 
         core_catalog, fork_names = cls._static_catalog(
             static_database_path,
@@ -116,6 +120,7 @@ class BattleMarginalBenefitService:
             core_catalog=core_catalog,
             load_variant=load_variant,
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
         fork = cls._fork_benefit(
             current=current,
@@ -126,6 +131,7 @@ class BattleMarginalBenefitService:
             fork_names=fork_names,
             load_variant=load_variant,
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
         return BattleMarginalBenefits(
             character_id=character_id,
@@ -146,6 +152,7 @@ class BattleMarginalBenefitService:
         core_catalog: Mapping[str, tuple[str, bool, float]],
         load_variant: LoadVariant,
         progress_callback: BattleAnalysisProgressCallback | None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
     ) -> tuple[tuple[BattleCoreMainStatMarginal, ...], str]:
         core = cls._core(profile)
         if core is None:
@@ -183,11 +190,13 @@ class BattleMarginalBenefitService:
             current,
             replace(loaded_no_main, build_counterfactual=None),
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
         current_from_no_main = BattleBuildCounterfactualService.compare(
             original=no_main,
             candidate=current,
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
 
         rows: list[BattleCoreMainStatMarginal] = []
@@ -240,6 +249,7 @@ class BattleMarginalBenefitService:
                     original=current,
                     candidate=loaded_variant,
                     progress_callback=progress_callback,
+                    projection_memo=projection_memo,
                 )
                 variant = BattleBuildTimelineProjectionService.project(
                     loaded_variant,
@@ -249,6 +259,7 @@ class BattleMarginalBenefitService:
                     original=no_main,
                     candidate=variant,
                     progress_callback=progress_callback,
+                    projection_memo=projection_memo,
                 )
                 replacement = cls._delta(
                     replacement_comparison,
@@ -287,6 +298,7 @@ class BattleMarginalBenefitService:
         fork_names: Mapping[str, str],
         load_variant: LoadVariant,
         progress_callback: BattleAnalysisProgressCallback | None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
     ) -> BattleForkMarginal | None:
         fork_id = str(profile.get("fork_id") or "").strip()
         if not fork_id:
@@ -333,6 +345,7 @@ class BattleMarginalBenefitService:
             current,
             replace(loaded_no_fork, build_counterfactual=None),
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
 
         current_baseline = next(
@@ -369,21 +382,25 @@ class BattleMarginalBenefitService:
             current,
             replace(loaded_stats_only, build_counterfactual=None),
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
         comprehensive_comparison = BattleBuildCounterfactualService.compare(
             original=no_fork,
             candidate=current,
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
         permanent_comparison = BattleBuildCounterfactualService.compare(
             original=no_fork,
             candidate=stats_only,
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
         skill_comparison = BattleBuildCounterfactualService.compare(
             original=stats_only,
             candidate=current,
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
         current_role_damage = cls._observed_panel_damage(
             current,
@@ -455,6 +472,7 @@ class BattleMarginalBenefitService:
         loaded_variant: BattleAnalysisSnapshot,
         *,
         progress_callback: BattleAnalysisProgressCallback | None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
     ) -> BattleAnalysisSnapshot:
         """Project observed hits onto a variant before using it as a baseline."""
 
@@ -462,6 +480,7 @@ class BattleMarginalBenefitService:
             original=current,
             candidate=loaded_variant,
             progress_callback=progress_callback,
+            projection_memo=projection_memo,
         )
         return replace(
             BattleBuildTimelineProjectionService.project(

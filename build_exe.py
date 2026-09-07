@@ -244,6 +244,16 @@ nte_core_path = _required_build_file(
 )
 _append_add_binary(nte_core_path, ".")
 
+# Independent analysis component; never substitute the capture executable.
+analysis_core_dir = THIRD_PARTY_DIR / "analysis-core"
+analysis_core_path = analysis_core_dir / "bin" / "nte-analysis-core.exe"
+analysis_manifest_path = analysis_core_dir / "component.json"
+if analysis_core_path.exists() or analysis_manifest_path.exists():
+    _append_add_binary(_required_build_file("nte-analysis-core.exe", analysis_core_path), ".")
+    _append_add_data(_required_build_file("analysis component manifest", analysis_manifest_path), "analysis-core-meta")
+    for analysis_notice in ("LICENSE", "SOURCE.md", "THIRD_PARTY_NOTICES.txt"):
+        _append_add_data(_required_build_file(analysis_notice, analysis_core_dir / analysis_notice), "licenses/analysis-core")
+
 # Release 目录若提供许可证和协议说明，则一并放入安装包，便于审计和再分发。
 nte_core_metadata_dirs = _nte_core_metadata_directories(nte_core_path)
 for release_name in NTE_CORE_RELEASE_FILES:

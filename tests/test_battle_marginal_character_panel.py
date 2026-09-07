@@ -10,8 +10,9 @@ from PySide6.QtWidgets import QApplication
 from src.domain.battle_report import BattleCharacterBaseline, BattleCharacterStat
 from src.features.battle_report.marginal_character_panel import (
     BattleMarginalCharacterPanel,
-    character_panel_marginal_units,
 )
+
+from src.services.battle_marginal_panel_service import character_panel_marginal_units
 
 
 class BattleMarginalCharacterPanelTests(unittest.TestCase):

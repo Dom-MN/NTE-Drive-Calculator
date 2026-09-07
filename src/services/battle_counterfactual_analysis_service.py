@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
+from src.domain.native_analysis import BattleComputeBackend
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -217,6 +218,8 @@ class BattleCounterfactualAnalysisService:
         infer_buffs: bool = True,
         critical_events: Sequence[ForkCriticalEvent] = (),
         target_control_policy: str = "eligible_default",
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> BattleAnalysisSnapshot:
         resolved_target_condition = resolve_battle_target_condition(target_condition)
         source_hits = (evidence or {}).get("hits") or ()
@@ -277,6 +280,7 @@ class BattleCounterfactualAnalysisService:
             all_hits,
             time_stop_intervals=q_action_time_stop_intervals,
             animation_candidates=animation_candidates,
+            compute_backend=compute_backend, checkpoint=checkpoint,
         )
         time_stop_projection = BattleTimeStopProjectionService.resolve(
             observed_typed_time_stop_intervals,
@@ -306,6 +310,7 @@ class BattleCounterfactualAnalysisService:
                 int((evidence or {}).get("contract_version") or 0) < 5
             ),
             character_elements=character_elements,
+            compute_backend=compute_backend, checkpoint=checkpoint,
         )
         if int((evidence or {}).get("contract_version") or 0) < 5:
             time_stop_projection = (
@@ -328,7 +333,9 @@ class BattleCounterfactualAnalysisService:
         timeline_damage_groups = tuple(
             sorted(
                 (
-                    *BattleTimelineProjectionService.group_damage_hits(all_hits),
+                    *BattleTimelineProjectionService.group_damage_hits(
+                        all_hits, compute_backend=compute_backend, checkpoint=checkpoint,
+                    ),
                     *BattleTargetVitalAnalysisService.timeline_groups(
                         all_max_hp_events
                     ),
@@ -356,6 +363,7 @@ class BattleCounterfactualAnalysisService:
                 battle_end_us=maximum,
                 config=zankou_form_config,
                 time_stop_intervals=intervals,
+                compute_backend=compute_backend, checkpoint=checkpoint,
             )
             if infer_buffs
             else ()
@@ -373,6 +381,7 @@ class BattleCounterfactualAnalysisService:
                 else None
             ),
             infer_buffs=infer_buffs,
+            backend=compute_backend, checkpoint=checkpoint,
         )
         treatment_events = treatment_projection.events
         buff_intervals: tuple[BattleInferredBuffInterval, ...] = ()
@@ -386,6 +395,8 @@ class BattleCounterfactualAnalysisService:
                 treatment_events=treatment_events,
                 critical_events=critical_events,
                 target_control_policy=target_control_policy,
+                compute_backend=compute_backend,
+                checkpoint=checkpoint,
             )
             buff_intervals = tuple((
                 *buff_intervals,
@@ -395,10 +406,12 @@ class BattleCounterfactualAnalysisService:
                     hits=all_hits,
                     battle_end_us=maximum,
                     max_hp_events=all_max_hp_events,
+                    compute_backend=compute_backend, checkpoint=checkpoint,
                 ),
                 *zankou_form_intervals,
                 *BattleShinkuRageBuffService.infer(
                     build=build, hits=all_hits, config=shinku_rage_config,
+                    compute_backend=compute_backend, checkpoint=checkpoint,
                 ),
                 *BattleDaffodillAwakeningService.infer(
                     build=build,
@@ -409,6 +422,7 @@ class BattleCounterfactualAnalysisService:
                     topple_duration_us=BattleDaffodillAwakeningService.reliable_topple_duration_us(
                         outer_realm_buff_config
                     ),
+                    compute_backend=compute_backend, checkpoint=checkpoint,
                 ),
                 *BattleOuterRealmBuffService.infer(
                     BattleOuterRealmBuffService.apply_target_condition(
@@ -418,6 +432,7 @@ class BattleCounterfactualAnalysisService:
                     hits=all_hits,
                     battle_end_us=maximum,
                     time_stop_intervals=intervals,
+                    compute_backend=compute_backend, checkpoint=checkpoint,
                 ),
                 *BattleLinkoCoattackBuffService.infer(
                     build=build,
@@ -425,6 +440,7 @@ class BattleCounterfactualAnalysisService:
                     hits=all_hits,
                     battle_end_us=maximum,
                     time_stop_intervals=intervals,
+                    compute_backend=compute_backend, checkpoint=checkpoint,
                 ),
             ))
             witch_interval = battle_witch_buff_interval(

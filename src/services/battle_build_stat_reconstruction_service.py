@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from typing import Any
+from copy import deepcopy
 
 from src.services.battle_build_equipment_service import battle_equipment_items
 from src.services.character_shape_bonus_service import (
@@ -26,9 +27,12 @@ class BattleBuildStatReconstructionService:
     def enrich(
         build: dict[str, Any],
         dependencies: BattleReportPersistenceDependencies,
+        *,
+        detail_cache: dict[int, dict[str, Any]] | None = None,
     ) -> None:
         if dependencies.static_database_path is None:
             return
+        detail_request_cache: dict[object, Any] = {}
         for character in build.get("characters") or ():
             existing_stats = list(character.get("stats") or ())
             existing_sources = {
@@ -38,12 +42,18 @@ class BattleBuildStatReconstructionService:
             character_id = int(character["character_id"])
             items = battle_equipment_items(character)
             try:
-                detail = load_official_role_detail(
-                    dependencies.user_database_path,
-                    character_id,
-                    include_inventory_contexts=False,
-                    static_database_path=dependencies.static_database_path,
-                )
+                if detail_cache is not None and character_id in detail_cache:
+                    detail = deepcopy(detail_cache[character_id])
+                else:
+                    detail = load_official_role_detail(
+                        dependencies.user_database_path,
+                        character_id,
+                        include_inventory_contexts=False,
+                        static_database_path=dependencies.static_database_path,
+                        request_cache=detail_request_cache,
+                    )
+                    if detail_cache is not None:
+                        detail_cache[character_id] = deepcopy(detail)
                 frozen_world_bonus = {
                     str(row.get("property_id") or ""): float(
                         row.get("value") or 0.0

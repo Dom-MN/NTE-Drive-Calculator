@@ -17,16 +17,18 @@ from src.domain.battle_counterfactual_quantification import (
     BattleCounterfactualRatio,
     QuantificationStatus,
 )
-from src.services.battle_buff_attribute_projection_service import (
-    BattleBuffAttributeProjectionService,
-)
+from src.services.battle_buff_interval_index import BattleBuffIntervalIndex
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
+from src.services.battle_hit_buff_projection_cache import BattleHitBuffProjectionCache
 from src.services.battle_damage_composition_service import (
     has_hit_source_evidence,
 )
 from src.services.battle_target_instance_mapping_service import (
     BattleTargetInstanceMappingService,
 )
-from src.services.battle_weave_source_service import find_paired_weave_source_hit
+from src.services.battle_weave_source_service import (
+    BattleWeaveSourceIndex, BattleWeaveSourceLookup, find_paired_weave_source_hit,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +39,7 @@ class BattleMarginalFormulaScope:
     formula_projections: Mapping[str, BattleHitBuffProjection]
     target_conditions: Mapping[str, BattleTargetCondition | None]
     role_hits: tuple[BattleAnalysisHit, ...]
+    weave_sources: BattleWeaveSourceIndex
 
 
 def formula_panel_character_id(
@@ -87,6 +90,7 @@ def formula_damage_attribute(
 def prepare_marginal_formula_scope(
     analysis: BattleAnalysisSnapshot,
     character_id: int,
+    *, projection_memo: BattleBuffProjectionMemo | None = None,
 ) -> BattleMarginalFormulaScope:
     """Prepare both raw and formula projections plus the selected panel scope."""
 
@@ -94,22 +98,18 @@ def prepare_marginal_formula_scope(
         hit for hit in analysis.hits if hit.direction == "outgoing"
     )
     replays = {row.event_id: row for row in analysis.hit_replays}
-    raw_projections = {
-        hit.event_id: BattleBuffAttributeProjectionService.project_hit(
-            hit,
-            analysis.buff_intervals,
-        )
-        for hit in outgoing_hits
-    }
+    weave_sources = BattleWeaveSourceIndex(outgoing_hits)
+    projection_cache = BattleHitBuffProjectionCache(
+        BattleBuffIntervalIndex(analysis.buff_intervals), memo=projection_memo,
+    )
     formula_hits = {
         hit.event_id: project_replay_formula_hit(hit, replays.get(hit.event_id))
         for hit in outgoing_hits
     }
+    projection_cache.prepare((*outgoing_hits, *formula_hits.values()))
+    raw_projections = {hit.event_id: projection_cache.project(hit) for hit in outgoing_hits}
     formula_projections = {
-        event_id: BattleBuffAttributeProjectionService.project_hit(
-            hit,
-            analysis.buff_intervals,
-        )
+        event_id: projection_cache.project(hit)
         for event_id, hit in formula_hits.items()
     }
     target_conditions = {
@@ -124,7 +124,7 @@ def prepare_marginal_formula_scope(
         for hit in outgoing_hits
         if _belongs_to_panel_scope(
             hit,
-            outgoing_hits,
+            weave_sources,
             replays,
             character_id=character_id,
         )
@@ -136,13 +136,14 @@ def prepare_marginal_formula_scope(
         formula_projections=formula_projections,
         target_conditions=target_conditions,
         role_hits=role_hits,
+        weave_sources=weave_sources,
     )
 
 
 def property_owner_matches(
     property_id: str,
     hit: BattleAnalysisHit,
-    all_hits: Sequence[BattleAnalysisHit],
+    all_hits: BattleWeaveSourceLookup,
     replays: Mapping[str, BattleHitReplayResult],
     *,
     character_id: int,
@@ -216,7 +217,7 @@ def _quantification_status(row: object | None) -> QuantificationStatus:
 
 def _belongs_to_panel_scope(
     hit: BattleAnalysisHit,
-    all_hits: Sequence[BattleAnalysisHit],
+    all_hits: BattleWeaveSourceLookup,
     replays: Mapping[str, BattleHitReplayResult],
     *,
     character_id: int,

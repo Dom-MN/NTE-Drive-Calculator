@@ -205,6 +205,8 @@ Core 领域错误使用 code `-32000`、message `Core error`，并提供稳定�
 
 返回最新完整背包快照，不会自行开始抓包，也不会写业务背包文件。首次完整快照出现前返回 `INVENTORY_NOT_READY`。
 
+背包分片的过期判断仅使用受支持的 Bunch 包模式；其他模式不初始化或推进其序号时钟，其中可独立识别的原始角色与物品记录仍按原逻辑处理。受支持模式中不含背包分片的包仍推进过期判断。
+
 背包结果和 `event.inventory.snapshot` 都包含 `generation`、`observed_at_unix_ms`、`complete`、`character_count`、`characters`、`item_count` 和 `items`；事件还包含全局 `sequence`。抓包得到的角色实例独立于装备归属映射：
 
 ```json
@@ -342,6 +344,8 @@ stdout 永远不会输出 `PacketDebug`、payload preview、payload hex、decode
 ```
 
 返回一页有序逐击数据。`limit` 必填，范围为 1～500。`cursor` 可省略/为 null（从首条保留记录开始），也可传入 `next_cursor` 返回的正十进制字符串。sequence、cursor、total 均使用字符串，页面同时携带同一战斗 `generation`。每行包含 Core 已持有的有界、脱敏战斗事实，包括记录 ID、角色来源、归因状态/未知原因、方向、伤害/追击、目标投影、技能标识和深渊半场。`overkill_damage` 表示 primary `damage` 中超过有效 `target_hp_before` 的部分，不包含追击伤害；Core 缺少有效目标 HP 快照时为零。`max_hp_reduction` 表示归属于该次命中的额外最大生命值损失，并与 `total_damage` 分开返回。逐击行不包含网络包字节、端点或 PCAP 数据。稳定队伍快照尚不存在时，`team_snapshot_id` 明确返回 null，不根据当前 UI 状态推测。
+
+覆纹追加伤害的结算容器含有经过结构验证的角色声明时，Core 先把前置击候选限制为该角色，再沿用伤害匹配、血量连续性和唯一近时命中的规则，追加到匹配的逐击行。角色声明本身不产生已知角色的独立逐击；若仍找不到前置击，保留原有未归因伤害表示。同帧同伤害但解码位置或目标不同的命中分别归并。当前包与重组包中的同一次结算只补全来源，不重复计入伤害。
 
 Core 只保留有界命中窗口。更早记录被裁剪后，`complete` 变为 false，`first_available_cursor` 指出首条仍可读取记录。过旧 cursor 返回 `BATTLE_AXIS_CURSOR_EXPIRED`；超过 `total_hits + 1` 的 cursor 返回 `BATTLE_AXIS_CURSOR_INVALID`。
 

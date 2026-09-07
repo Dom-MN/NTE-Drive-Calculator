@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING
 
 from src.domain.battle_counterfactual_quantification import (
     BattleCounterfactualRatio,
     BattleDamageQuantification,
     QuantificationStatus,
 )
+
+if TYPE_CHECKING:
+    from src.domain.battle_report import BattleDamageComposition
 
 @dataclass(frozen=True, slots=True)
 class BattleMarginalResult:
@@ -112,7 +115,7 @@ class BattleBuildCounterfactual:
     structured_percent: float
     roles: tuple[BattleBuildRoleCounterfactual, ...]
     hits: tuple[BattleBuildHitCounterfactual, ...]
-    composition: Any
+    composition: BattleDamageComposition
     assumptions: tuple[str, ...]
     vital_events: tuple[BattleBuildVitalCounterfactual, ...] = ()
 

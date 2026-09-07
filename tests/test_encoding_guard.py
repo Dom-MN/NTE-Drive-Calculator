@@ -219,6 +219,23 @@ class EncodingGuardTests(unittest.TestCase):
                 issues.append(f"{path}: {', '.join(missing)}")
         self.assertEqual([], issues)
 
+    def test_annotation_guard_recognizes_type_checking_imports_only_at_module_scope(self):
+        tree = ast.parse(
+            "from typing import TYPE_CHECKING\n"
+            "if TYPE_CHECKING:\n"
+            "    from example import FrozenInput as Input\n"
+            "def helper():\n"
+            "    from example import LocalOnly\n"
+            "if runtime_condition:\n"
+            "    from example import ConditionalOnly\n"
+            "def consume(value: Input, missing: Unknown) -> None: pass\n"
+        )
+        defined = _module_defined_names(tree)
+        self.assertIn("Input", defined)
+        self.assertNotIn("LocalOnly", defined)
+        self.assertNotIn("ConditionalOnly", defined)
+        self.assertEqual({"Unknown"}, _annotation_names(tree) - defined)
+
 
 def _missing_names_for_path(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
@@ -243,6 +260,12 @@ def _module_defined_names(tree: ast.AST) -> set[str]:
                     names.add(target.id)
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             names.add(node.target.id)
+        elif (
+            isinstance(node, ast.If)
+            and isinstance(node.test, ast.Name)
+            and node.test.id == "TYPE_CHECKING"
+        ):
+            names.update(_module_defined_names(ast.Module(body=node.body, type_ignores=[])))
     return names
 
 

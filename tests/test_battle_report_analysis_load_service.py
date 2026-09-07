@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import Mock, call, patch
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QObject, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QObject, QTimer
 
 from src.features.battle_report.analysis_controller_mixin import (
     BattleReportAnalysisControllerMixin,
@@ -22,12 +22,14 @@ from src.services.battle_marginal_candidate_service import (
     BattleMarginalCandidateService,
 )
 from src.services.battle_analysis_progress import BattleAnalysisProgress
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
 
 
 class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
     def test_overview_skips_formula_buff_and_original_build_replays(self) -> None:
         overview = SimpleNamespace(timeline_hits=(object(),))
-        history = Mock()
+        history = Mock(native_page_loader=None)
+        history.new_projection_memo.return_value = BattleBuffProjectionMemo()
         history.load_analysis.return_value = overview
         history.load_target_catalog.return_value = {"kinds": ()}
 
@@ -57,7 +59,8 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
         projected = SimpleNamespace(timeline_hits=(object(),))
         materialized = SimpleNamespace(timeline_hits=(object(),))
         combined = SimpleNamespace(timeline_hits=(object(),))
-        history = Mock()
+        history = Mock(native_page_loader=None)
+        history.new_projection_memo.return_value = BattleBuffProjectionMemo()
         history.load_analysis.side_effect = (candidate, effective, original)
         history.load_target_catalog.return_value = {"kinds": ()}
         candidate_request = BattleMarginalCandidateService.freeze(
@@ -105,6 +108,8 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
                     include_buff_inference=True,
                     include_hit_replays=True,
                     include_buff_counterfactuals=True,
+                    frozen_inputs=history.freeze_analysis_inputs.return_value,
+                    projection_memo=history.new_projection_memo.return_value,
                 ),
                 call(
                     12,
@@ -114,6 +119,8 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
                     include_buff_inference=True,
                     include_hit_replays=True,
                     include_buff_counterfactuals=False,
+                    frozen_inputs=history.freeze_analysis_inputs.return_value,
+                    projection_memo=history.new_projection_memo.return_value,
                 ),
                 call(
                     12,
@@ -124,13 +131,16 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
                     include_buff_inference=True,
                     include_hit_replays=True,
                     include_buff_counterfactuals=False,
+                    frozen_inputs=history.freeze_analysis_inputs.return_value,
+                    projection_memo=history.new_projection_memo.return_value,
                 ),
             ],
             history.load_analysis.call_args_list,
         )
+        history.freeze_analysis_inputs.assert_called_once_with(12)
         compare.assert_has_calls([
-            call(original=original, candidate=effective),
-            call(original=materialized, candidate=candidate),
+            call(original=original, candidate=effective, projection_memo=history.new_projection_memo.return_value),
+            call(original=materialized, candidate=candidate, projection_memo=history.new_projection_memo.return_value),
         ])
         project.assert_called_once_with(effective, "effective-comparison")
 
@@ -139,7 +149,8 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
         original = SimpleNamespace(timeline_hits=(object(),))
         projected = SimpleNamespace(timeline_hits=(object(),))
         materialized = SimpleNamespace(timeline_hits=(object(),))
-        history = Mock()
+        history = Mock(native_page_loader=None)
+        history.new_projection_memo.return_value = BattleBuffProjectionMemo()
         history.load_analysis.side_effect = (effective, original)
         history.load_target_catalog.return_value = {"kinds": ()}
 
@@ -172,7 +183,7 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
             False,
             history.load_analysis.call_args_list[1].kwargs["use_build_edit"],
         )
-        compare.assert_called_once_with(original=original, candidate=effective)
+        compare.assert_called_once_with(original=original, candidate=effective, projection_memo=history.new_projection_memo.return_value)
         project.assert_called_once_with(effective, "effective-comparison")
         clear_comparison.assert_called_once_with(
             projected,
@@ -198,7 +209,8 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
             hit_replay_model_version="fixture-v1",
         )
         combined = SimpleNamespace(timeline_hits=(object(),))
-        history = Mock()
+        history = Mock(native_page_loader=None)
+        history.new_projection_memo.return_value = BattleBuffProjectionMemo()
         history.load_analysis.return_value = candidate
         history.load_target_catalog.return_value = {"kinds": ()}
         candidate_request = BattleMarginalCandidateService.freeze(
@@ -230,11 +242,12 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
 
         self.assertIs(combined, result.analysis)
         self.assertEqual(1, history.load_analysis.call_count)
-        compare.assert_called_once_with(original=baseline, candidate=candidate)
+        compare.assert_called_once_with(original=baseline, candidate=candidate, projection_memo=history.new_projection_memo.return_value)
 
     def test_target_catalog_failure_keeps_completed_analysis(self) -> None:
         analysis = SimpleNamespace(timeline_hits=(object(),))
-        history = Mock()
+        history = Mock(native_page_loader=None)
+        history.new_projection_memo.return_value = BattleBuffProjectionMemo()
         history.load_analysis.return_value = analysis
         history.load_target_catalog.side_effect = RuntimeError(
             "catalog unavailable"
@@ -252,9 +265,46 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
         self.assertIsNone(result.target_catalog)
         self.assertIsInstance(result.target_catalog_error, RuntimeError)
 
+    def test_benefit_variants_receive_the_same_request_facts_and_projection_memo(self) -> None:
+        history = Mock(native_page_loader=None)
+        history.new_projection_memo.return_value = BattleBuffProjectionMemo()
+        candidate = BattleMarginalCandidateService.freeze(
+            12, [{"character_id": 1004}], equipment_editable=True,
+        )
+        analysis = SimpleNamespace(
+            battle_record_id=12, hit_replays=(object(),), timeline_hits=(),
+            range_start_us=1, range_end_us=2, target_condition=None,
+            target_instance_resolutions=(), hit_replay_model_version="fixture-v1",
+        )
+        history.load_analysis.return_value = analysis
+        benefits = object()
+
+        def calculate(**kwargs):
+            self.assertIs(analysis, kwargs["load_variant"](candidate))
+            self.assertIs(analysis, kwargs["load_variant"](candidate))
+            return benefits
+
+        with (
+            patch("src.services.battle_report_analysis_load_service.replace", return_value=analysis),
+            patch("src.services.battle_report_analysis_load_service.BattleBuildCounterfactualService.compare"),
+            patch("src.services.battle_report_analysis_load_service.BattleMarginalBenefitService.calculate", side_effect=calculate),
+        ):
+            result = BattleReportAnalysisLoadService.load(history, BattleReportAnalysisLoadRequest(
+                battle_record_id=12, detail_level="marginal", marginal_candidate=candidate,
+                marginal_benefit_candidate=candidate, selected_character_id=1004,
+                comparison_baseline=analysis,
+            ))
+        self.assertIs(benefits, result.marginal_benefits)
+        history.freeze_analysis_inputs.assert_called_once_with(12)
+        self.assertEqual(3, history.load_analysis.call_count)
+        for invocation in history.load_analysis.call_args_list:
+            self.assertIs(history.freeze_analysis_inputs.return_value, invocation.kwargs["frozen_inputs"])
+            self.assertIs(history.new_projection_memo.return_value, invocation.kwargs["projection_memo"])
+
     def test_target_catalog_cancellation_is_not_wrapped_as_catalog_error(self) -> None:
         analysis = SimpleNamespace(timeline_hits=(object(),))
-        history = Mock()
+        history = Mock(native_page_loader=None)
+        history.new_projection_memo.return_value = BattleBuffProjectionMemo()
         history.load_analysis.return_value = analysis
 
         def cancel(progress):
@@ -281,7 +331,7 @@ class _AsyncPage:
     def end_analysis_details(self) -> None:
         pass
 
-    def set_analysis(self, analysis, *, selected_character_id=None) -> None:
+    def set_analysis(self, analysis, *, selected_character_id=None, hit_details=None) -> None:
         del selected_character_id
         self.loaded_ranges.append(analysis.range_start_us)
         self.loop.quit()
@@ -293,6 +343,7 @@ class _AsyncPage:
         detail_scope=None,
         is_candidate=False,
         marginal_benefits=None,
+        marginal_panel=None, candidate_display_analysis=None, hit_details=None,
     ) -> None:
         del detail_scope, is_candidate, marginal_benefits
         self.loaded_ranges.append(analysis.range_start_us)
@@ -324,7 +375,8 @@ class _AsyncHost(BattleReportAnalysisControllerMixin, QObject):
         self._build_snapshot_controller = SimpleNamespace(
             refresh=lambda _record_id: None
         )
-        self._history = Mock()
+        self._history = Mock(native_page_loader=None)
+        self._marginal_units_provider = lambda: {"CritBase": 0.032}
         self._initialize_analysis_loading()
 
     def _current_history_service(self):
@@ -342,9 +394,26 @@ class _AsyncHost(BattleReportAnalysisControllerMixin, QObject):
 
 
 class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._hosts: list[_AsyncHost] = []
+
+    def _host(self, page: _AsyncPage) -> _AsyncHost:
+        host = _AsyncHost(page)
+        self._hosts.append(host)
+        return host
+
+    def tearDown(self) -> None:
+        # Qt owner 必须在主线程销毁，避免循环引用被后续 worker 的 GC 回收。
+        for host in self._hosts:
+            worker = host._analysis_load_worker
+            if worker is not None:
+                self.assertTrue(worker.wait(2_000))
+            host.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
     def test_empty_production_state_rejects_deleted_record_callback(self) -> None:
         loop = QEventLoop()
-        host = _AsyncHost(_AsyncPage(loop))
+        host = self._host(_AsyncPage(loop))
         request = SimpleNamespace(
             load=BattleReportAnalysisLoadRequest(battle_record_id=12),
             account_id="test-account",
@@ -360,7 +429,7 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
     def test_composition_detail_reuses_hit_replay_load(self) -> None:
         loop = QEventLoop()
         page = _AsyncPage(loop)
-        host = _AsyncHost(page)
+        host = self._host(page)
         host._latest_state = SimpleNamespace(battle_record_id=12)
         host._latest_analysis_load_request = BattleReportAnalysisLoadRequest(
             battle_record_id=12,
@@ -387,7 +456,7 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
         app = QCoreApplication.instance() or QCoreApplication([])
         loop = QEventLoop()
         page = _AsyncPage(loop)
-        host = _AsyncHost(page)
+        host = self._host(page)
 
         def load(_history, request, *, progress_callback=None):
             time.sleep(0.03)
@@ -423,7 +492,7 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
         app = QCoreApplication.instance() or QCoreApplication([])
         loop = QEventLoop()
         page = _AsyncPage(loop)
-        host = _AsyncHost(page)
+        host = self._host(page)
         loaded_scopes: list[str | None] = []
 
         def load(_history, request, *, progress_callback=None):
@@ -456,7 +525,7 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
         app = QCoreApplication.instance() or QCoreApplication([])
         loop = QEventLoop()
         page = _AsyncPage(loop)
-        host = _AsyncHost(page)
+        host = self._host(page)
         loaded_scopes: list[str | None] = []
         first_started = Event()
         release_first = Event()
@@ -497,7 +566,7 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
         page = _AsyncPage(loop)
         page.cleared_messages = []
         page.clear_analysis = page.cleared_messages.append
-        host = _AsyncHost(page)
+        host = self._host(page)
         request = SimpleNamespace(
             load=BattleReportAnalysisLoadRequest(
                 battle_record_id=12,

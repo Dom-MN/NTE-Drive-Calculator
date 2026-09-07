@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace
 
 from PySide6.QtCore import Qt
@@ -16,6 +17,7 @@ from src.features.battle_report.analysis_view import BattleLongAnalysisView
 from src.services.battle_hit_buff_explanation_service import (
     BattleHitBuffExplanationService,
 )
+from src.services.battle_buff_attribute_projection_service import BattleBuffAttributeProjectionService
 
 
 def _hit() -> BattleAnalysisHit:
@@ -124,6 +126,8 @@ class BattleHitBuffDetailTests(unittest.TestCase):
             battle_start_us=0,
             time_stop_intervals=(),
         )
+        projection = BattleBuffAttributeProjectionService.project_hit(hit, (interval,))
+        view._hit_details = SimpleNamespace(for_hit=lambda _hit, formula: (projection, (interval,)))
 
         view._render_log()
 
@@ -133,7 +137,8 @@ class BattleHitBuffDetailTests(unittest.TestCase):
             hit.event_id,
             item.data(Qt.ItemDataRole.UserRole),
         )
-        view.log_table.cellClicked.emit(0, 9)
+        with patch.object(BattleBuffAttributeProjectionService, "project_hit", side_effect=AssertionError("UI recalculated Buff")):
+            view.log_table.cellClicked.emit(0, 9)
         self.app.processEvents()
 
         dialog = view._hit_buff_dialog

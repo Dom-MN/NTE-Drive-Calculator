@@ -407,6 +407,7 @@ class BattleHitReplayExplanationService:
         *,
         active_buffs: Sequence[BattleInferredBuffInterval] = (),
         counterfactual: BattleBuildHitCounterfactual | None = None,
+        projection=None, allow_projection_fallback: bool = True,
     ) -> str:
         damage_name = preferred_battle_damage_name(
             hit.damage_name,
@@ -442,15 +443,15 @@ class BattleHitReplayExplanationService:
             ))
         if counterfactual is not None:
             quantification = counterfactual.quantification
-            projection = (
+            projected_damage = (
                 counterfactual.candidate_damage
                 if counterfactual.candidate_damage is not None
                 else counterfactual.known_projection_damage
             )
             delta = (
                 None
-                if projection is None
-                else projection - counterfactual.baseline_damage
+                if projected_damage is None
+                else projected_damage - counterfactual.baseline_damage
             )
             gain_percent = (
                 delta / counterfactual.baseline_damage * 100.0
@@ -477,7 +478,7 @@ class BattleHitReplayExplanationService:
                 "【调整后边际】",
                 (
                     f"原始逐击：{counterfactual.baseline_damage:,.2f}    "
-                    f"{projection_label}：{_damage(projection)}"
+                    f"{projection_label}：{_damage(projected_damage)}"
                 ),
                 (
                     f"{direction}：{_damage(delta)}（"
@@ -692,13 +693,15 @@ class BattleHitReplayExplanationService:
                 lines.extend(_factor_lines(factor))
                 lines.append("")
 
-        projection = BattleBuffAttributeProjectionService.project_hit(
-            hit,
-            active_buffs,
-        )
+        if projection is None and allow_projection_fallback:
+            projection = BattleBuffAttributeProjectionService.project_hit(hit, active_buffs)
+        if projection is None:
+            return "\n".join((*lines, "本击未生成原生 Buff 投影详情；公式结果保持已计算值。"))
         decision_by_id = {
             row.interval_id: row for row in projection.decisions
         }
+        if not allow_projection_fallback:
+            lines.append("Buff投影口径：正式公式命中视图；倾陷各角色属性以贡献乘区为准。")
         lines.append(
             "【本击 Buff：已投影（是否被公式消费见乘区）】"
             if not any(

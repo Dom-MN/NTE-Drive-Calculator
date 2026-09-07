@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from src.services.battle_state_payload import HIT_FIELDS, ACTION_FIELDS, ZANKOU_CONFIG_FIELDS, state_rows, state_row
+from src.domain.native_analysis import BattleComputeBackend
+from src.services.battle_character_state_compute import compute_character_state, state_ids, state_ranges
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -168,6 +171,8 @@ class BattleZankouFormBuffService:
         battle_end_us: int,
         config: BattleZankouFormConfig | None,
         time_stop_intervals: Sequence[tuple[int | None, int | None]] = (),
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleInferredBuffInterval, ...]:
         character = _selected_zankou(build)
         if character is None or config is None:
@@ -175,108 +180,124 @@ class BattleZankouFormBuffService:
         if battle_end_us <= 0:
             return ()
 
-        def active_time(wall_time_us: int) -> int:
-            return project_timeline_time_us(
-                wall_time_us,
-                battle_start_us=0,
-                intervals=time_stop_intervals,
-                mode=ACTIVE_TIME_MODE,
-            )
-
-        active_end = active_time(battle_end_us)
-        hit_times = {hit.event_id: hit.relative_time_us for hit in hits}
-
-        def transition_time(
-            action: BattleInferredAction,
-            fallback_wall_us: int,
-        ) -> int:
-            evidence_times = tuple(
-                hit_times[event_id]
-                for event_id in action.evidence_event_ids
-                if event_id in hit_times
-            )
-            return active_time(max(evidence_times, default=fallback_wall_us))
-
         effect_one_enabled = _effect_enabled(character, "Effect1")
-        fantasy_duration = round(config.fantasy_duration_seconds * 1_000_000)
-        r_to_m_retention = round(
-            config.reality_to_fantasy_retention_seconds * 1_000_000
-        )
-        m_to_r_retention = round(
-            config.fantasy_to_reality_retention_seconds * 1_000_000
-        )
-        fantasy_ranges: list[tuple[int, int]] = []
-        fantasy_start: int | None = None
-        fantasy_expiry: int | None = None
-        previous_character_id: int | None = None
-        evidence_action_ids: list[str] = []
+        native = compute_character_state("zankou", {
+            "actions": state_rows(actions, ACTION_FIELDS),
+            "hits": state_rows(hits, HIT_FIELDS), "battle_end_us": battle_end_us,
+            "time_stop_intervals": list(time_stop_intervals), "config": state_row(config, ZANKOU_CONFIG_FIELDS),
+            "effect_one_enabled": effect_one_enabled,
+        }, backend=compute_backend, checkpoint=checkpoint) if (
+            isinstance(compute_backend, BattleComputeBackend) and compute_backend.supports_battle_compute
+        ) else None
+        if native is None:
+            def active_time(wall_time_us: int) -> int:
+                return project_timeline_time_us(
+                    wall_time_us,
+                    battle_start_us=0,
+                    intervals=time_stop_intervals,
+                    mode=ACTIVE_TIME_MODE,
+                )
 
-        def begin_fantasy(at_us: int) -> None:
-            nonlocal fantasy_start, fantasy_expiry
-            if fantasy_start is None:
-                fantasy_start = at_us
-            fantasy_expiry = max(
-                fantasy_expiry or at_us,
-                at_us + fantasy_duration,
+            active_end = active_time(battle_end_us)
+            hit_times = {hit.event_id: hit.relative_time_us for hit in hits}
+
+            def transition_time(
+                action: BattleInferredAction,
+                fallback_wall_us: int,
+            ) -> int:
+                evidence_times = tuple(
+                    hit_times[event_id]
+                    for event_id in action.evidence_event_ids
+                    if event_id in hit_times
+                )
+                return active_time(max(evidence_times, default=fallback_wall_us))
+
+            effect_one_enabled = _effect_enabled(character, "Effect1")
+            fantasy_duration = round(config.fantasy_duration_seconds * 1_000_000)
+            r_to_m_retention = round(
+                config.reality_to_fantasy_retention_seconds * 1_000_000
             )
+            m_to_r_retention = round(
+                config.fantasy_to_reality_retention_seconds * 1_000_000
+            )
+            fantasy_ranges: list[tuple[int, int]] = []
+            fantasy_start: int | None = None
+            fantasy_expiry: int | None = None
+            previous_character_id: int | None = None
+            evidence_action_ids: list[str] = []
 
-        def end_fantasy(at_us: int) -> None:
-            nonlocal fantasy_start, fantasy_expiry
-            if fantasy_start is not None and at_us > fantasy_start:
-                fantasy_ranges.append((fantasy_start, at_us))
-            fantasy_start = None
-            fantasy_expiry = None
+            def begin_fantasy(at_us: int) -> None:
+                nonlocal fantasy_start, fantasy_expiry
+                if fantasy_start is None:
+                    fantasy_start = at_us
+                fantasy_expiry = max(
+                    fantasy_expiry or at_us,
+                    at_us + fantasy_duration,
+                )
 
-        if effect_one_enabled:
-            shou = huo = ((0, active_end),)
+            def end_fantasy(at_us: int) -> None:
+                nonlocal fantasy_start, fantasy_expiry
+                if fantasy_start is not None and at_us > fantasy_start:
+                    fantasy_ranges.append((fantasy_start, at_us))
+                fantasy_start = None
+                fantasy_expiry = None
+
+            if effect_one_enabled:
+                shou = huo = ((0, active_end),)
+            else:
+                ordered = sorted(actions, key=lambda row: (row.start_us, row.action_id))
+                for action in ordered:
+                    start = active_time(action.start_us)
+                    if fantasy_expiry is not None and fantasy_expiry <= start:
+                        end_fantasy(fantasy_expiry)
+                    if (
+                        previous_character_id == _ZANKOU_CHARACTER_ID
+                        and action.character_id != _ZANKOU_CHARACTER_ID
+                    ):
+                        end_fantasy(start)
+                    previous_character_id = action.character_id
+                    if action.character_id != _ZANKOU_CHARACTER_ID:
+                        continue
+                    evidence_action_ids.append(action.action_id)
+                    if _has_marker(action, _FANTASY_ACTION_MARKERS):
+                        begin_fantasy(start)
+                    elif _has_marker(action, _REALITY_ACTION_MARKERS):
+                        end_fantasy(start)
+
+                    if _has_marker(action, _REALITY_TO_FANTASY_EFFECTS):
+                        begin_fantasy(transition_time(action, action.end_us))
+                    elif _has_marker(action, _FANTASY_TO_REALITY_EFFECTS):
+                        end_fantasy(transition_time(action, action.end_us))
+                    elif action.input_kind == "Q" and fantasy_start is not None:
+                        end_fantasy(transition_time(action, action.end_us))
+
+                if fantasy_start is not None:
+                    end_fantasy(min(active_end, fantasy_expiry or active_end))
+                fantasy = _merge_ranges(fantasy_ranges, maximum=active_end)
+                reality: list[tuple[int, int]] = []
+                cursor = 0
+                for start, end in fantasy:
+                    if start > cursor:
+                        reality.append((cursor, start))
+                    cursor = max(cursor, end)
+                if cursor < active_end:
+                    reality.append((cursor, active_end))
+                shou = _merge_ranges(
+                    tuple((start, end + r_to_m_retention) for start, end in reality),
+                    maximum=active_end,
+                )
+                huo = _merge_ranges(
+                    tuple((start, end + m_to_r_retention) for start, end in fantasy),
+                    maximum=active_end,
+                )
+
         else:
-            ordered = sorted(actions, key=lambda row: (row.start_us, row.action_id))
-            for action in ordered:
-                start = active_time(action.start_us)
-                if fantasy_expiry is not None and fantasy_expiry <= start:
-                    end_fantasy(fantasy_expiry)
-                if (
-                    previous_character_id == _ZANKOU_CHARACTER_ID
-                    and action.character_id != _ZANKOU_CHARACTER_ID
-                ):
-                    end_fantasy(start)
-                previous_character_id = action.character_id
-                if action.character_id != _ZANKOU_CHARACTER_ID:
-                    continue
-                evidence_action_ids.append(action.action_id)
-                if _has_marker(action, _FANTASY_ACTION_MARKERS):
-                    begin_fantasy(start)
-                elif _has_marker(action, _REALITY_ACTION_MARKERS):
-                    end_fantasy(start)
-
-                if _has_marker(action, _REALITY_TO_FANTASY_EFFECTS):
-                    begin_fantasy(transition_time(action, action.end_us))
-                elif _has_marker(action, _FANTASY_TO_REALITY_EFFECTS):
-                    end_fantasy(transition_time(action, action.end_us))
-                elif action.input_kind == "Q" and fantasy_start is not None:
-                    end_fantasy(transition_time(action, action.end_us))
-
-            if fantasy_start is not None:
-                end_fantasy(min(active_end, fantasy_expiry or active_end))
-            fantasy = _merge_ranges(fantasy_ranges, maximum=active_end)
-            reality: list[tuple[int, int]] = []
-            cursor = 0
-            for start, end in fantasy:
-                if start > cursor:
-                    reality.append((cursor, start))
-                cursor = max(cursor, end)
-            if cursor < active_end:
-                reality.append((cursor, active_end))
-            shou = _merge_ranges(
-                tuple((start, end + r_to_m_retention) for start, end in reality),
-                maximum=active_end,
-            )
-            huo = _merge_ranges(
-                tuple((start, end + m_to_r_retention) for start, end in fantasy),
-                maximum=active_end,
-            )
+            shou, huo = state_ranges(native, "shou"), state_ranges(native, "huo")
+            evidence_action_ids = list(state_ids(native, "evidence_action_ids"))
 
         def wall_time(active_us: int, *, prefer_end: bool) -> int:
+            if native is not None:
+                return active_us
             return unproject_timeline_time_us(
                 active_us,
                 battle_start_us=0,

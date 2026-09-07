@@ -15,20 +15,12 @@ from src.domain.battle_report import (
     BattleSkillDamageEvidence,
 )
 from src.services.battle_hit_replay_support import (
-    settle_replay_damage,
     dot_final_replay_factors,
     literal_replay_term,
 )
 from src.services.battle_weave_source_service import find_paired_weave_source_hit
-from src.services.damage_calculation_service import (
-    DamageScene,
-    EnemyDefenseProfileInput,
-    calculate_defense_multiplier,
-    calculate_enemy_defense,
-    calculate_enemy_defense_from_profile,
-    calculate_resistance_multiplier,
-    calculate_ring_strength_multiplier,
-    calculate_weave_strength_multiplier,
+from src.services.battle_special_replay_numeric import (
+    mitigation_input, numeric_replay,
 )
 
 
@@ -42,13 +34,6 @@ _ELEMENT_PENETRATION_PROPERTIES = {
     "psychically": "DamagePenetratePsychically",
 }
 
-_ELEMENT_RESISTANCE_PROPERTIES = {
-    element: (
-        f"DamageResist{element.title()}Base",
-        f"DamageResist{element.title()}Add",
-    )
-    for element in _ELEMENT_PENETRATION_PROPERTIES
-}
 _ORDINARY_SCORCH_DAMAGE_ID = "buff_reaction_5_new"
 _ZANKOU_SCORCH_DAMAGE_ID = "buff_reaction_5_new_1036"
 
@@ -72,16 +57,11 @@ def _factor(
     )
 
 
-def _signed_error(observed: float, predicted: float) -> float | None:
-    if observed <= 0.0:
-        return None
-    return (predicted - observed) / observed * 100.0
-
-
 class BattleSpecialHitReplayService:
     """Replay only special channels whose current formula is fully bounded."""
 
     @classmethod
+    @numeric_replay
     def replay(
         cls,
         *,
@@ -161,16 +141,17 @@ class BattleSpecialHitReplayService:
             and "PASSIVE-1072-GA_Radio072_Passive_1"
             in baseline.enabled_team_passive_ids
         )
-        ring_strength = max(0.0, float(values.get("MagBase", 0.0)))
-        strength_multiplier = calculate_weave_strength_multiplier(ring_strength)
-        base_extra_ratio = 0.30 if lingke_passive else 0.20
-        followup_multiplier = (1.0 + base_extra_ratio) * strength_multiplier - 1.0
-
-        predicted = settle_replay_damage(
-            triggering_hit.damage * followup_multiplier
-        )
-        signed_error = _signed_error(hit.damage, predicted)
-        absolute_error = None if signed_error is None else abs(signed_error)
+        numbers = yield ("special_weave_v1", {
+            "ring_strength": float(values.get("MagBase", 0.0)),
+            "lingke_passive": lingke_passive, "source_damage": triggering_hit.damage,
+            "observed": hit.damage,
+        })
+        ring_strength = numbers["ring_strength"]
+        strength_multiplier = numbers["strength_multiplier"]
+        base_extra_ratio = numbers["extra_ratio"]
+        followup_multiplier = numbers["followup_multiplier"]
+        predicted = numbers["selected"]
+        signed_error, absolute_error = numbers["signed_error"], numbers["absolute_error"]
         confidence = (
             "高" if absolute_error is not None and absolute_error <= 2.0
             else "中" if absolute_error is not None and absolute_error <= 5.0
@@ -254,21 +235,14 @@ class BattleSpecialHitReplayService:
         return attribute if attribute else "normal"
 
     @staticmethod
-    def _mitigation(
+    def _mitigation_context(
         *,
         hit: BattleAnalysisHit,
         projection: BattleHitBuffProjection,
         values: Mapping[str, float],
         analysis: BattleAnalysisSnapshot,
         evidence_attribute: str = "",
-    ) -> tuple[
-        str,
-        float,
-        float,
-        float,
-        str,
-        tuple[BattleHitReplayTerm, ...],
-    ]:
+    ) -> tuple[str, dict, str, tuple[BattleHitReplayTerm, ...]]:
         condition = analysis.target_condition
         assert condition is not None
         attribute = BattleSpecialHitReplayService._reaction_attribute(
@@ -277,30 +251,10 @@ class BattleSpecialHitReplayService:
             evidence_attribute,
         )
         defense_penetration = max(0.0, float(values.get("DefIgnore", 0.0)))
-        if condition.enemy_defense_base is None:
-            scene = (
-                DamageScene.OPEN_WORLD
-                if condition.scene == "open_world"
-                else DamageScene.OUTER_REALM
-            )
-            enemy_defense = calculate_enemy_defense(
-                condition.enemy_level,
-                defense_penetration,
-                condition.defense_reduction,
-                scene,
-            )
-            defense_basis = "用户场景与显示等级近似"
-        else:
-            enemy_defense = calculate_enemy_defense_from_profile(
-                EnemyDefenseProfileInput(
-                    defense_base=condition.enemy_defense_base,
-                    defense_up=condition.enemy_defense_up,
-                    defense_add=condition.enemy_defense_add,
-                ),
-                defense_penetration,
-                condition.defense_reduction,
-            )
-            defense_basis = "目标属性包 DefBase/6"
+        defense_basis = (
+            "用户场景与显示等级近似" if condition.enemy_defense_base is None
+            else "目标属性包 DefBase/6"
+        )
         baseline = next(
             (
                 row
@@ -310,7 +264,6 @@ class BattleSpecialHitReplayService:
             None,
         )
         character_level = 80.0 if baseline is None else baseline.character_level
-        defense = calculate_defense_multiplier(character_level, enemy_defense)
         defense_terms = (
             ()
             if condition.enemy_defense_base is None
@@ -347,32 +300,12 @@ class BattleSpecialHitReplayService:
                 ),
             )
         )
-        base_resistance = dict(condition.resistances).get(attribute, 0.20)
-        resistance_properties = _ELEMENT_RESISTANCE_PROPERTIES.get(attribute, ())
-        dynamic_resistance = sum(
-            modifier.additive_value
-            for modifier in projection.modifiers
-            if modifier.target_scope == "target"
-            and modifier.property_id in resistance_properties
-        )
-        penetration_property = _ELEMENT_PENETRATION_PROPERTIES.get(attribute)
-        penetration = (
-            0.0
-            if penetration_property is None
-            else float(values.get(penetration_property, 0.0))
-        )
-        resistance = calculate_resistance_multiplier(
-            base_resistance + dynamic_resistance - penetration
-        )
-        vulnerability = 1.0 + condition.vulnerability
-        return (
-            attribute,
-            defense,
-            resistance,
-            vulnerability,
-            defense_basis,
-            defense_terms,
-        )
+        inputs = mitigation_input(condition, character_level, values, projection,
+                                  attribute, clamp_defense=True)
+        if attribute not in _ELEMENT_PENETRATION_PROPERTIES:
+            inputs["resistance_additions"] = []
+            inputs["resistance_penetration"] = 0.0
+        return attribute, inputs, defense_basis, defense_terms
 
     @classmethod
     def _replay_standard_reaction(
@@ -447,60 +380,27 @@ class BattleSpecialHitReplayService:
                 missing_evidence=(f"缺少{formula_label}的官方 16 档等级基础值",),
                 formula_type=formula_label,
             )
-        ring_strength = max(0.0, float(values.get("MagBase", 0.0)))
-        ring_multiplier = calculate_ring_strength_multiplier(ring_strength)
-        (
-            attribute,
-            defense,
-            resistance,
-            vulnerability,
-            defense_basis,
-            defense_terms,
-        ) = cls._mitigation(
-            hit=hit,
-            projection=projection,
-            values=values,
-            analysis=analysis,
+        attribute, mitigation, defense_basis, defense_terms = cls._mitigation_context(
+            hit=hit, projection=projection, values=values, analysis=analysis,
             evidence_attribute=evidence.damage_attribute,
         )
-        stack_multiplier = (
-            evidence.state_multiplier
-            if channel_id == "reaction_scorch"
-            else 1.0
-        )
-        dot_final_multiplier = (
-            max(1.0, evidence.dot_final_multiplier)
-            if channel_id == "reaction_scorch"
-            else 1.0
-        )
-        raw_non_critical = (
-            level_multiplier
-            * stack_multiplier
-            * ring_multiplier
-            * defense
-            * resistance
-            * vulnerability
-            * dot_final_multiplier
-        )
-        non_critical = settle_replay_damage(raw_non_critical)
-        crit_damage = max(0.0, float(values.get("CritDamageBase", 0.50)))
-        if channel_id == "reaction_scorch":
-            critical = settle_replay_damage(raw_non_critical * (1.0 + crit_damage))
-            noncrit_error = abs(_signed_error(hit.damage, non_critical) or 0.0)
-            crit_error = abs(_signed_error(hit.damage, critical) or 0.0)
-            is_critical = crit_error < noncrit_error
-            selected = critical if is_critical else non_critical
-            critical_state = "critical" if is_critical else "non_critical"
-            critical_rate = 0.50
-            expected = non_critical * (1.0 - critical_rate) + critical * critical_rate
-        else:
-            critical = None
-            selected = non_critical
-            critical_state = "not_applicable"
-            critical_rate = 0.0
-            expected = non_critical
-        signed_error = _signed_error(hit.damage, selected)
-        absolute_error = None if signed_error is None else abs(signed_error)
+        numbers = yield ("special_reaction_v1", {
+            "observed": hit.damage, "level_multiplier": level_multiplier,
+            "ring_strength": float(values.get("MagBase", 0.0)),
+            "mitigation": mitigation, "scorch": channel_id == "reaction_scorch",
+            "state_multiplier": evidence.state_multiplier,
+            "dot_final_multiplier": evidence.dot_final_multiplier,
+            "crit_damage": float(values.get("CritDamageBase", 0.50)),
+        })
+        ring_strength, ring_multiplier = numbers["ring_strength"], numbers["ring_multiplier"]
+        defense, resistance, vulnerability = (numbers[key] for key in
+                                              ("defense", "resistance", "vulnerability"))
+        stack_multiplier, crit_damage = numbers["stack_multiplier"], numbers["crit_damage"]
+        non_critical, critical, selected = (numbers[key] for key in
+                                           ("noncritical", "critical", "selected"))
+        critical_state, critical_rate = numbers["critical_state"], numbers["critical_rate"]
+        expected = numbers["expected"]
+        signed_error, absolute_error = numbers["signed_error"], numbers["absolute_error"]
         confidence = (
             "高" if absolute_error is not None and absolute_error <= 2.0
             else "中" if absolute_error is not None and absolute_error <= 5.0
@@ -596,7 +496,7 @@ class BattleSpecialHitReplayService:
             critical_rate=critical_rate,
             expected_damage=expected,
             corrected_expected_damage=(
-                expected * hit.damage / selected if selected > 0.0 else None
+                numbers["corrected_expected"]
             ),
             signed_error_percent=signed_error,
             critical_policy=(
@@ -632,29 +532,16 @@ class BattleSpecialHitReplayService:
                 missing_evidence=("缺少黯星的官方 16 档等级基础值",),
                 formula_type=formula_label,
             )
-        ring_strength = max(0.0, float(values.get("MagBase", 0.0)))
-        ring_multiplier = calculate_ring_strength_multiplier(ring_strength)
-        attribute = "psychically"
-        base_resistance = dict(condition.resistances).get(attribute, 0.20)
-        target_resistance = sum(
-            row.additive_value
-            for row in projection.modifiers
-            if row.target_scope == "target"
-            and row.property_id in {
-                "DamageResistPsychicallyBase",
-                "DamageResistPsychicallyAdd",
-            }
-        )
-        penetration = float(values.get("DamagePenetratePsychically", 0.0))
-        resistance = calculate_resistance_multiplier(
-            base_resistance + target_resistance - penetration
-        )
-        vulnerability = 1.0 + condition.vulnerability
-        predicted = settle_replay_damage(
-            level_multiplier * ring_multiplier * resistance * vulnerability
-        )
-        signed_error = _signed_error(hit.damage, predicted)
-        absolute_error = None if signed_error is None else abs(signed_error)
+        numbers = yield ("special_nova_v1", {
+            "observed": hit.damage, "level_multiplier": level_multiplier,
+            "ring_strength": float(values.get("MagBase", 0.0)),
+            "mitigation": mitigation_input(condition, 80.0, values, projection,
+                                           "psychically", clamp_defense=True),
+        })
+        ring_strength, ring_multiplier = numbers["ring_strength"], numbers["ring_multiplier"]
+        resistance, vulnerability = numbers["resistance"], numbers["vulnerability"]
+        predicted = numbers["selected"]
+        signed_error, absolute_error = numbers["signed_error"], numbers["absolute_error"]
         confidence = (
             "高" if absolute_error is not None and absolute_error <= 2.0
             else "中" if absolute_error is not None and absolute_error <= 5.0

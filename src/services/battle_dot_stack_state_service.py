@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from src.services.battle_state_payload import HIT_FIELDS, state_rows
+from src.domain.native_analysis import BattleComputeBackend
+from src.services.battle_hit_state_compute import compute_hit_state, restore_dot_states
 
 from src.domain.battle_report import BattleAnalysisHit, BattleAnalysisSnapshot
-from src.services.battle_character_passive_service import (
-    BattleCharacterPassiveService,
-)
+from src.services.battle_character_passive_service import BattleCharacterPassiveService
 from src.services.battle_damage_composition_service import (
     explicit_reaction_channel_for_hit,
 )
@@ -417,12 +418,23 @@ def _stack_for(
 def reconstruct_dot_stack_states(
     analysis: BattleAnalysisSnapshot,
     build: Mapping[str, object] | None,
+    *, compute_backend: BattleComputeBackend | None = None,
+    checkpoint: Callable[[], None] | None = None,
 ) -> dict[str, BattleDotStackState]:
     """Return state evidence for each recorded DOT settlement hit."""
 
     nightmare_duration = round(_nightmare_duration_seconds(build) * 1_000_000)
     cang_field_duration = round(_cang_field_duration_seconds(build) * 1_000_000)
     early_settlement_enabled = _nightmare_early_settlement_enabled(build)
+    if isinstance(compute_backend, BattleComputeBackend) and compute_backend.supports_battle_compute:
+        return restore_dot_states(compute_hit_state("dot", {
+            "hits": state_rows(analysis.hits, HIT_FIELDS),
+            "time_stop_intervals": list(analysis.time_stop_intervals),
+            "nightmare_duration_us": nightmare_duration, "cang_field_duration_us": cang_field_duration,
+            "early_settlement_enabled": early_settlement_enabled,
+            "scorch_variant": zankou_scorch_variant_for_build(build),
+            "sagiri_dot_final_enabled": BattleCharacterPassiveService.is_unlocked(build, 1003, 2),
+        }, backend=compute_backend, checkpoint=checkpoint))
     nightmare_by_target: dict[tuple[str, str], _Stack] = {}
     erosion_by_target: dict[tuple[str, str], _Stack] = {}
     venom_by_target: dict[tuple[str, str], _Stack] = {}

@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 
+from src.domain.native_analysis import BattleComputeBackend
 from src.domain.battle_report import (
     BattleAnalysisSnapshot,
     BattleHitReplayResult,
@@ -23,6 +24,20 @@ class BattleHitLocalCritInferenceService:
 
     @staticmethod
     def apply(
+        analysis: BattleAnalysisSnapshot,
+        results: Sequence[BattleHitReplayResult],
+        *,
+        backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
+    ) -> tuple[BattleHitReplayResult, ...]:
+        if backend is not None and backend.supports_battle_compute:
+            return BattleHitLocalCritInferenceService._apply_native(
+                analysis, results, backend, checkpoint=checkpoint,
+            )
+        return BattleHitLocalCritInferenceService.apply_python(analysis, results)
+
+    @staticmethod
+    def apply_python(
         analysis: BattleAnalysisSnapshot,
         results: Sequence[BattleHitReplayResult],
     ) -> tuple[BattleHitReplayResult, ...]:
@@ -152,6 +167,72 @@ class BattleHitLocalCritInferenceService:
                         "暴击由本战报同 GE 数值对补充，不冒充 nte-core 暴击标记",
                     ))),
                 )
+        return tuple(replacements.get(row.event_id, row) for row in results)
+
+    @staticmethod
+    def _apply_native(
+        analysis: BattleAnalysisSnapshot,
+        results: Sequence[BattleHitReplayResult],
+        backend: BattleComputeBackend,
+        *,
+        checkpoint: Callable[[], None] | None = None,
+    ) -> tuple[BattleHitReplayResult, ...]:
+        hits = {row.event_id: row for row in analysis.hits}
+        baselines = {
+            row.character_id: {stat.property_id: stat.value for stat in row.stats}
+            for row in analysis.baselines
+        }
+        rows = []
+        for index, result in enumerate(results):
+            if checkpoint is not None and index % 64 == 0:
+                checkpoint()
+            hit = hits[result.event_id]
+            rows.append({
+                "index": index,
+                "character_id": hit.character_id,
+                "gameplay_effect_id": hit.gameplay_effect_id,
+                "has_state_coefficient": any(
+                    factor.factor_id == "state_coefficient" for factor in result.factors
+                ),
+                "baseline_crit_damage": baselines.get(hit.character_id, {}).get(
+                    "CritDamageBase", 0.50,
+                ),
+                "observed_damage": result.observed_damage,
+                "non_critical_damage": result.non_critical_damage,
+                "critical_damage": result.critical_damage,
+                "expected_damage": result.expected_damage,
+            })
+        responses = backend.compute_batch(
+            "local_crit_pairs_v1", ({"rows": rows},), checkpoint=checkpoint,
+        )
+        if len(responses) != 1:
+            raise ValueError("local crit response count mismatch")
+        replacements = {}
+        for change in responses[0]["replacements"]:
+            change = dict(change)
+            index = change.pop("index")
+            if not isinstance(index, int) or not 0 <= index < len(results):
+                raise ValueError("local crit response index mismatch")
+            result = results[index]
+            crit_ratio = change.pop("crit_ratio")
+            pair_count = change.pop("pair_count")
+            replacements[result.event_id] = replace(
+                result,
+                **change,
+                confidence="中",
+                factors=(
+                    *result.factors,
+                    replay_factor(
+                        "local_crit_pair", "同伤害项暴击倍率", crit_ratio,
+                        f"本战报 {pair_count} 组重复数值对，"
+                        f"共同倍率约 {crit_ratio:.3f}（弱证据）",
+                    ),
+                ),
+                missing_evidence=tuple(dict.fromkeys((
+                    *result.missing_evidence,
+                    "暴击由本战报同 GE 数值对补充，不冒充 nte-core 暴击标记",
+                ))),
+            )
         return tuple(replacements.get(row.event_id, row) for row in results)
 
 

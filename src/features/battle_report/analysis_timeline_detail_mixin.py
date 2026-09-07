@@ -38,23 +38,9 @@ class BattleTimelineDetailMixin:
             ),
             None,
         )
-        intervals = getattr(
-            analysis,
-            "timeline_buff_intervals",
-            getattr(analysis, "buff_intervals", ()),
-        )
-        active_buffs = tuple(
-            row
-            for row in intervals
-            if row.start_us <= hit.relative_time_us < row.end_us
-            and (
-                row.target_scope in {"team", "target", "unknown"}
-                or (
-                    row.target_scope == "self"
-                    and row.source_character_id == hit.character_id
-                )
-            )
-        )
+        details = getattr(self, "_hit_details", None)
+        projection, active_buffs = ((None, ()) if details is None
+                                   else details.for_hit(hit, formula=True))
         dialog = getattr(self, "_hit_formula_dialog", None)
         if dialog is None:
             dialog = BattleHitFormulaDialog(self)
@@ -63,6 +49,7 @@ class BattleTimelineDetailMixin:
             hit,
             replay,
             active_buffs=active_buffs,
+            projection=projection,
         )
 
     def _hide_hit_formula_dialog(self) -> None:

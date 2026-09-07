@@ -9,6 +9,8 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from src.domain.native_analysis import DirectFormulaBackend, available_battle_compute
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
 from src.domain.battle_report import BattleAnalysisSnapshot, BattleRetentionMutation
 from src.domain.battle_build_assumption import (
     GRADUATION_ASSUMPTION_TITLE, has_graduation_assumption,
@@ -16,9 +18,7 @@ from src.domain.battle_build_assumption import (
 from src.services.battle_counterfactual_analysis_service import (
     BattleCounterfactualAnalysisService,
 )
-from src.services.battle_build_profile_normalization_service import (
-    normalize_inferred_battle_build,
-)
+from src.services.battle_report_analysis_inputs import BattleReportAnalysisInputs
 from src.services.battle_report_history_projection import (
     analysis_scope_range,
     character_analysis_scopes,
@@ -78,9 +78,6 @@ from src.services.battle_hit_replay_service import (
 from src.services.battle_fork_critical_inference_service import (
     BattleForkCriticalInferenceService,
 )
-from src.services.battle_formal_damage_tag_service import (
-    BattleFormalDamageTagService,
-)
 from src.services.battle_marginal_counterfactual_projection_service import (
     BattleMarginalCounterfactualProjectionService,
 )
@@ -108,9 +105,7 @@ from src.services.battle_analysis_progress import (
     BattleAnalysisProgressCallback,
     report_battle_analysis_progress,
 )
-from src.services.battle_hit_projection_preparation_service import (
-    BattleHitProjectionPreparationService,
-)
+from src.services.battle_hit_projection_preparation_service import BattleHitProjectionPreparationService
 from src.storage.sqlite.user_data_dao import UserDataError
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 
@@ -130,6 +125,8 @@ class BattleReportHistoryService(
         *,
         dependencies: BattleReportPersistenceDependencies,
         context_is_current: BattleReportContextGuard,
+        direct_formula_backend: DirectFormulaBackend | None = None,
+        native_page_loader=None,
     ) -> None:
         self._dependencies = BattleReportPersistenceDependencies(
             account_id=str(dependencies.account_id),
@@ -142,6 +139,8 @@ class BattleReportHistoryService(
             ),
         )
         self._context_is_current = context_is_current
+        self._direct_formula_backend = direct_formula_backend
+        self.native_page_loader = native_page_loader
         self._skill_name_renderer: SkillNameRenderingService | None = None
         self._animation_candidate_cache: dict[
             tuple[tuple[int, ...], tuple[str, ...]],
@@ -150,6 +149,10 @@ class BattleReportHistoryService(
         self._target_catalog_cache: dict[str, Any] | None = None
         self._inferred_encounter_cache: dict[int, Any] = {}
         self._inferred_encounter_fit_cache: dict[int, Any] = {}
+
+    def freeze_analysis_inputs(self, battle_record_id: int) -> BattleReportAnalysisInputs:
+        """Read and prepare shared facts once for one page request."""
+        return BattleReportAnalysisInputs.load(self, battle_record_id)
 
     def load_analysis(
         self,
@@ -165,46 +168,30 @@ class BattleReportHistoryService(
         include_hit_replays: bool = True,
         include_buff_counterfactuals: bool = True,
         progress_callback: BattleAnalysisProgressCallback | None = None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
+        frozen_inputs: BattleReportAnalysisInputs | None = None,
     ) -> BattleAnalysisSnapshot | None:
         """Load and project all long-page sections from one evidence snapshot."""
-
+        projection_memo = projection_memo if projection_memo is not None else BattleBuffProjectionMemo()
+        projection_memo.bind_backend(self._direct_formula_backend, progress_callback)
         report_battle_analysis_progress(
             progress_callback,
             phase="load",
             message="正在读取冻结战报、逐击轴和角色配置…",
         )
+        inputs = frozen_inputs if frozen_inputs is not None else self.freeze_analysis_inputs(battle_record_id)
+        record, evidence, build, build_edit, saved_target_condition = inputs.copy_for(self, battle_record_id)
+        if record is None:
+            return None
+        # 派生目标拟合允许在本次请求中持久化；后续候选须读取已完成的新拟合。
         with self._open_current_dao() as user_dao:
-            record = user_dao.load_battle_record(battle_record_id)
-            if record is None:
-                return None
-            evidence = user_dao.load_battle_axis_evidence(battle_record_id)
-            build = user_dao.load_battle_build_snapshot(battle_record_id)
-            build_edit = user_dao.load_battle_build_edit(battle_record_id)
-            import_equipment_locks = user_dao.load_battle_import_equipment_locks(
-                battle_record_id
-            )
-            saved_target_condition = user_dao.load_battle_target_condition(
-                battle_record_id
-            )
-            inferred_snapshot = user_dao.load_battle_inferred_target_snapshot(
-                battle_record_id
-            )
-        saved_target_condition = self._complete_target_condition(
-            saved_target_condition, evidence
-        )
+            inferred_snapshot = user_dao.load_battle_inferred_target_snapshot(battle_record_id)
         target_condition = resolve_battle_target_condition(saved_target_condition)
-        build = normalize_inferred_battle_build(build)
-        apply_import_equipment_locks(build, import_equipment_locks)
         recognition_build = None
-        self._localize_axis_evidence(evidence)
         report_battle_analysis_progress(
             progress_callback,
             phase="prepare",
             message="正在整理逐击身份、目标实例和冻结角色输入…",
-        )
-        BattleFormalDamageTagService.project(
-            evidence,
-            self._dependencies.static_database_path,
         )
         if start_us is None and end_us is None:
             scoped_range = analysis_scope_range(
@@ -271,6 +258,7 @@ class BattleReportHistoryService(
             BattleBuildStatReconstructionService.enrich(
                 recognition_build,
                 self._dependencies,
+                detail_cache=inputs.role_detail_cache_for(self, battle_record_id),
             )
         effective_disabled_fact_ids = frozenset(disabled_inferred_fact_ids)
         if marginal_candidate is not None:
@@ -290,7 +278,9 @@ class BattleReportHistoryService(
                 inferred_character_facts,
                 disabled_fact_ids=effective_disabled_fact_ids,
             )
-            BattleBuildStatReconstructionService.enrich(build, self._dependencies)
+            BattleBuildStatReconstructionService.enrich(
+                build, self._dependencies, detail_cache=inputs.role_detail_cache_for(self, battle_record_id),
+            )
         if include_buff_counterfactuals:
             include_hit_replays = True
         if include_hit_replays:
@@ -313,6 +303,10 @@ class BattleReportHistoryService(
             ),
         ) if include_buff_inference else None
         _analyze = partial(BattleCounterfactualAnalysisService.analyze,
+            compute_backend=available_battle_compute(self._direct_formula_backend),
+            checkpoint=lambda: report_battle_analysis_progress(
+                progress_callback, phase="prepare", message="正在批量推断冻结 Buff 状态…",
+            ),
             battle_record_id=battle_record_id,
             evidence=evidence,
             build=build,
@@ -339,6 +333,10 @@ class BattleReportHistoryService(
         if needs_encounter_fit and inferred_encounter is not None:
             fit_analyze = partial(
                 BattleCounterfactualAnalysisService.analyze,
+                compute_backend=available_battle_compute(self._direct_formula_backend),
+                checkpoint=lambda: report_battle_analysis_progress(
+                    progress_callback, phase="prepare", message="正在准备候选目标的冻结状态…",
+                ),
                 battle_record_id=battle_record_id,
                 evidence=evidence,
                 build=recognition_build,
@@ -370,6 +368,7 @@ class BattleReportHistoryService(
                 build=recognition_build,
                 evidence=evidence,
                 inferred_character_facts=inferred_character_facts,
+                progress_callback=progress_callback,
             )
             self._inferred_encounter_cache[battle_record_id] = inferred_encounter
             self._inferred_encounter_fit_cache[battle_record_id] = inferred_encounter
@@ -444,11 +443,12 @@ class BattleReportHistoryService(
             phase="replay",
             message="正在执行原始固定轴逐击公式重放…",
         )
-        skill_evidence = self._load_skill_damage_evidence(analysis, build)
+        skill_evidence = self._load_skill_damage_evidence(analysis, build, progress_callback)
         topple_character_configs = self._load_topple_character_configs(analysis)
         prepared_projections = BattleHitProjectionPreparationService.prepare(
             analysis,
             skill_evidence,
+            projection_memo=projection_memo,
         )
         analysis = replace(
             analysis,
@@ -456,6 +456,7 @@ class BattleReportHistoryService(
                 analysis,
                 skill_evidence,
                 topple_character_configs=topple_character_configs,
+                direct_formula_backend=self._direct_formula_backend,
                 buff_interval_index=prepared_projections.interval_index,
                 projection_by_event=prepared_projections.formula_by_event,
                 progress_callback=progress_callback,
@@ -508,6 +509,7 @@ class BattleReportHistoryService(
             prepared_projections = BattleHitProjectionPreparationService.prepare(
                 analysis,
                 skill_evidence,
+                projection_memo=projection_memo,
             )
             analysis = replace(
                 analysis,
@@ -515,6 +517,7 @@ class BattleReportHistoryService(
                     analysis,
                     skill_evidence,
                     topple_character_configs=topple_character_configs,
+                    direct_formula_backend=self._direct_formula_backend,
                     buff_interval_index=prepared_projections.interval_index,
                     projection_by_event=prepared_projections.formula_by_event,
                     progress_callback=progress_callback,
@@ -537,11 +540,11 @@ class BattleReportHistoryService(
             build,
             skill_evidence,
             topple_character_configs=topple_character_configs,
+            direct_formula_backend=self._direct_formula_backend,
             progress_callback=progress_callback,
             interval_index=prepared_projections.interval_index,
-            original_projection_by_event=(
-                prepared_projections.beneficiary_by_event
-            ),
+            original_projection_by_event=prepared_projections.beneficiary_by_event,
+            projection_memo=projection_memo,
         )
 
     def _load_animation_candidates(
@@ -649,10 +652,11 @@ class BattleReportHistoryService(
         """Build role-page editor models without mutating the immutable snapshot."""
 
         self._assert_counterfactual_editable(battle_record_id)
+        editor_facts = self.native_page_loader.load_editor_facts(battle_record_id) if self.native_page_loader is not None else None
         with self._open_current_dao() as user_dao:
             build = user_dao.load_battle_build_snapshot(battle_record_id)
             build_edit = user_dao.load_battle_build_edit(battle_record_id)
-            evidence = user_dao.load_battle_axis_evidence(battle_record_id)
+            evidence = user_dao.load_battle_axis_evidence(battle_record_id) if editor_facts is None else None
             import_origin = user_dao.load_battle_report_import_origin(
                 battle_record_id
             )
@@ -682,7 +686,7 @@ class BattleReportHistoryService(
             int(row["character_id"]): row
             for row in ((build_edit or {}).get("characters") or ())
         }
-        scopes_by_character = character_analysis_scopes(evidence)
+        scopes_by_character = editor_facts[1] if editor_facts is not None else character_analysis_scopes(evidence)
         details: list[dict[str, Any]] = []
         detail_request_cache: dict[object, Any] = {}
         for original in build.get("characters") or ():
@@ -783,9 +787,7 @@ class BattleReportHistoryService(
             "battle_record_id": int(battle_record_id),
             "has_edit": build_edit is not None,
             "is_active": bool((build_edit or {}).get("is_active")),
-            "inferred_character_facts": (
-                BattleInferredCharacterFactService.infer(evidence)
-            ),
+            "inferred_character_facts": editor_facts[0] if editor_facts is not None else BattleInferredCharacterFactService.infer(evidence),
             "equipment_editable": equipment_editable,
             "report_origin": "local_capture" if import_origin is None else "imported_v2",
             "equipment_assumed": assumed_equipment,

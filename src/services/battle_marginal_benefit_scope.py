@@ -11,6 +11,7 @@ from src.domain.battle_counterfactual import (
     BattleBuildVitalCounterfactual,
 )
 from src.domain.battle_report import BattleAnalysisSnapshot
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
 from src.services.battle_marginal_calculation_support import (
     topple_character_contribution,
 )
@@ -36,10 +37,11 @@ class BattleMarginalBenefitRoleScope:
 def prepare_marginal_benefit_role_scope(
     analysis: BattleAnalysisSnapshot,
     character_id: int,
+    *, projection_memo: BattleBuffProjectionMemo | None = None,
 ) -> BattleMarginalBenefitRoleScope:
     """Freeze stable event ownership without rewriting Core's raw actor IDs."""
 
-    formula_scope = prepare_marginal_formula_scope(analysis, character_id)
+    formula_scope = prepare_marginal_formula_scope(analysis, character_id, projection_memo=projection_memo)
     panel_event_ids = {hit.event_id for hit in formula_scope.role_hits}
     shares: dict[str, BattleMarginalBenefitHitShare] = {}
     for hit in formula_scope.outgoing_hits:

@@ -26,6 +26,9 @@ from src.integrations.battle_report_bundle import (
 )
 from src.services.account_naming_service import AccountNamingService
 from src.services.battle_report_history_service import BattleReportHistoryService
+from src.services.battle_report_analysis_load_service import (
+    BattleReportAnalysisLoadRequest, BattleReportAnalysisLoadService,
+)
 from src.storage.sqlite.user_data_dao import (
     SCHEMA_VERSION,
     UserDataDao,
@@ -500,12 +503,11 @@ class BattleReportTransferService:
         unavailable: list[dict[str, Any]],
     ) -> dict[str, Any]:
         try:
-            analysis = self._history_service.load_analysis(
-                record_id,
-                include_buff_inference=False,
-                include_hit_replays=False,
-                include_buff_counterfactuals=False,
-            )
+            analysis = BattleReportAnalysisLoadService.load(
+                self._history_service,
+                BattleReportAnalysisLoadRequest(record_id, detail_level="overview",
+                    static_database_path=self._dependencies.static_database_path),
+            ).analysis
         except Exception:
             analysis = None
         if analysis is None:
