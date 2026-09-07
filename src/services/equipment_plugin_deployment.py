@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 
 
 GAME_EXECUTABLE_NAME = "HTGame.exe"
@@ -74,6 +75,35 @@ class PluginDeployment:
     workspace_path: Path
     workspace_registry_value_before: str | None = None
     workspace_registry_value_existed: bool = False
+
+
+def game_process_running() -> bool:
+    """Return whether the game executable is currently present in Windows tasks."""
+
+    try:
+        result = subprocess.run(
+            [
+                "tasklist",
+                "/FI",
+                f"IMAGENAME eq {GAME_EXECUTABLE_NAME}",
+                "/FO",
+                "CSV",
+                "/NH",
+            ],
+            capture_output=True,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    expected = GAME_EXECUTABLE_NAME.casefold()
+    return any(
+        line.split(",", 1)[0].strip().strip('"').casefold() == expected
+        for line in result.stdout.splitlines()
+    )
 
 
 def _file_sha256(path: Path) -> str:

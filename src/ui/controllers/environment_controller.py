@@ -27,6 +27,7 @@ from src.services.equipment_plugin_deployment import (
     EquipmentPluginDeploymentError,
     deploy_plugin,
     find_game_executables,
+    game_process_running,
     npcap_installation_present,
     packaged_mod_workspace,
     packaged_plugin_dll,
@@ -552,22 +553,25 @@ def _deploy_equipment_plugin(self):
         )
         return
     executable = self._equipment_plugin_game_executable_edit.text().strip()
+    if game_process_running():
+        QMessageBox.warning(
+            self,
+            "部署装备插件",
+            "检测到游戏正在运行。\n请完全退出游戏后再部署插件。",
+        )
+        return
     try:
         self._mod_plugin_loading_service.ensure_proxy_deployment_allowed()
         source = packaged_plugin_dll(self.app_context.paths.root)
-        workspace_source = packaged_mod_workspace(self.app_context.paths.root)
     except (EquipmentPluginDeploymentError, ModPluginLoadingError) as exc:
         QMessageBox.warning(self, "部署装备插件", str(exc))
         return
     if QMessageBox.question(
         self,
         "确认部署装备插件",
-        "将把应用打包的 nte-mods-plugin dwmapi.dll 复制到所选 HTGame.exe 同目录，"
-        "并准备与最新版 nte-core 配套的装备 Mod 脚本。\n"
-        "若目录已有同名文件，会先备份到当前账号数据目录。请先关闭游戏。\n\n"
-        "该功能会介入游戏进程，但不会直接篡改游戏数据；"
-        "仍可能触发游戏保护，产生兼容问题或账号风险。\n\n"
-        f"游戏：{executable}\n打包插件：{source}\n脚本模板：{workspace_source}",
+        "将部署装备插件到所选游戏目录。\n"
+        "已有同名文件会自动备份。\n\n"
+        "是否继续？",
         QMessageBox.Yes | QMessageBox.No,
         QMessageBox.No,
     ) != QMessageBox.Yes:

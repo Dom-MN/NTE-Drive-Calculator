@@ -9,11 +9,13 @@ from src.optimizer.crit_constraint_repair import CritConstraintRepairMixin
 from src.optimizer.contracts import AllocationResult
 from src.solver.blueprint_utils import dedupe_blueprints_by_piece_signature
 
+from src.optimizer.deferred_drive_reservations import DeferredDriveReservationMixin
 from src.optimizer.role_priority_group_strategy import RolePriorityGroupStrategyMixin
 
 class RolePriorityStrategy(
     CritConstraintRepairMixin,
     RolePriorityGroupStrategyMixin,
+    DeferredDriveReservationMixin,
     AllocationMatrixBuilder,
 ):
     """Greedy per-role allocation by priority order."""
