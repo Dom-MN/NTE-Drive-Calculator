@@ -107,6 +107,7 @@ def run_inventory_sync(service: Any) -> None:
             service._client = client
             client.start()
             client.add_event_handler("event.inventory.snapshot", service._on_inventory_event)
+            client.add_event_handler("event.capture.status", service._on_capture_status_event)
             log_event(
                 "INFO",
                 "inventory_sync.core_connected",
@@ -138,10 +139,26 @@ def run_inventory_sync(service: Any) -> None:
                 device_name=capture_device,
                 raw_capture="enabled" if raw_enabled else "disabled",
             )
+            sync_stage = "waiting_capture_ready"
+            service._publish(
+                "starting",
+                "正在初始化抓包，等待网卡就绪",
+                running=True,
+                capturing=True,
+                last_snapshot_id=current_id,
+            )
+            capture_ready_deadline = time.monotonic() + 15.0
+            while not service._stop_requested.is_set() and not service._capture_ready.wait(
+                service._poll_seconds
+            ):
+                if time.monotonic() >= capture_ready_deadline:
+                    raise TimeoutError("nte-core 抓包初始化超时，未进入 running 状态")
+            if service._stop_requested.is_set():
+                return
             log_event(
                 "INFO",
                 "inventory_sync.capture_started",
-                "背包同步抓包已启动，等待完整背包快照",
+                "背包同步抓包已就绪，等待完整背包快照",
                 service._operation_context,
                 raw_capture=bool(raw_enabled),
                 capture_device_configured=bool(capture_device),
@@ -446,6 +463,10 @@ def run_inventory_sync(service: Any) -> None:
         if client is not None:
             try:
                 client.remove_event_handler("event.inventory.snapshot", service._on_inventory_event)
+            except Exception:
+                pass
+            try:
+                client.remove_event_handler("event.capture.status", service._on_capture_status_event)
             except Exception:
                 pass
             try:

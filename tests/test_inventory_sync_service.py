@@ -65,8 +65,21 @@ def snapshot(
     }
 
 
+def capture_status(status: str) -> dict:
+    return {
+        "jsonrpc": "2.0",
+        "method": "event.capture.status",
+        "params": {
+            "sequence": 1,
+            "operation_id": "capture-1",
+            "status": status,
+            "profile": "inventory",
+        },
+    }
+
+
 class FakeCoreClient:
-    def __init__(self) -> None:
+    def __init__(self, *, emit_running_on_start: bool = True) -> None:
         self.hello_result = {"protocol_version": 1, "capabilities": ["inventory"]}
         self.handlers: dict[str | None, list] = {}
         self.started = False
@@ -74,6 +87,8 @@ class FakeCoreClient:
         self.capture_params: dict | None = None
         self.capture_stopped = False
         self.equipment_params = None
+        self.emit_running_on_start = emit_running_on_start
+        self.capture_started = threading.Event()
         self._lock = threading.Lock()
 
     def start(self):
@@ -92,6 +107,9 @@ class FakeCoreClient:
 
     def start_capture(self, **kwargs):
         self.capture_params = kwargs
+        self.capture_started.set()
+        if self.emit_running_on_start:
+            self.emit(capture_status("running"))
         return {"capturing": True}
 
     def stop_capture(self):
@@ -307,6 +325,31 @@ class InventorySyncServiceTests(unittest.TestCase):
         self.assertTrue(self.core.started)
         self.assertEqual("inventory", self.core.capture_params["profile"])
         self.assertEqual("disabled", self.core.capture_params["raw_capture"])
+
+    def test_waits_for_capture_running_before_prompting_game_login(self) -> None:
+        core = FakeCoreClient(emit_running_on_start=False)
+        service = InventorySyncService(
+            self.database_path,
+            account_id="tester",
+            account_name="测试账号",
+            client_factory=lambda: core,
+            poll_seconds=0.005,
+        )
+        try:
+            service.start()
+            self.assertTrue(core.capture_started.wait(2.0))
+            deadline = time.monotonic() + 2.0
+            while service.state.phase != "starting" and time.monotonic() < deadline:
+                time.sleep(0.005)
+            self.assertEqual("starting", service.state.phase)
+            self.assertEqual("正在初始化抓包，等待网卡就绪", service.state.message)
+
+            core.emit(capture_status("running"))
+            ready = service.wait_for_phase("waiting", timeout=2.0)
+            self.assertEqual("等待进入游戏并接收完整背包", ready.message)
+        finally:
+            if service.is_running:
+                service.stop()
 
     def test_enables_pcapng_capture_only_when_requested(self) -> None:
         core = FakeCoreClient()
