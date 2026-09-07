@@ -179,6 +179,7 @@ class ScanningController(QObject):
             save_preferences=save_preferences,
             refresh_roles=refresh_roles,
             refresh_equipment=refresh_equipment,
+            hotkey_manager=hotkey_manager,
         )
 
     def build_page(self) -> QWidget:
@@ -201,6 +202,7 @@ class ScanningController(QObject):
     def stop(self) -> None:
         """Stop account-bound capture/parse workers and release held input."""
 
+        self._allocation_controller.cancel()
         self._stop_scan_hotkeys()
         for name in ("_scan_worker", "_gamepad_worker"):
             worker = getattr(self, name, None)

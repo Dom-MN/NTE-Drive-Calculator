@@ -11,6 +11,45 @@ ASSET_ROOT = PROJECT_ROOT / "assets" / "game_ui"
 
 
 class WarehouseInventoryTests(unittest.TestCase):
+    def test_visual_snapshot_state_actions_use_a_light_disabled_surface(self):
+        from PySide6.QtCore import QRect
+        from PySide6.QtGui import QImage, QPainter
+        from PySide6.QtWidgets import QApplication
+
+        from src.features.inventory.warehouse import WarehouseCardDelegate
+        from src.ui.equipment_state_icons import paint_warehouse_lock_button
+
+        app = QApplication.instance() or QApplication([])
+        previous = app.property("nte_effective_theme")
+        try:
+            app.setProperty("nte_effective_theme", "light")
+            image = QImage(20, 20, QImage.Format_ARGB32)
+            image.fill(0)
+            painter = QPainter(image)
+            WarehouseCardDelegate._paint_action_button(
+                painter,
+                QRect(0, 0, 20, 20),
+                action="discard",
+                active=False,
+                available=False,
+            )
+            painter.end()
+            lock_image = QImage(20, 20, QImage.Format_ARGB32)
+            lock_image.fill(0)
+            lock_painter = QPainter(lock_image)
+            paint_warehouse_lock_button(
+                lock_painter,
+                QRect(0, 0, 20, 20),
+                active=False,
+                available=False,
+            )
+            lock_painter.end()
+        finally:
+            app.setProperty("nte_effective_theme", previous)
+
+        self.assertEqual("#d0d7de", image.pixelColor(3, 10).name().casefold())
+        self.assertEqual("#d0d7de", lock_image.pixelColor(3, 10).name().casefold())
+
     def test_load_log_contains_fixed_snapshot_diagnostic_counts(self):
         from src.services.warehouse_inventory_service import WarehouseInventoryService
 

@@ -1,6 +1,7 @@
 # 驱动候选排序、隐藏分、自选词条优先级和卡带预分配的公共能力。
 import re
 import numpy as np
+from concurrent.futures import CancelledError
 from scipy.optimize import linear_sum_assignment
 from typing import List, Dict
 
@@ -26,7 +27,7 @@ from src.utils.name_resolver import resolve_name
 from src.utils.set_name import normalize_set_display_name
 
 class BaseDispatchStrategy:
-    MAX_COMBO_LIMIT = 500
+    DEFAULT_COMBO_LIMIT = 500
 
     def __init__(
         self,
@@ -46,6 +47,21 @@ class BaseDispatchStrategy:
         self._extra_shape_factor_cache = {}
         self._extra_shape_hidden_bonus_cache = {}
         self.core_set_targets = dict(core_set_targets or {})
+        self.blueprint_combo_limit = self.DEFAULT_COMBO_LIMIT
+        self.cancel_check = None
+
+    def configure_execution(self, *, combo_limit: int, cancel_check=None) -> None:
+        """Freeze request-scoped enumeration and cancellation settings."""
+
+        limit = int(combo_limit)
+        if limit < 1:
+            raise ValueError("图纸组合数必须为正整数")
+        self.blueprint_combo_limit = limit
+        self.cancel_check = cancel_check
+
+    def _check_cancelled(self) -> None:
+        if self.cancel_check is not None and self.cancel_check():
+            raise CancelledError("分配计算已由全局停止键取消")
     def _resolve_set_name(self, set_name: str) -> str:
         normalized_name = normalize_set_display_name(set_name)
         resolved = resolve_name(normalized_name, self.sets_db.keys(), cutoff=0.78)

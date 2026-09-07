@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from collections.abc import Callable
 import re
 from typing import Mapping, Sequence
 
@@ -18,7 +19,6 @@ from src.models.equipment import Drive, Tape
 from src.domain.suit_identity import tape_matches_suit_target
 from src.optimizer.dispatcher import DispatcherEngine
 from src.optimizer.scoring import ScoringEngine
-from src.utils.logger import logger
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +54,8 @@ class AllocationKernelRequest:
     allow_missing_core: bool = False
     drive_screen_limit: int = 15
     tape_screen_limit: int = 3
+    blueprint_combo_limit: int = 500
+    cancel_check: Callable[[], bool] | None = None
 
 
 def estimate_candidate_pool_limits(
@@ -109,27 +111,14 @@ class AllocationKernel:
         """
 
         has_limits = any(request.property_limits.get(role) for role in request.role_order)
-        use_full_global_candidates = False
         initial = self._execute_once(request, frozenset())
         initial_invalid = self._invalid_roles(request, initial)
-        if initial_invalid and request.strategy == "global_optimal":
-            # 全局最优只接受完整整队方案。常规 Top-K 并集无解时，不能
-            # 降级成局部补配；改用完整已评分背包重跑同一套全局匹配即可。
-            logger.debug(
-                "全局最优在常规候选范围内未找到完整全队方案；"
-                "正在扩展至完整背包候选后整队重算。"
-            )
-            use_full_global_candidates = True
-            initial = self._execute_once(
-                request, frozenset(), use_full_drive_candidates=True,
-            )
-            initial_invalid = self._invalid_roles(request, initial)
         if not has_limits:
             if not initial_invalid:
                 return initial
             self._apply_invalid_diagnostics(
                 request, initial, initial_invalid,
-                full_global_candidates=use_full_global_candidates,
+                full_global_candidates=False,
             )
             return initial
 
@@ -144,7 +133,7 @@ class AllocationKernel:
             seen.add(excluded)
             result = self._execute_once(
                 request, excluded,
-                use_full_drive_candidates=use_full_global_candidates,
+                use_full_drive_candidates=False,
             )
             invalid_roles = self._invalid_roles(request, result)
             if not invalid_roles:
@@ -163,11 +152,11 @@ class AllocationKernel:
 
         failed = self._execute_once(
             request, frozenset(),
-            use_full_drive_candidates=use_full_global_candidates,
+            use_full_drive_candidates=False,
         )
         self._apply_invalid_diagnostics(
             request, failed, self._invalid_roles(request, failed),
-            full_global_candidates=use_full_global_candidates,
+            full_global_candidates=False,
         )
         return failed
 
@@ -196,6 +185,8 @@ class AllocationKernel:
             dict(request.roles_db), dict(request.sets_db), dict(request.blueprints_db),
             core_set_targets=dict(request.core_set_targets),
             stat_catalog=self.scoring_engine.stat_catalog,
+            blueprint_combo_limit=request.blueprint_combo_limit,
+            cancel_check=request.cancel_check,
         )
         result = dispatcher.execute_dispatch(
             request.strategy,
@@ -364,10 +355,6 @@ class AllocationKernel:
         for group in request.priority_groups or ():
             if role in group and len(group) > 1:
                 return "同级组竞争后无剩余候选：所需形状驱动已被同级角色占用"
-        if request.strategy == "global_optimal":
-            if full_global_candidates:
-                return "扩展至完整背包候选后仍无法形成完整全队方案（角色间形状需求冲突）"
-            return "当前候选范围无法形成完整全队方案"
         return "候选驱动未能同时满足图纸形状约束"
 
     def _apply_invalid_diagnostics(

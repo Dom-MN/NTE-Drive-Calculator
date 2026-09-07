@@ -3,15 +3,17 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QGroupBox,
     QHBoxLayout,
+    QLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -32,7 +34,6 @@ _TILE_STYLE = (
     "border-color:#58a6ff;}"
 )
 
-
 class AllocationFilterSettingsDialog(QDialog):
     """Edit a draft and publish it only when the user confirms a valid value."""
 
@@ -43,18 +44,19 @@ class AllocationFilterSettingsDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("分配设置")
-        self.resize(QSize(340, 205))
         self.setMinimumWidth(320)
         current = initial or AllocationFilterSettings()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(8)
+        root.setSpacing(6)
+        root.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
         module = QGroupBox("筛选设置")
         module.setObjectName("allocationFilterModule")
+        module.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         module_layout = QVBoxLayout(module)
-        module_layout.setContentsMargins(8, 8, 8, 8)
-        module_layout.setSpacing(5)
+        module_layout.setContentsMargins(8, 5, 8, 5)
+        module_layout.setSpacing(3)
 
         module_help = QPushButton("?", module)
         module_help.setObjectName("allocationFilterHelp")
@@ -87,6 +89,31 @@ class AllocationFilterSettingsDialog(QDialog):
         )
         root.addWidget(module)
 
+        other_module = QGroupBox("其他设置")
+        other_module.setObjectName("allocationOtherModule")
+        other_module.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        other_layout = QHBoxLayout(other_module)
+        other_layout.setContentsMargins(8, 5, 8, 5)
+        other_layout.setSpacing(6)
+        other_layout.addWidget(QLabel("组合数上限"))
+        self.combo_limit_edit = QLineEdit(str(current.blueprint_combo_limit))
+        self.combo_limit_edit.setPlaceholderText("默认 500")
+        self.combo_limit_edit.setFixedHeight(36)
+        other_layout.addWidget(self.combo_limit_edit, 1)
+        other_help = QPushButton("?", other_module)
+        other_help.setObjectName("btnHelp")
+        other_help.setFixedSize(24, 24)
+        other_help.setToolTip("查看组合数上限说明")
+        other_help.clicked.connect(
+            lambda _checked=False, parent=other_help: show_help(
+                parent,
+                "组合数上限说明",
+                "每个优先级组最多评估的图纸组合数。数值越大，计算越充分但耗时越长；默认 500。",
+            )
+        )
+        other_layout.addWidget(other_help)
+        root.addWidget(other_module)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
@@ -94,6 +121,7 @@ class AllocationFilterSettingsDialog(QDialog):
         buttons.accepted.connect(self._accept_valid_settings)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
+        self.adjustSize()
 
     @staticmethod
     def _selection_row(
@@ -122,6 +150,10 @@ class AllocationFilterSettingsDialog(QDialog):
         return buttons
 
     def settings(self) -> AllocationFilterSettings:
+        try:
+            combo_limit = int(self.combo_limit_edit.text().strip())
+        except ValueError as exc:
+            raise AllocationFilterValidationError("组合数上限必须为正整数。") from exc
         settings = AllocationFilterSettings(
             qualities=frozenset(
                 value for value, button in self.quality_buttons.items() if button.isChecked()
@@ -129,6 +161,7 @@ class AllocationFilterSettingsDialog(QDialog):
             item_types=frozenset(
                 value for value, button in self.type_buttons.items() if button.isChecked()
             ),
+            blueprint_combo_limit=combo_limit,
         )
         settings.validate()
         return settings

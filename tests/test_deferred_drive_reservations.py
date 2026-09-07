@@ -1,4 +1,7 @@
 # 验证角色优先同分驱动预留池的一对一回填语义。
+from concurrent.futures import CancelledError
+
+import pytest
 from src.models.equipment import Drive
 from src.optimizer.deferred_drive_reservations import (
     DeferredDriveReservationState,
@@ -231,6 +234,19 @@ def test_group_search_keeps_the_highest_feasible_reservation_branch():
 
     assert result["Later"]["score"] == 100.0
     assert [drive.uid for drive in result["Later"]["assigned_extra_drives"]] == ["b"]
+
+
+def test_role_priority_combo_limit_is_request_scoped_and_cancellable():
+    strategy = RolePriorityStrategy({}, {}, {})
+    strategy.configure_execution(combo_limit=2)
+
+    assert list(strategy._iter_bp_combos([["first", "second", "third"]])) == [
+        ("first",), ("second",),
+    ]
+
+    strategy.configure_execution(combo_limit=3, cancel_check=lambda: True)
+    with pytest.raises(CancelledError):
+        next(strategy._iter_bp_combos([["first", "second", "third"]]))
 
 
 def _scored_drive(uid: str, scores: dict[str, float], shape: str = "X") -> Drive:

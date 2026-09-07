@@ -197,6 +197,10 @@ class AccountUserDatabaseTests(unittest.TestCase):
             (source_root / "scanned_images" / "raw_drive_0002.png").write_bytes(
                 b"excluded"
             )
+            (source_root / "logs" / "runtime.log").write_text(
+                "excluded",
+                encoding="utf-8",
+            )
             archive = export_account_data(
                 source_manager,
                 account_id,
@@ -207,6 +211,9 @@ class AccountUserDatabaseTests(unittest.TestCase):
                 names = set(exported.namelist())
             self.assertIn("account/scanned_images/raw_drive_0001.png", names)
             self.assertNotIn("account/scanned_images/raw_drive_0002.png", names)
+            self.assertNotIn("account/logs/runtime.log", names)
+            self.assertNotIn("account/user_data.sqlite3-wal", names)
+            self.assertNotIn("account/user_data.sqlite3-shm", names)
 
             target_manager = self.make_manager(root / "target")
             target_manager.initialize()
@@ -261,6 +268,34 @@ class AccountUserDatabaseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unsafe zip path"):
                 import_account_data(manager, archive)
             self.assertFalse((root / "escape.txt").exists())
+
+    def test_invalid_import_keeps_the_existing_matching_account_unchanged(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manager = self.make_manager(root)
+            manager.initialize()
+            account_id = manager.create_account("Existing Account")
+            marker = manager.account_dir(account_id) / "config" / "marker.json"
+            marker.write_text('{"keep":true}', encoding="utf-8")
+            archive = root / "unsafe-replacement.zip"
+            with zipfile.ZipFile(archive, "w") as exported:
+                exported.writestr(
+                    "manifest.json",
+                    json.dumps(
+                        {
+                            "format": "nte-account-export",
+                            "version": 1,
+                            "account": {"id": "existing", "name": "Existing Account"},
+                        }
+                    ),
+                )
+                exported.writestr("account/../../escape.txt", "blocked")
+
+            with self.assertRaisesRegex(ValueError, "unsafe zip path"):
+                import_account_data(manager, archive)
+
+            self.assertEqual('{"keep":true}', marker.read_text(encoding="utf-8"))
+            self.assertEqual("Existing Account", manager.account_meta(account_id)["name"])
 
 
 if __name__ == "__main__":

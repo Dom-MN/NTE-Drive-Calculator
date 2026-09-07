@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import sqlite3
+import tempfile
 import time
 import zipfile
 from pathlib import Path
@@ -237,6 +239,28 @@ def _write_tree_to_zip(zf: zipfile.ZipFile, source: Path, archive_root: str) -> 
         zf.write(path, f"{archive_root}/{path.relative_to(source).as_posix()}")
 
 
+def _write_sqlite_backup_to_zip(
+    zf: zipfile.ZipFile,
+    source: Path,
+    archive_name: str,
+) -> None:
+    """Write one consistent SQLite snapshot without exporting its WAL sidecars."""
+
+    with tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False) as temporary:
+        backup_path = Path(temporary.name)
+    try:
+        source_connection = sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)
+        backup_connection = sqlite3.connect(backup_path)
+        try:
+            source_connection.backup(backup_connection)
+        finally:
+            backup_connection.close()
+            source_connection.close()
+        zf.write(backup_path, archive_name)
+    finally:
+        backup_path.unlink(missing_ok=True)
+
+
 def export_account_data(manager: AccountManager, account_id: str, target_zip: Path) -> Path:
     """Export one account's user data plus the baseline screenshot."""
 
@@ -263,12 +287,18 @@ def export_account_data(manager: AccountManager, account_id: str, target_zip: Pa
             ),
         )
         for child in sorted(source_root.iterdir()):
-            if child.name == "scanned_images":
+            if child.name in {"logs", "scanned_images"}:
                 continue
             if child.is_dir():
                 _write_tree_to_zip(zf, child, f"account/{child.name}")
             elif child.is_file():
-                zf.write(child, f"account/{child.name}")
+                if child.name == USER_DATABASE_FILENAME:
+                    _write_sqlite_backup_to_zip(zf, child, f"account/{child.name}")
+                elif child.name not in {
+                    f"{USER_DATABASE_FILENAME}-shm",
+                    f"{USER_DATABASE_FILENAME}-wal",
+                }:
+                    zf.write(child, f"account/{child.name}")
         screenshot_dir = source_root / "scanned_images"
         for image in sorted(screenshot_dir.glob("raw_drive_0001.*")):
             if image.is_file() and image.suffix.lower() in TRANSFER_IMAGE_EXTS:
@@ -281,13 +311,22 @@ def import_account_data(manager: AccountManager, source_zip: Path) -> str:
 
     source_zip = Path(source_zip)
     with zipfile.ZipFile(source_zip, "r") as zf:
-        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
-        account = manifest.get("account") or {}
+        try:
+            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("账号导入文件缺少有效的 manifest.json") from error
+        if not isinstance(manifest, dict) or manifest.get("format") != "nte-account-export":
+            raise ValueError("账号导入文件格式不受支持")
+        if manifest.get("version") != TRANSFER_FORMAT_VERSION:
+            raise ValueError("账号导入文件版本不受支持")
+        account = manifest.get("account")
+        if not isinstance(account, dict):
+            raise ValueError("账号导入文件缺少账号信息")
         account_name = str(account.get("name") or account.get("id") or "Imported").strip() or "Imported"
         original_id = str(account.get("id") or account_name)
 
         index = manager.read_index()
-        accounts = list(index.get("accounts", []))
+        accounts = [dict(item) for item in index.get("accounts", []) if isinstance(item, dict)]
         existing = next((item for item in accounts if item.get("name") == account_name), None)
         if existing:
             target_id = existing.get("id") or manager.safe_account_id(account_name)
@@ -302,26 +341,60 @@ def import_account_data(manager: AccountManager, source_zip: Path) -> str:
                 suffix += 1
             accounts.append({"id": target_id, "name": account_name})
 
-        target_root = manager.account_dir(target_id)
-        shutil.rmtree(target_root, ignore_errors=True)
-        target_root.mkdir(parents=True, exist_ok=True)
-
+        staged_members = []
+        member_names: set[str] = set()
+        validation_root = manager.accounts_dir / ".account-import-validation"
         for member in zf.infolist():
             if member.is_dir():
                 continue
             name = member.filename.replace("\\", "/")
             if not name.startswith("account/"):
                 continue
-            relative = name.removeprefix("account/")
-            target = _safe_zip_member_path(target_root, relative)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open(member) as src, open(target, "wb") as dst:
-                shutil.copyfileobj(src, dst)
+            if name in member_names:
+                raise ValueError(f"账号导入文件包含重复条目: {name}")
+            member_names.add(name)
+            _safe_zip_member_path(
+                validation_root,
+                name.removeprefix("account/"),
+            )
+            staged_members.append(member)
+        if f"account/{USER_DATABASE_FILENAME}" not in member_names:
+            raise ValueError("账号导入文件缺少用户数据")
 
-    index["accounts"] = accounts
-    index["active_account_id"] = target_id
-    manager.write_index(index)
-    manager.seed_account_data(target_id)
+        manager.accounts_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=".account-import-",
+            dir=manager.accounts_dir,
+        ) as temporary:
+            temporary_root = Path(temporary)
+            staged_root = temporary_root / "account"
+            staged_root.mkdir()
+            for member in staged_members:
+                relative = member.filename.replace("\\", "/").removeprefix("account/")
+                target = _safe_zip_member_path(staged_root, relative)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(member) as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+
+            target_root = manager.account_dir(target_id)
+            backup_root = temporary_root / "previous-account"
+            replacement_index = dict(index)
+            replacement_index["accounts"] = accounts
+            replacement_index["active_account_id"] = target_id
+            target_existed = target_root.exists()
+            if target_existed:
+                target_root.replace(backup_root)
+            try:
+                staged_root.replace(target_root)
+                manager.write_index(replacement_index)
+                manager.seed_account_data(target_id)
+            except Exception:
+                shutil.rmtree(target_root, ignore_errors=True)
+                if target_existed and backup_root.exists():
+                    backup_root.replace(target_root)
+                manager.write_index(index)
+                raise
+
     return target_id
 
 

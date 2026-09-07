@@ -233,10 +233,6 @@ class OptimizationProfileDaoMixin(CharacterProfileDaoMixin):
     @staticmethod
     def _optimization_strategy(value: Any) -> str:
         strategy = str(value).strip()
-        # 2.0 移除了驱动优先。旧档案在下一次保存时平滑转为语义最接近的
-        # 全局最优，避免历史 SQLite 记录阻塞权重页面加载。
-        if strategy == "drive_priority":
-            strategy = "global_optimal"
         if strategy not in ALLOCATION_STRATEGIES:
             raise UserDataValidationError("allocation_strategy 无效")
         return strategy

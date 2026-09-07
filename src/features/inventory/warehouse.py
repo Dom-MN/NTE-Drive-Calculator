@@ -614,7 +614,10 @@ class WarehouseCardDelegate(QStyledItemDelegate):
         background = "#5b2026" if action == "discard" and active else "#3a2f13" if active else "#172a45" if action == "inspect" else "#21262d"
         foreground = "#ff7b72" if action == "discard" and active else "#e3b341" if active else "#79c0ff" if action == "inspect" else "#8b949e"
         if not available:
-            background, foreground = "#1b2027", "#484f58"
+            # Visual snapshots do not expose the game-side state, so retain a
+            # disabled control. Use palette colors that are also mapped for
+            # the light theme instead of carrying a near-black rectangle.
+            background, foreground = "#21262d", "#484f58"
         painter.setBrush(QColor(theme_color(background)))
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(rect, 4, 4)

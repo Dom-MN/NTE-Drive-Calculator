@@ -12,8 +12,8 @@ from typing import Any, Literal, NotRequired, TypedDict
 from src.models.equipment import Drive, Tape
 
 
-StrategyMode = Literal["role_priority", "global_optimal"]
-STRATEGY_MODES: tuple[StrategyMode, ...] = ("role_priority", "global_optimal")
+StrategyMode = Literal["role_priority"]
+STRATEGY_MODES: tuple[StrategyMode, ...] = ("role_priority",)
 
 PLAN_VALID = "valid"
 PLAN_BLUEPRINT = "blueprint"

@@ -30,6 +30,7 @@ class AllocationFilterSettings:
 
     qualities: frozenset[str] = frozenset()
     item_types: frozenset[str] = frozenset()
+    blueprint_combo_limit: int = 500
 
     def validate(self) -> None:
         unknown_qualities = self.qualities.difference(ALLOCATION_QUALITIES)
@@ -46,12 +47,15 @@ class AllocationFilterSettings:
             raise AllocationFilterValidationError(
                 "选择分配类型后，必须至少选择一种分配品质。"
             )
+        if not isinstance(self.blueprint_combo_limit, int) or self.blueprint_combo_limit < 1:
+            raise AllocationFilterValidationError("组合数上限必须为正整数。")
 
     def to_payload(self) -> dict[str, list[str]]:
         self.validate()
         return {
             "qualities": sorted(self.qualities),
             "item_types": sorted(self.item_types),
+            "blueprint_combo_limit": self.blueprint_combo_limit,
         }
 
     @classmethod
@@ -59,6 +63,7 @@ class AllocationFilterSettings:
         raw = value or {}
         qualities = raw.get("qualities", ())
         item_types = raw.get("item_types", ())
+        combo_limit = raw.get("blueprint_combo_limit", 500)
         if not isinstance(qualities, (list, tuple, set, frozenset)):
             raise AllocationFilterValidationError("分配品质设置必须是列表。")
         if not isinstance(item_types, (list, tuple, set, frozenset)):
@@ -66,6 +71,7 @@ class AllocationFilterSettings:
         settings = cls(
             qualities=frozenset(str(value).strip() for value in qualities),
             item_types=frozenset(str(value).strip() for value in item_types),
+            blueprint_combo_limit=combo_limit,
         )
         settings.validate()
         return settings

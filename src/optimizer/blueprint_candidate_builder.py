@@ -117,7 +117,8 @@ class BlueprintCandidateBuilder(BaseDispatchStrategy):
         heap = [(-score_for(start), start)]
         count = 0
 
-        while heap and count < self.MAX_COMBO_LIMIT:
+        while heap and count < self.blueprint_combo_limit:
+            self._check_cancelled()
             _, indexes = heapq.heappop(heap)
             yield tuple(ranked_role_bps[role_idx][bp_idx][2] for role_idx, bp_idx in enumerate(indexes))
             count += 1
@@ -145,16 +146,19 @@ class BlueprintCandidateBuilder(BaseDispatchStrategy):
         total = 1
         for bps in role_bps_list:
             total *= len(bps)
-        if total <= self.MAX_COMBO_LIMIT:
-            yield from itertools.product(*role_bps_list)
+        if total <= self.blueprint_combo_limit:
+            for combo in itertools.product(*role_bps_list):
+                self._check_cancelled()
+                yield combo
         else:
-            logger.info(f"图纸组合数 {total} 过大，按理论上限筛选前 {self.MAX_COMBO_LIMIT} 组...")
+            logger.info(f"图纸组合数 {total} 过大，按当前设置筛选前 {self.blueprint_combo_limit} 组...")
             if not valid_roles or drives_pool is None:
                 count = 0
                 for combo in itertools.product(*role_bps_list):
+                    self._check_cancelled()
                     yield combo
                     count += 1
-                    if count >= self.MAX_COMBO_LIMIT:
+                    if count >= self.blueprint_combo_limit:
                         break
                 return
 

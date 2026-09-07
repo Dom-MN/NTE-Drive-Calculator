@@ -37,6 +37,13 @@ def main() -> int:
     executable = (args.executable or source / "target/release/nte-analysis-core.exe").resolve()
     client = NteAnalysisCoreClient(executable, "packaging-validation")
     version = client.version()
+    capabilities = version.get("capabilities")
+    if (
+        version.get("engine_version") != "0.3.0"
+        or not isinstance(capabilities, list)
+        or "battle_page_v1" not in capabilities
+    ):
+        raise RuntimeError("分析组件缺少战报数据库直读能力")
     source_files = [source / name for name in (
         "Cargo.toml", "Cargo.lock", "AGENTS.md", "README.md", "THIRD_PARTY_NOTICES.txt",
     )]

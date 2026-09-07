@@ -623,26 +623,6 @@ class PriorityGroupWorkflowTests(unittest.TestCase):
 
         self.assertEqual([{"X"}], strategy.available_shapes)
 
-    def test_matrix_base_does_not_shadow_shared_matrix_helpers(self):
-        from src.optimizer.global_optimal_strategy import MatrixBaseStrategy
-
-        duplicated_helpers = {
-            "_blueprint_extra_key",
-            "_dedupe_blueprints_by_extra_pieces",
-            "_shape_score_buckets",
-            "_blueprint_theoretical_score",
-            "_rank_role_blueprints",
-            "_iter_ranked_bp_combos",
-            "_iter_bp_combos",
-            "_build_profit_matrix",
-            "_init_temp_alloc",
-        }
-
-        self.assertFalse(duplicated_helpers & set(MatrixBaseStrategy.__dict__))
-
-
-
-
 
 if __name__ == "__main__":
 

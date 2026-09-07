@@ -217,7 +217,9 @@ class NTEPipelineOrchestrator:
                             crit_priority_modes: Dict[str, str] = None, set_effect_modes: Dict[str, str] = None,
                             priority_groups: List[List[str]] = None, crit_rate_caps: Dict[str, float] = None,
                             crit_rate_baselines: Dict[str, float] = None,
-                            custom_weapons: Dict[str, str] = None):
+                            custom_weapons: Dict[str, str] = None,
+                            blueprint_combo_limit: int = 500,
+                            cancel_check=None):
         locked_uids = locked_uids or set()
         tape_main_filters = tape_main_filters or {}
         crit_priority_modes = crit_priority_modes or {}
@@ -292,6 +294,8 @@ class NTEPipelineOrchestrator:
             # 缺少卡带只表示本次推荐没有核心，不能否定已经完整填满图纸的驱动方案。
             # 自动/极速装配仍会拒绝缺少核心的保存方案。
             allow_missing_core=True,
+            blueprint_combo_limit=int(blueprint_combo_limit),
+            cancel_check=cancel_check,
         )
         if tape_main_filters:
             logger.info("  已按角色优先级配置提前过滤卡带主词条。")

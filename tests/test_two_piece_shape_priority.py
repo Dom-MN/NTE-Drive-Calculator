@@ -6,7 +6,6 @@ from __future__ import annotations
 import unittest
 
 from src.models.equipment import Drive, DriveShape
-from src.optimizer.global_optimal_strategy import GlobalOptimalStrategy
 from src.optimizer.role_priority_strategy import RolePriorityStrategy
 from src.solver.combinatorics import PuzzleCombinatorics
 
@@ -70,24 +69,16 @@ class TwoPieceShapePriorityTests(unittest.TestCase):
             ),
         ]
 
-    def test_supported_strategies_use_extra_shape_bonus_for_two_piece_choice(self) -> None:
-        for strategy_class in (
-            RolePriorityStrategy,
-            GlobalOptimalStrategy,
-        ):
-            with self.subTest(strategy=strategy_class.__name__):
-                result = self._strategy(strategy_class).execute(
-                    {"drives": self._drives(), "tapes": {"A": []}},
-                    ["A"],
-                    {},
-                    crit_priority_modes={},
-                )
+    def test_role_priority_uses_extra_shape_bonus_for_two_piece_choice(self) -> None:
+        result = self._strategy(RolePriorityStrategy).execute(
+            {"drives": self._drives(), "tapes": {"A": []}},
+            ["A"],
+            {},
+            crit_priority_modes={},
+        )
 
-                self.assertTrue(result["A"]["valid"])
-                self.assertEqual(
-                    "hidden_better",
-                    result["A"]["assigned_set_drives"][0].uid,
-                )
+        self.assertTrue(result["A"]["valid"])
+        self.assertEqual("hidden_better", result["A"]["assigned_set_drives"][0].uid)
 
     def test_none_mode_can_use_other_shape_to_fill_extra_shape_remainder(self) -> None:
         shapes = {
