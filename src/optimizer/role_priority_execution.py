@@ -11,7 +11,6 @@ from typing import Any
 
 from src.models.equipment import Drive, Tape
 from src.optimizer.deferred_drive_reservations import DeferredDriveReservationState
-from src.optimizer.reservation_local_polish import improve_progressive_result
 from src.optimizer.reservation_recovery_support import ProtectedDriveScreenCache
 from src.utils.logger import logger
 
@@ -206,13 +205,6 @@ def _choose_group_allocation(
             used_tape_uids, candidate_limit,
         )
         if _allocation_is_reservation_feasible(strategy, allocation, group, reservations):
-            if recovery_cache is not None:
-                allocation = improve_progressive_result(
-                    strategy, group, ordinary_allocation, allocation, available,
-                    custom_sets, assigned_tapes, crit_priority_modes, crit_rate_caps,
-                    reservations, protected_uids, occupied_drive_uids,
-                    recovery_cache,
-                )
             _log_recovery(
                 group, "递进保护", ordinary_allocation, allocation,
                 protected_uids, reservations, strategy, crit_priority_modes, crit_rate_caps,
@@ -276,14 +268,6 @@ def _choose_single_role_plan(
         if plan.get("valid") and reservations.can_consume(
             strategy._allocated_drive_uids({role_name: plan})
         ):
-            if recovery_cache is not None:
-                polished = improve_progressive_result(
-                    strategy, [role_name], {role_name: ordinary_plan}, {role_name: plan},
-                    available, custom_sets, assigned_tapes, crit_priority_modes,
-                    crit_rate_caps, reservations, protected_uids, occupied_drive_uids,
-                    recovery_cache,
-                )
-                plan = polished[role_name]
             _log_recovery(
                 [role_name], "递进保护", {role_name: ordinary_plan},
                 {role_name: plan}, protected_uids, reservations,

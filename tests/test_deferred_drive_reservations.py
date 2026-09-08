@@ -8,7 +8,6 @@ from src.optimizer.deferred_drive_reservations import (
     DeferredDriveSlot,
 )
 from src.optimizer.reservation_recovery_support import ProtectedDriveScreenCache
-from src.optimizer.reservation_local_polish import _should_attempt_local_polish
 from src.optimizer.role_priority_execution import _choose_group_allocation
 from src.optimizer.role_priority_strategy import RolePriorityStrategy
 
@@ -105,16 +104,6 @@ def test_protected_top_k_refills_from_cached_role_type_ranking():
     selected = cache.select(["Later"], {"X"}, 2, {"a"})
 
     assert [drive.uid for drive in selected] == ["b", "c"]
-
-
-def test_local_polish_uses_absolute_three_point_loss_only():
-    ordinary = {"Later": {"score": 300.0}}
-
-    assert _should_attempt_local_polish(ordinary, {"Later": {"score": 297.0}}, {"X"})
-    assert not _should_attempt_local_polish(ordinary, {"Later": {"score": 297.01}}, {"X"})
-    assert not _should_attempt_local_polish(
-        ordinary, {"Later": {"score": 290.0}}, {"A", "B", "C", "D"},
-    )
 
 
 def test_fixed_peer_removes_its_uid_from_other_reservation_candidates():
