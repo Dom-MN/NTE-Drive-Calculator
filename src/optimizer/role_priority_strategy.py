@@ -538,6 +538,7 @@ class RolePriorityStrategy(
         best_priority_key = ()
         best_allocation = {}
         use_greedy = self._group_uses_crit_thresholds(valid_group, crit_priority_modes)
+        prepared_matrix = self._prepare_profit_matrix(drives_pool, crit_priority_modes)
         for bp_combo in self._iter_bp_combos(
             role_blueprints,
             valid_group,
@@ -594,8 +595,8 @@ class RolePriorityStrategy(
                     best_allocation = temp_alloc
                 continue
 
-            slots, profit_matrix, ranking_matrix = self._build_profit_matrix(
-                bp_combo, valid_group, drives_pool, custom_sets, crit_priority_modes
+            slots, profit_matrix, ranking_matrix = prepared_matrix.build(
+                bp_combo, valid_group, custom_sets,
             )
             if slots is None:
                 continue

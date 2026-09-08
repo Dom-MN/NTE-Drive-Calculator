@@ -7,6 +7,7 @@ file below the repository size limit while making reservation commits explicit.
 
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Any
 
 from src.models.equipment import Drive, Tape
@@ -165,8 +166,11 @@ def _choose_group_allocation(
     small reservation frontier and keep the best feasible branch.
     """
 
+    started = perf_counter()
+    conflict_count = 0
     pending = [frozenset()]
     visited: set[frozenset[str]] = set()
+    recovery_count = 0
     best_allocation: dict | None = None
     fallback: dict | None = None
     while pending and len(visited) < _RESERVATION_SEARCH_LIMIT:
@@ -183,6 +187,7 @@ def _choose_group_allocation(
             role for role in group if not allocation.get(role, {}).get("valid")
         ]
         if failed_roles:
+            recovery_count += 1
             allocation = strategy._recover_equal_priority_group(
                 group,
                 available,
@@ -208,11 +213,18 @@ def _choose_group_allocation(
                 best_allocation = allocation
             continue
         fallback = allocation
+        conflict_count += 1
         for uid in sorted(used_uids & reservations.reservation_uids):
             next_excluded = excluded_uids | {uid}
             if next_excluded not in visited:
                 pending.append(next_excluded)
 
+    logger.info(
+        "同级组预留搜索完成: 角色数={}, 求解轮数={}, 恢复次数={}, "
+        "冲突次数={}, 耗时={:.3f}s",
+        len(group), len(visited), recovery_count,
+        conflict_count, perf_counter() - started,
+    )
     if best_allocation is not None:
         return best_allocation
     if (
@@ -247,6 +259,8 @@ def _choose_single_role_plan(
     crit_rate_caps: dict[str, float],
     reservations: DeferredDriveReservationState,
 ) -> dict:
+    started = perf_counter()
+    conflict_count = 0
     pending = [frozenset()]
     visited: set[frozenset[str]] = set()
     best_plan: dict | None = None
@@ -276,11 +290,16 @@ def _choose_single_role_plan(
                 best_plan = plan
             continue
         fallback = plan
+        conflict_count += 1
         for uid in sorted(used_uids & reservations.reservation_uids):
             next_excluded = excluded_uids | {uid}
             if next_excluded not in visited:
                 pending.append(next_excluded)
 
+    logger.info(
+        "单角色预留搜索完成: 求解轮数={}, 冲突次数={}, 耗时={:.3f}s",
+        len(visited), conflict_count, perf_counter() - started,
+    )
     result = best_plan or fallback or {"valid": False}
     result.pop("rank_score", None)
     return result
@@ -328,7 +347,7 @@ def _best_single_role_plan(
     )
     role_drives_pool = strategy._filter_drives_by_shapes(drives_pool, required_shapes)
     logger.info(
-        "  [%s] 匹配中... (图纸数: %s, 候选池: %s)",
+        "  [{}] 匹配中... (图纸数: {}, 候选池: {})",
         role_name, len(blueprints), len(role_drives_pool),
     )
     best_plan: dict = {

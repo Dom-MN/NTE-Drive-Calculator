@@ -55,6 +55,9 @@ class BlueprintCandidateBuilder(BaseDispatchStrategy):
             crit_config,
             include_extra_shape_bonus=False,
         )
+        return self._score_blueprint_buckets(blueprint, target_set, set_buckets, extra_buckets)
+
+    def _score_blueprint_buckets(self, blueprint, target_set, set_buckets, extra_buckets):
         used_counts = {}
         total = 0.0
         required_slots = [
@@ -85,21 +88,29 @@ class BlueprintCandidateBuilder(BaseDispatchStrategy):
         crit_priority_modes = crit_priority_modes or {}
         ranked = []
         for role, bps in zip(valid_roles, role_bps_list):
-            role_ranked = [
-                (
-                    self._blueprint_theoretical_score(
-                        role,
-                        bp,
-                        drives_pool,
-                        custom_sets,
-                        crit_priority_modes.get(role),
-                        include_extra_shape_bonus=include_extra_shape_bonus,
-                    ),
-                    index,
-                    bp,
+            if not bps:
+                ranked.append([])
+                continue
+            target_set = self._target_set(role, custom_sets)
+            # Buckets depend on the role/pool/preferences and bonus mode, not
+            # on each blueprint. Never retain them beyond this frozen ranking.
+            buckets_by_bonus = {}
+
+            def buckets(uses_bonus):
+                if uses_bonus not in buckets_by_bonus:
+                    buckets_by_bonus[uses_bonus] = self._shape_score_buckets(
+                        role, drives_pool, crit_priority_modes.get(role),
+                        include_extra_shape_bonus=uses_bonus,
+                    )
+                return buckets_by_bonus[uses_bonus]
+
+            role_ranked = []
+            for index, bp in enumerate(bps):
+                uses_bonus = self._slot_uses_extra_shape_bonus("set", bp, include_extra_shape_bonus)
+                score = self._score_blueprint_buckets(
+                    bp, target_set, buckets(uses_bonus), buckets(False),
                 )
-                for index, bp in enumerate(bps)
-            ]
+                role_ranked.append((score, index, bp))
             role_ranked.sort(key=lambda item: (-item[0], item[1]))
             ranked.append(role_ranked)
         return ranked

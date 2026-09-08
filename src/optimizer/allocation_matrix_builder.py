@@ -6,7 +6,63 @@ from src.optimizer.blueprint_candidate_builder import BlueprintCandidateBuilder
 from src.optimizer.contracts import AllocationResult, CandidatePool, CustomSetMap, StatPriorityConfigMap
 
 
+class PreparedProfitMatrix:
+    """Reuse immutable score rows within one fixed candidate pool and preference set.
+
+    A reservation branch gets a fresh instance, so excluded UIDs and changed
+    column order cannot leak across branches. Only state-independent ranking
+    is cached; critical-rate threshold selection still uses its greedy path.
+    """
+
+    def __init__(self, strategy, drives_pool, crit_priority_modes):
+        self._strategy = strategy
+        self._drives = tuple(drives_pool)
+        self._preferences = crit_priority_modes or {}
+        self._shape_indices = {}
+        for index, drive in enumerate(self._drives):
+            self._shape_indices.setdefault(drive.shape_id, []).append(index)
+        self._rows = {}
+
+    def _row(self, role, shape, uses_bonus):
+        key = (role, shape, uses_bonus)
+        if key not in self._rows:
+            profit = np.full(len(self._drives), -10000.0)
+            ranking = np.full(len(self._drives), -10000.0)
+            config = self._preferences.get(role)
+            for index in self._shape_indices.get(shape, ()):
+                drive = self._drives[index]
+                if not self._strategy._item_allowed_for_role(drive, config):
+                    continue
+                score = drive.role_scores.get(role, 0.0)
+                profit[index] = score
+                ranking[index] = self._strategy._rank_score_for_drive(
+                    role, drive, score, config,
+                    include_extra_shape_bonus=uses_bonus,
+                )
+            self._rows[key] = profit, ranking
+        return self._rows[key]
+
+    def build(self, bp_combo, valid_roles, custom_sets, *, include_extra_shape_bonus=True):
+        slots = self._strategy._build_group_slots(bp_combo, valid_roles, custom_sets)
+        if len(self._drives) < len(slots):
+            return None, None, None
+        profit_matrix = np.empty((len(slots), len(self._drives)))
+        ranking_matrix = np.empty_like(profit_matrix)
+        for index, slot in enumerate(slots):
+            uses_bonus = self._strategy._slot_uses_extra_shape_bonus(
+                slot["type"], slot.get("bp"), include_extra_shape_bonus,
+            )
+            profit, ranking = self._row(slot["role"], slot["shape"], uses_bonus)
+            # Each matrix owns its data; solver-side mutation cannot poison a row.
+            profit_matrix[index] = profit
+            ranking_matrix[index] = ranking
+        return slots, profit_matrix, ranking_matrix
+
+
 class AllocationMatrixBuilder(BlueprintCandidateBuilder):
+    def _prepare_profit_matrix(self, drives_pool, crit_priority_modes=None):
+        return PreparedProfitMatrix(self, drives_pool, crit_priority_modes)
+
     def _build_group_slots(self, bp_combo, valid_roles, custom_sets):
         slots = []
         for role_idx, role in enumerate(valid_roles):
@@ -27,40 +83,10 @@ class AllocationMatrixBuilder(BlueprintCandidateBuilder):
         crit_priority_modes=None,
         include_extra_shape_bonus: bool = True,
     ):
-        crit_priority_modes = crit_priority_modes or {}
-        slots = self._build_group_slots(bp_combo, valid_roles, custom_sets)
-
-        if len(drives_pool) < len(slots): return None, None, None
-
-        profit_matrix = np.zeros((len(slots), len(drives_pool)))
-        ranking_matrix = np.zeros((len(slots), len(drives_pool)))
-        for i, slot in enumerate(slots):
-            for j, drive in enumerate(drives_pool):
-                if (
-                    drive.shape_id != slot["shape"]
-                    or not self._item_allowed_for_role(
-                        drive, crit_priority_modes.get(slot["role"])
-                    )
-                ):
-                    profit_matrix[i, j] = -10000.0
-                    ranking_matrix[i, j] = -10000.0
-                else:
-                    score = drive.role_scores.get(slot["role"], 0.0)
-                    profit_matrix[i, j] = score
-                    slot_uses_bonus = self._slot_uses_extra_shape_bonus(
-                        slot["type"],
-                        slot.get("bp"),
-                        include_extra_shape_bonus,
-                    )
-                    ranking_matrix[i, j] = self._rank_score_for_drive(
-                        slot["role"],
-                        drive,
-                        score,
-                        crit_priority_modes.get(slot["role"]),
-                        include_extra_shape_bonus=slot_uses_bonus,
-                    )
-
-        return slots, profit_matrix, ranking_matrix
+        return self._prepare_profit_matrix(drives_pool, crit_priority_modes).build(
+            bp_combo, valid_roles, custom_sets,
+            include_extra_shape_bonus=include_extra_shape_bonus,
+        )
 
     def _init_temp_alloc(self, valid_roles, assigned_tapes):
         return {r: {
