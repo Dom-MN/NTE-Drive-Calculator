@@ -12,7 +12,9 @@ Rust 返回的版本化目标派生快照由 Python 在复核账号和静态配�
 
 部署命令为 `python tools/counterfactual/package_rust_core.py --source <analysis-core目录>`。
 该命令核对程序身份，记录独立源码摘要、编译版本、许可与二进制 SHA-256，并生成包含源码的交付包。
-`--destination` 可先输出到隔离验证目录；生成的程序和机器清单不进入 Git。
+`--destination` 可先输出到隔离验证目录。核验通过的 `bin/nte-analysis-core.exe` 与 `component.json`
+成对提交到本仓库，源码使用者拉取代码时同步取得配套组件；更新或回滚时必须同时替换程序和清单。
+其他本机构建产物不进入 Git。
 
 本说明描述源码与分发边界，不证明本机组件已经更新。启用前须核对组件能力与哈希，并完成冻结副本差分、
 进程取消、打包输入、升级回滚及真实 Windows 页面验证；不以局部计算核计时替代实机验收。
