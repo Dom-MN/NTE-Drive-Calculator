@@ -2121,5 +2121,10 @@
   "正在初始化抓包，等待网卡就绪": "Starting capture, waiting for the network adapter",
   "nte-core 抓包初始化超时，未进入 running 状态": "nte-core capture start-up timed out and never reached the running state",
   "检测到游戏正在运行。\n请完全退出游戏后再部署插件。": "The game is running.\nQuit it completely before deploying the plugin.",
-  "将部署装备插件到所选游戏目录。\n已有同名文件会自动备份。\n\n是否继续？": "This deploys the equipment plugin into the selected game directory.\nAny existing file of the same name is backed up first.\n\nContinue?"
+  "将部署装备插件到所选游戏目录。\n已有同名文件会自动备份。\n\n是否继续？": "This deploys the equipment plugin into the selected game directory.\nAny existing file of the same name is backed up first.\n\nContinue?",
+  "正在解析截图...": "Parsing screenshots...",
+  "扫描完成，正在解析截图...": "Scan complete, parsing screenshots...",
+  "正在下载更新安装程序…": "Downloading the update installer…",
+  "未获取到 Mirror 下载地址。请确认 CDK 有效，且存在可下载的新版本；若仍无法下载，可前往下方项目页面尝试下载。": "No Mirror download address was returned. Check that the CDK is valid and that a newer version is available to download; if it still fails, try the project page below.",
+  "下载或启动安装程序失败，请稍后重试；若仍失败，可前往下方项目页面尝试下载。": "Downloading or starting the installer failed. Try again later; if it still fails, try the project page below."
 }

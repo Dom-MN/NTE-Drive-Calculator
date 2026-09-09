@@ -40,6 +40,12 @@ UI_SINKS = frozenset({
     "setTitle", "setTabText", "addTab", "setStatusTip", "addItem", "information",
     "warning", "question", "critical", "about", "setItemText", "setHeaderLabels",
     "setLabelText", "addAction",
+    # QProgressDialog's first two arguments are its label and cancel button.
+    "QProgressDialog",
+    # Display metadata whose label is handed to a widget later, where the sink
+    # scan cannot follow it. Their other fields are ASCII identifiers, so a CJK
+    # literal in one of these is always copy.
+    "NavItem",
 })
 # Logging text stays Chinese by repository convention.
 LOG_CALLS = frozenset({

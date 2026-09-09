@@ -283,8 +283,8 @@ def _start_vision_processing(self, replace_output=False, parse_scope="all"):
         config_dir=str(dependencies.config_dir),
     )
     self._progress_dlg = QProgressDialog(
-        "正在解析截图...",
-        "取消",
+        tr("正在解析截图..."),
+        tr("取消"),
         0,
         100,
         self.dialog_parent,
@@ -644,7 +644,7 @@ def _on_gamepad_scan_done(self, captured, total):
         self._on_gamepad_parse_progress(current, progress_total, filename)
         return
     self._progress_dlg = QProgressDialog(
-        "扫描完成，正在解析截图...",
+        tr("扫描完成，正在解析截图..."),
         "",
         0,
         progress_total,

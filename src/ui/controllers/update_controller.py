@@ -275,15 +275,19 @@ def _on_mirror_download_ready(self, info):
     self._update_status.setText(tr("未获取到 Mirror 下载地址，可前往项目页面尝试下载。"))
     _show_mirror_project_download_dialog(
         self,
-        "未获取到 Mirror 下载地址。请确认 CDK 有效，且存在可下载的新版本；"
-        "若仍无法下载，可前往下方项目页面尝试下载。",
+        tr(
+            "未获取到 Mirror 下载地址。请确认 CDK 有效，且存在可下载的新版本；"
+            "若仍无法下载，可前往下方项目页面尝试下载。"
+        ),
     )
 
 
 def _start_mirror_installer_download(self, url):
     """Download and launch the installer without sending the user to a browser."""
     self._update_status.setText(tr("正在通过 Mirror 酱下载更新安装程序…"))
-    progress = QProgressDialog("正在下载更新安装程序…", "取消", 0, 0, self)
+    progress = QProgressDialog(
+        tr("正在下载更新安装程序…"), tr("取消"), 0, 0, self
+    )
     progress.setWindowTitle(tr("Mirror 下载"))
     progress.setWindowModality(Qt.WindowModality.WindowModal)
     progress.setAutoClose(False)
@@ -377,7 +381,7 @@ def _on_mirror_installer_download_error(self, error):
     self._update_status.setText(tr("Mirror 下载失败，可前往项目页面尝试下载。"))
     _show_mirror_project_download_dialog(
         self,
-        "下载或启动安装程序失败，请稍后重试；若仍失败，可前往下方项目页面尝试下载。",
+        tr("下载或启动安装程序失败，请稍后重试；若仍失败，可前往下方项目页面尝试下载。"),
     )
 
 
