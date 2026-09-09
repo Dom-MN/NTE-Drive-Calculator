@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from pathlib import Path
 
 from src.features.static_catalog.contracts import (
@@ -138,12 +140,13 @@ class StaticCatalogFormulaProvider(_FormulaProviderBase):
                     ),
                     CatalogField(
                         "适用条件",
-                        "；".join(formula.applicable_when) or "不可用",
+                        tr("；").join(tr(item) for item in formula.applicable_when)
+                        or tr("不可用"),
                         CatalogValueSource.PROJECT_ANNOTATION,
                     ),
                     CatalogField(
                         "限制",
-                        "；".join(formula.limitations) or "无",
+                        tr("；").join(tr(item) for item in formula.limitations) or tr("无"),
                         CatalogValueSource.PROJECT_ANNOTATION,
                     ),
                 ),
@@ -278,18 +281,18 @@ class StaticCatalogCounterfactualProvider(_FormulaProviderBase):
                     ),
                     CatalogField(
                         "覆盖对象",
-                        "；".join(entry.covered_entities) or "无",
+                        tr("；").join(entry.covered_entities) or tr("无"),
                         CatalogValueSource.PROJECT_ANNOTATION,
                     ),
                     CatalogField(
                         "缺口代码",
-                        "；".join(entry.gap_codes) or "无",
+                        tr("；").join(entry.gap_codes) or tr("无"),
                         CatalogValueSource.PROJECT_ANNOTATION,
                         bool(entry.gap_codes),
                     ),
                     CatalogField(
                         "生产消费者",
-                        "；".join(entry.consumer_entries) or "无生产入口",
+                        tr("；").join(entry.consumer_entries) or tr("无生产入口"),
                         CatalogValueSource.PROJECT_ANNOTATION,
                     ),
                 ),

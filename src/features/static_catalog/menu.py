@@ -114,13 +114,13 @@ class CatalogMenuCard(QFrame):
         root.setSpacing(10)
         copy = QVBoxLayout()
         copy.setSpacing(4)
-        kicker = QLabel(self._entry.kicker, self)
+        kicker = QLabel(tr(self._entry.kicker), self)
         kicker.setStyleSheet(themed_style(
             f"color:{self._entry.accent};font-size:9px;font-weight:800;letter-spacing:1px"
         ))
-        title = QLabel(self._entry.title, self)
+        title = QLabel(tr(self._entry.title), self)
         title.setStyleSheet(themed_style("color:#f0f6fc;font-size:17px;font-weight:900"))
-        description = QLabel(self._entry.description, self)
+        description = QLabel(tr(self._entry.description), self)
         description.setWordWrap(True)
         description.setStyleSheet(themed_style("color:#8b949e;font-size:11px;line-height:1.35"))
         state = QLabel(tr("进入  ›") if self._available else tr("当前发行不可用"), self)
@@ -142,7 +142,7 @@ class CatalogMenuCard(QFrame):
                 68, 76, Qt.KeepAspectRatio, Qt.SmoothTransformation
             ))
         else:
-            art_label.setText(self._entry.glyph)
+            art_label.setText(tr(self._entry.glyph))
             art_label.setStyleSheet(themed_style(
                 f"color:{self._entry.accent};background:#0d1117;"
                 f"border:1px solid {self._entry.accent};border-radius:12px;"

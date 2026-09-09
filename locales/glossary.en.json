@@ -85,6 +85,7 @@
       "哈尼娅",
       "哈索尔",
       "喜爱",
+      "噩梦",
       "噬心诡刃",
       "固态",
       "埃德嘉",
@@ -204,6 +205,7 @@
       "茶花会",
       "蓝",
       "薄荷",
+      "蚀心",
       "行进于时间之外",
       "被遗忘者",
       "该死的邂逅",
@@ -241,6 +243,7 @@
       "魂属性异能伤害抗性",
       "魂属性穿透",
       "鲸之歌",
+      "鸩火",
       "黯星",
       "黯星伤害增强"
     ],
@@ -304,6 +307,7 @@
     "咒属性异能伤害抗性": "Incantation Resistance",
     "咒属性穿透": "Incantation Penetration",
     "喜爱": "Love",
+    "噩梦": "Nightmare",
     "基础攻击力": "Base ATK",
     "基础生命值": "Base HP",
     "基础防御力": "Base DEF",
@@ -375,6 +379,7 @@
     "相属性穿透": "Lakshana Penetration",
     "终结能量恢复": "Finisher Energy Recovery",
     "舒适": "Comfort",
+    "蚀心": "Mindrot",
     "运势": "Luck",
     "通用伤害增强": "Universal DMG Bonus",
     "防御力": "DEF",
@@ -399,6 +404,7 @@
     "魂属性异能伤害增强%": "Psyche DMG Bonus",
     "魂属性异能伤害抗性": "Psyche Resistance",
     "魂属性穿透": "Psyche Penetration",
+    "鸩火": "Venomfire",
     "黯星伤害增强": "Nova DMG Bonus"
   },
   "fork_types": {

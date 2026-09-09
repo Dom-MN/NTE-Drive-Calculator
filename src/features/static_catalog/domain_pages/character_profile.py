@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QResizeEvent
@@ -277,7 +277,7 @@ class CharacterDetailView(QWidget):
         self._growth = growth
         self._release = release
         character = detail.character
-        self.name.setText(character.name_zh)
+        self.name.setText(display_term(character.name_zh))
         self.identity.setText(f"ID  {character.character_id}")
         self.element_badge.setText(tr("{element}属性", element=character.element_label))
         acquisition_label = _acquisition_name(release)

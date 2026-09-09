@@ -247,7 +247,7 @@ class ProgressionCalculatorDialog(QDialog):
         session = self._orchestrator.prepare(request)
         self._session = session
         self._callback = on_result
-        self.title.setText(session.title)
+        self.title.setText(tr(session.title))
         self._render_materials(session)
         self._clear_layout(self.gaps_layout)
         if session.more_info:

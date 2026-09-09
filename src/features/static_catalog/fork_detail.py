@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from typing import Any
 
@@ -156,7 +156,7 @@ class ForkCatalogWidget(QWidget):
         self.type_combo.addItem(tr("全部类型"), None)
         for fork_type in self._service.list_types():
             self.type_combo.addItem(
-                f"{fork_type.name_zh} ({fork_type.fork_count})",
+                f"{display_term(fork_type.name_zh)} ({fork_type.fork_count})",
                 fork_type.fork_type_id,
             )
 
@@ -299,7 +299,7 @@ class ForkCatalogWidget(QWidget):
     def _render_detail(self, detail: ForkCatalogDetail) -> None:
         self.detail_tree.setUpdatesEnabled(False)
         self.detail_tree.clear()
-        self.detail_title.setText(f"{detail.summary.name_zh} · {detail.summary.fork_id}")
+        self.detail_title.setText(f"{display_term(detail.summary.name_zh)} · {detail.summary.fork_id}")
         overview = self._root("概览")
         for label, value in (
             ("弧盘 ID", detail.summary.fork_id),

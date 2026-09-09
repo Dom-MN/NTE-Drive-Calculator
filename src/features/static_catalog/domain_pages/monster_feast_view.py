@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from pathlib import Path
 from typing import Callable
@@ -167,7 +167,7 @@ class FeastEncounterView(QWidget):
                period=setup.period_label, ordinal=setup.challenge_ordinal)
         )
         self.subtitle.setText(
-            f"{setup.title} · {setup.boss_name} · {setup.schedule_label}"
+            f"{tr(setup.title)} · {display_term(setup.boss_name)} · {setup.schedule_label}"
         )
         self.difficulty_combo.clear()
         for difficulty in setup.difficulties:
@@ -201,7 +201,7 @@ class FeastEncounterView(QWidget):
         self.blessing_combo.clear()
         self.blessing_combo.addItem(tr("不选择"), "")
         for blessing in blessings:
-            self.blessing_combo.addItem(blessing.title, blessing.key)
+            self.blessing_combo.addItem(tr(blessing.title), blessing.key)
         self.blessing_combo.setCurrentIndex(0)
         self.blessing_toggle.setChecked(False)
         self._toggle_blessing(False)

@@ -231,7 +231,7 @@ class StaticCatalogPage:
         bar_layout = QHBoxLayout(bar)
         bar_layout.setContentsMargins(0, 0, 0, 5)
         back = self._navigation_button(bar)
-        title = QLabel(spec.title, bar)
+        title = QLabel(tr(spec.title), bar)
         title.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:16px;font-weight:900"
         ))
@@ -489,7 +489,7 @@ class StaticCatalogPage:
         for catalog_item in page.items:
             item = QListWidgetItem(catalog_item.title)
             item.setData(Qt.UserRole, catalog_item)
-            item.setToolTip(catalog_item.subtitle)
+            item.setToolTip(tr(catalog_item.subtitle))
             results.addItem(item)
         results.blockSignals(False)
         if results.count():
@@ -528,17 +528,17 @@ class StaticCatalogPage:
 
     def _render_detail(self, detail: CatalogDetail) -> None:
         layout = self._clear_detail()
-        title = QLabel(detail.item.title)
+        title = QLabel(tr(detail.item.title))
         title.setWordWrap(True)
         title.setStyleSheet(themed_style("font-size:18px;font-weight:800;color:#f0f6fc"))
         layout.addWidget(title)
         if detail.item.subtitle:
-            subtitle = QLabel(detail.item.subtitle)
+            subtitle = QLabel(tr(detail.item.subtitle))
             subtitle.setWordWrap(True)
             subtitle.setStyleSheet(themed_style("color:#8b949e"))
             layout.addWidget(subtitle)
         for section in detail.sections:
-            heading = QLabel(section.title)
+            heading = QLabel(tr(section.title))
             heading.setStyleSheet(themed_style(
                 "font-size:14px;font-weight:800;color:#58a6ff;margin-top:6px"
             ))
@@ -549,7 +549,7 @@ class StaticCatalogPage:
                 references = QHBoxLayout()
                 references.setSpacing(6)
                 for reference in section.references:
-                    button = QPushButton(reference.label)
+                    button = QPushButton(tr(reference.label))
                     button.setObjectName("btnSm")
                     button.clicked.connect(partial(
                         self._load_detail,
@@ -585,7 +585,7 @@ class StaticCatalogPage:
         layout = QVBoxLayout(host)
         layout.setContentsMargins(8, 6, 8, 8)
         layout.setSpacing(7)
-        heading = QLabel(f"{group.label}（{group.total}）", host)
+        heading = QLabel(f"{tr(group.label)}（{group.total}）", host)
         heading.setStyleSheet(themed_style("font-weight:800;color:#58a6ff"))
         layout.addWidget(heading)
         rows_layout = QVBoxLayout()
@@ -630,7 +630,7 @@ class StaticCatalogPage:
         ))
         layout = QVBoxLayout(host)
         layout.setContentsMargins(7, 5, 7, 6)
-        title = QLabel(section.title, host)
+        title = QLabel(tr(section.title), host)
         title.setStyleSheet(themed_style("font-weight:700;color:#c9d1d9"))
         layout.addWidget(title)
         for field in section.fields:
@@ -638,7 +638,7 @@ class StaticCatalogPage:
         if section.references:
             links = QHBoxLayout()
             for reference in section.references:
-                button = QPushButton(reference.label, host)
+                button = QPushButton(tr(reference.label), host)
                 button.setObjectName("staticCatalogRelationTarget")
                 button.clicked.connect(partial(
                     self._load_detail,
@@ -655,10 +655,10 @@ class StaticCatalogPage:
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 2, 0, 2)
         layout.setSpacing(8)
-        name = QLabel(field.label)
+        name = QLabel(tr(field.label))
         name.setMinimumWidth(96)
         name.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
-        value = QLabel(field.value or "—")
+        value = QLabel(tr(field.value) or "—")
         value.setWordWrap(True)
         value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         value.setStyleSheet(themed_style("color:#c9d1d9"))

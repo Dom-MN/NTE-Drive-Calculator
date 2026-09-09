@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from collections.abc import Iterable
 
@@ -197,7 +197,7 @@ class CharacterDetailPanel(QWidget):
             self.overview_layout.addStretch()
         else:
             self.title_label.setText(
-                f"{detail.character.name_zh} · {detail.character.character_id}"
+                f"{display_term(detail.character.name_zh)} · {detail.character.character_id}"
             )
             dataset = detail.dataset
             self.dataset_label.setText(
@@ -345,7 +345,7 @@ class CharacterDetailPanel(QWidget):
     def _gap_section(self, detail: CharacterDetail) -> QFrame:
         section = self._section("数据可用性", "schema / manifest")
         for gap in detail.gaps:
-            label = QLabel(f"[{gap.status}] {gap.label}：{gap.reason}")
+            label = QLabel(f"[{gap.status}] {tr(gap.label)}：{tr(gap.reason)}")
             label.setWordWrap(True)
             label.setStyleSheet(themed_style(
                 "color:#d29922" if gap.status == "partial" else "color:#f85149"

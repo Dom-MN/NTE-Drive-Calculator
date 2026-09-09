@@ -254,7 +254,7 @@ class EquipmentDetailView(QScrollArea):
         selector = QComboBox(strength)
         for curve in curves:
             icon_path = self._asset_catalog.attribute_icon(_ATTRIBUTE_ICON_KEYS.get(curve.property_id, ""))
-            selector.addItem(QIcon(str(icon_path)) if icon_path else QIcon(), curve.label, curve)
+            selector.addItem(QIcon(str(icon_path)) if icon_path else QIcon(), tr(curve.label), curve)
         strength_layout.addWidget(selector)
         plot = CurvePlot(strength)
         strength_layout.addWidget(plot)

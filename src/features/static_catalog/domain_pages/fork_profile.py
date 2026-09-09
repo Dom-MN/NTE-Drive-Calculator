@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QResizeEvent
@@ -274,9 +274,9 @@ class ForkProfileView(QWidget):
         self.level_slider.setValue(80)
         self.level_slider.blockSignals(False)
         summary = detail.summary
-        self.name.setText(summary.name_zh)
+        self.name.setText(display_term(summary.name_zh))
         self.quality_badge.setText(self._item_names.quality_name(summary.quality))
-        self.type_badge.setText(summary.fork_type_name_zh or tr("类型未提供"))
+        self.type_badge.setText(display_term(summary.fork_type_name_zh) or tr("类型未提供"))
         campaign = self._display_campaigns.get(summary.fork_id)
         campaign_title = campaign.title.display_name if campaign else "首发弧盘"
         self.release_badge.setText(campaign_title or tr("名称暂未提供"))

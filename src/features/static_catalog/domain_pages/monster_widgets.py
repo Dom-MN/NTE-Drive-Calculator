@@ -53,11 +53,11 @@ class ArchiveCard(QFrame):
             "color:#39d0d8;font-size:9px;font-weight:900;letter-spacing:1px"
         ))
         layout.addWidget(badge)
-        title = QLabel(model.title, self)
+        title = QLabel(tr(model.title), self)
         title.setWordWrap(True)
         title.setStyleSheet(themed_style("color:#f0f6fc;font-size:14px;font-weight:900"))
         layout.addWidget(title)
-        subtitle = QLabel(model.subtitle, self)
+        subtitle = QLabel(tr(model.subtitle), self)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(themed_style("color:#8b949e;font-size:10px"))
         layout.addWidget(subtitle)

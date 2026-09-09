@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import display_term
+
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -230,7 +232,7 @@ class ForkCharacterCard(QFrame):
                     Qt.TransformationMode.SmoothTransformation,
                 ))
         layout.addWidget(image, 0, 0, 2, 1)
-        name = QLabel(character.name_zh, self)
+        name = QLabel(display_term(character.name_zh), self)
         name.setStyleSheet(themed_style("color:#f0f6fc;font-weight:800;"))
         layout.addWidget(name, 0, 1)
         relation = QLabel(relation_label, self)

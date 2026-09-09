@@ -202,7 +202,7 @@ class MonsterDetailView(QWidget):
             heading, f"{len(values)} 项规则，效果说明直接在当前页面展开",
         ))
         if options.note:
-            description = QLabel(options.note, self.host)
+            description = QLabel(tr(options.note), self.host)
             description.setWordWrap(True)
             description.setStyleSheet(themed_style(
                 "background:#161b22;color:#c9d1d9;border:0;"
@@ -357,7 +357,7 @@ class MonsterDetailView(QWidget):
             "QFrame{background:#161b22;border:0;border-radius:14px;}"
         ))
         layout = QVBoxLayout(frame)
-        title = QLabel(_profile_title(section.title), frame)
+        title = QLabel(_profile_title(tr(section.title)), frame)
         title.setStyleSheet(themed_style("color:#f0f6fc;font-size:12px;font-weight:900"))
         layout.addWidget(title)
         values = {value.label: value for value in section.values}

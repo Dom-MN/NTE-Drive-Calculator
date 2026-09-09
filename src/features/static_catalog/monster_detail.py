@@ -280,11 +280,11 @@ class MonsterCatalogPanel(QWidget):
 
     def _render_detail(self, detail: CatalogDetail) -> None:
         self._clear_detail()
-        title = QLabel(detail.entry.title)
+        title = QLabel(tr(detail.entry.title))
         title.setTextInteractionFlags(Qt.TextSelectableByMouse)
         title.setStyleSheet(themed_style("font-size:17px;font-weight:800;color:#f0f6fc"))
         self.detail_layout.addWidget(title)
-        subtitle = QLabel(f"{detail.entry.subtitle}\n{detail.entry.primary_id}")
+        subtitle = QLabel(f"{tr(detail.entry.subtitle)}\n{detail.entry.primary_id}")
         subtitle.setTextInteractionFlags(Qt.TextSelectableByMouse)
         subtitle.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
         self.detail_layout.addWidget(subtitle)
@@ -302,8 +302,8 @@ class MonsterCatalogPanel(QWidget):
             group = QGroupBox(tr("关联跳转"))
             layout = QVBoxLayout(group)
             for relation in detail.relations:
-                button = QPushButton(relation.label)
-                button.setToolTip(relation.note or relation.relation_kind)
+                button = QPushButton(tr(relation.label))
+                button.setToolTip(tr(relation.note) or relation.relation_kind)
                 button.clicked.connect(
                     lambda _checked=False, key=relation.target_key: self._follow_relation(key)
                 )
@@ -317,10 +317,10 @@ class MonsterCatalogPanel(QWidget):
         self.select_key(key)
 
     def _section_widget(self, section: CatalogSection) -> QWidget:
-        group = QGroupBox(section.title)
+        group = QGroupBox(tr(section.title))
         layout = QVBoxLayout(group)
         if section.note:
-            note = QLabel(section.note)
+            note = QLabel(tr(section.note))
             note.setWordWrap(True)
             note.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
             layout.addWidget(note)
@@ -332,11 +332,11 @@ class MonsterCatalogPanel(QWidget):
         row = QFrame()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(4, 2, 4, 2)
-        label = QLabel(value.label)
+        label = QLabel(tr(value.label))
         label.setMinimumWidth(132)
         label.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
         layout.addWidget(label)
-        text = QLabel(value.value)
+        text = QLabel(tr(value.value))
         text.setWordWrap(True)
         text.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(text, 1)
@@ -345,7 +345,7 @@ class MonsterCatalogPanel(QWidget):
         provenance.setStyleSheet(themed_style(
             f"color:{color};font-size:10px;font-weight:700"
         ))
-        provenance.setToolTip(value.note)
+        provenance.setToolTip(tr(value.note))
         layout.addWidget(provenance)
         if value.copyable and value.value != "不可用":
             copy_button = QPushButton(tr("复制"))

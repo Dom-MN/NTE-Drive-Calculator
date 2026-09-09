@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from collections.abc import Callable
 from pathlib import Path
@@ -123,7 +123,7 @@ class ForkGalleryCard(QFrame):
             f"color:{color};background:#0d1117;border:1px solid {color};"
             "border-radius:9px;padding:2px 8px;font-size:10px;font-weight:900"
         ))
-        fork_type = QLabel(self.summary.fork_type_name_zh or tr("未分类"), self)
+        fork_type = QLabel(display_term(self.summary.fork_type_name_zh) or tr("未分类"), self)
         fork_type.setStyleSheet(themed_style(
             "color:#c9d1d9;background:#21262d;border:1px solid #30363d;"
             "border-radius:9px;padding:2px 8px;font-size:10px;font-weight:800"
@@ -161,7 +161,7 @@ class ForkGalleryCard(QFrame):
                 Qt.TransformationMode.SmoothTransformation,
             ))
         root.addWidget(art)
-        name = QLabel(self.summary.name_zh, self)
+        name = QLabel(display_term(self.summary.name_zh), self)
         name.setWordWrap(True)
         name.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:16px;font-weight:900"

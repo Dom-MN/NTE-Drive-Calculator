@@ -80,7 +80,7 @@ class SourceTraceDetail(QWidget):
         if page.offset == 0:
             self._clear_rows()
         for section in page.rows:
-            group = QGroupBox(section.title)
+            group = QGroupBox(tr(section.title))
             form = QFormLayout(group)
             form.setRowWrapPolicy(QFormLayout.WrapLongRows)
             for field in section.fields:

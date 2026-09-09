@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Iterable
 
 from PySide6.QtCore import Qt, Signal
@@ -98,14 +100,14 @@ class MechanicsGalleryCard(QFrame):
             top.addWidget(status_pill(model.status, self))
         root.addLayout(top)
 
-        title = QLabel(model.title, self)
+        title = QLabel(tr(model.title), self)
         title.setObjectName("mechanicsCardTitle")
         title.setWordWrap(True)
         title.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:17px;font-weight:900;"
         ))
         root.addWidget(title)
-        subtitle = QLabel(model.subtitle, self)
+        subtitle = QLabel(tr(model.subtitle), self)
         subtitle.setObjectName("mechanicsCardSubtitle")
         subtitle.setWordWrap(True)
         subtitle.setMaximumHeight(54)
@@ -149,11 +151,11 @@ class FieldCard(QFrame):
             row_layout = QVBoxLayout(row)
             row_layout.setContentsMargins(0, 4, 0, 5)
             row_layout.setSpacing(3)
-            label = QLabel(field.label, row)
+            label = QLabel(tr(field.label), row)
             label.setStyleSheet(themed_style(
                 "color:#8b949e;font-size:11px;font-weight:800;"
             ))
-            value = QLabel(field.value, row)
+            value = QLabel(tr(field.value), row)
             value.setObjectName("mechanicsFieldValue")
             value.setWordWrap(True)
             value.setTextInteractionFlags(Qt.TextSelectableByMouse)

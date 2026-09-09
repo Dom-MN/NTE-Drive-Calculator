@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from pathlib import Path
 
 from src.features.static_catalog.contracts import (
@@ -222,12 +224,12 @@ class ForkCatalogProvider:
                     f"混频 {row.level} · {row.title_zh or '未保留标题'}",
                     lines([
                         row.description_zh or "无正式说明",
-                        "参数：" + (", ".join(
+                        tr("参数：") + (", ".join(
                             f"{parameter.name_id}={parameter.display_value}"
                             for parameter in row.parameters
                         ) or "无"),
                         "方斯字段：" + (row.need_gold_raw or "空"),
-                        "Buff：" + (", ".join(row.buff_asset_paths) or "无"),
+                        tr("Buff：") + (", ".join(row.buff_asset_paths) or tr("无")),
                     ]),
                 )
                 for row in detail.refinement_levels
@@ -249,11 +251,11 @@ class ForkCatalogProvider:
                 f"持续={buff.duration_policy or '未保留'}",
                 f"叠层={buff.stacking_type or '未保留'} / {buff.stack_limit_count}",
                 f"GE={buff.gameplay_effect_id or '未解析'}",
-                "修改=" + (", ".join(
+                tr("修改=") + (", ".join(
                     f"{row.property_name_zh or row.property_id}:{row.magnitude_kind}={row.magnitude_value}"
                     for row in buff.modifiers
                 ) or "无"),
-                "触发=" + (", ".join(
+                tr("触发=") + (", ".join(
                     f"{row.event_type or '未知'}->{row.target_gameplay_effect_id or row.target_effect_asset_path or '未解析'}"
                     for row in buff.triggers
                 ) or "无"),

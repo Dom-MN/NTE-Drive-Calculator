@@ -163,12 +163,12 @@ class CombatMechanicsCatalogPage(QWidget):
         self.family_group.setExclusive(True)
         self.family_buttons: dict[str, QPushButton] = {}
         for family in self._service.families:
-            button = QPushButton(f"{family.glyph}  {family.title}", family_host)
+            button = QPushButton(f"{tr(family.glyph)}  {tr(family.title)}", family_host)
             button.setObjectName("mechanicsFamilyButton")
             button.setProperty("familyKey", family.key)
             button.setCheckable(True)
             button.setCursor(Qt.PointingHandCursor)
-            button.setToolTip(family.subtitle)
+            button.setToolTip(tr(family.subtitle))
             button.setStyleSheet(themed_style(
                 "QPushButton#mechanicsFamilyButton{color:#8b949e;background:#0d1117;"
                 "border:1px solid #30363d;border-radius:9px;padding:7px 11px;"
@@ -190,7 +190,7 @@ class CombatMechanicsCatalogPage(QWidget):
         self.family_combo.setObjectName("mechanicsFamilyCombo")
         self.family_combo.setFixedHeight(38)
         for family in self._service.families:
-            self.family_combo.addItem(f"{family.glyph}  {family.title}", family.key)
+            self.family_combo.addItem(f"{tr(family.glyph)}  {tr(family.title)}", family.key)
         self.family_combo.currentIndexChanged.connect(self._select_combo_family)
         self.family_combo.hide()
         deck.addWidget(self.family_combo)
@@ -331,7 +331,7 @@ class CombatMechanicsCatalogPage(QWidget):
         layout.setSpacing(7)
         top = QHBoxLayout()
         family = FAMILY_BY_KEY[detail.family_key]
-        eyebrow = QLabel(f"{family.glyph}  {family.title}", hero)
+        eyebrow = QLabel(f"{tr(family.glyph)}  {tr(family.title)}", hero)
         eyebrow.setStyleSheet(themed_style(
             f"color:{family.accent};font-size:11px;font-weight:900;letter-spacing:1px;"
         ))
@@ -340,13 +340,13 @@ class CombatMechanicsCatalogPage(QWidget):
             top.addWidget(status_pill(detail.status, hero))
         top.addStretch(1)
         layout.addLayout(top)
-        title = QLabel(detail.title, hero)
+        title = QLabel(tr(detail.title), hero)
         title.setWordWrap(True)
         title.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:23px;font-weight:900;"
         ))
         layout.addWidget(title)
-        subtitle = QLabel(detail.subtitle, hero)
+        subtitle = QLabel(tr(detail.subtitle), hero)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(themed_style(
             "color:#c9d1d9;font-size:13px;font-weight:650;"

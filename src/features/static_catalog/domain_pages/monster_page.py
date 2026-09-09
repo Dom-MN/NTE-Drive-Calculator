@@ -569,8 +569,8 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
             self.browser_search.clear()
             self.more_filters_button.setChecked(False)
         self._active_state = state
-        self.browser_title.setText(state.title)
-        self.browser_subtitle.setText(state.subtitle)
+        self.browser_title.setText(tr(state.title))
+        self.browser_subtitle.setText(tr(state.subtitle))
         self._configure_filters(state)
         self._render_browser_state()
         self.stack.setCurrentWidget(self.browser)

@@ -64,14 +64,14 @@ class EquipmentEffectDetail(QWidget):
 
     def render(self, detail: CatalogDetail) -> None:
         self._clear_body()
-        self.title_label.setText(detail.title)
+        self.title_label.setText(tr(detail.title))
         self.subtitle_label.setText(
-            f"{detail.subtitle} · {detail.origin_label} · {detail.entity_key}"
+            f"{tr(detail.subtitle)} · {detail.origin_label} · {detail.entity_key}"
         )
         for section in detail.sections:
             if not section.fields:
                 continue
-            group = QGroupBox(section.title)
+            group = QGroupBox(tr(section.title))
             form = QFormLayout(group)
             form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
             form.setRowWrapPolicy(QFormLayout.WrapLongRows)
@@ -105,7 +105,7 @@ class EquipmentEffectDetail(QWidget):
         layout = QHBoxLayout(host)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
-        value = QLabel(field.value)
+        value = QLabel(tr(field.value))
         value.setWordWrap(True)
         value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(value, 1)
@@ -129,7 +129,7 @@ class EquipmentEffectDetail(QWidget):
         return host
 
     def _relation_button(self, relation: CatalogRelation) -> QPushButton:
-        button = QPushButton(f"{relation.label}：{relation.title}")
+        button = QPushButton(f"{tr(relation.label)}：{tr(relation.title)}")
         button.setObjectName("btnAction")
         button.clicked.connect(
             lambda _checked=False, kind=relation.target_kind,

@@ -335,7 +335,7 @@ class SkillActionCard(QFrame):
         slot.setStyleSheet(themed_style(
             "color:#58a6ff;font-size:13px;font-weight:900"
         ))
-        name = QLabel(action.title, self)
+        name = QLabel(tr(action.title), self)
         name.setObjectName("characterSkillTitle")
         name.setWordWrap(True)
         name.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -597,7 +597,7 @@ class CharacterSkillTrainingView(QWidget):
         self.skill.clear()
         for action in self._actions:
             self.skill.addItem(
-                f"{_SLOT_LABELS.get(action.slot, action.slot)} · {action.title}",
+                f"{_SLOT_LABELS.get(action.slot, action.slot)} · {tr(action.title)}",
                 action.ability_id,
             )
         self.skill.blockSignals(False)
