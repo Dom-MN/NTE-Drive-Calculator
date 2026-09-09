@@ -2,10 +2,12 @@
 """Attach attribute-Buff and mechanism-passive results to one analysis."""
 
 from __future__ import annotations
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
 
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
+from src.domain.native_analysis import DirectFormulaBackend
 from src.domain.battle_report import (
     BattleAnalysisSnapshot,
     BattleHitBuffProjection,
@@ -42,18 +44,22 @@ class BattleMarginalCounterfactualProjectionService:
             Mapping[int, BattleToppleCharacterConfig] | None
         ) = None,
         progress_callback: BattleAnalysisProgressCallback | None = None,
+        direct_formula_backend: DirectFormulaBackend | None = None,
         interval_index: BattleBuffIntervalIndex | None = None,
         original_projection_by_event: (
             Mapping[str, BattleHitBuffProjection] | None
         ) = None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
     ) -> BattleAnalysisSnapshot:
         buff_counterfactuals = BattleBuffCounterfactualService.calculate(
             analysis,
             skill_evidence,
             topple_character_configs=topple_character_configs,
+            direct_formula_backend=direct_formula_backend,
             progress_callback=progress_callback,
             interval_index=interval_index,
             original_projection_by_event=original_projection_by_event,
+            projection_memo=projection_memo,
         )
         report_battle_analysis_progress(
             progress_callback,

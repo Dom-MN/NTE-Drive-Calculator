@@ -13,6 +13,7 @@ class BattleAnalysisProgress:
     message: str
     completed: int | None = None
     total: int | None = None
+    overall_percent: int | None = None
 
     @property
     def determinate(self) -> bool:

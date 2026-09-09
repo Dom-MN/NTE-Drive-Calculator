@@ -10,22 +10,28 @@ from src.domain.battle_report import (
     BattleHitReplayResult,
     BattleSkillDamageEvidence,
 )
+from src.services.battle_damage_composition_service import classify_battle_hit_channel
+from src.services.battle_weave_source_service import (
+    BattleWeaveSourceLookup, find_paired_weave_source_hit,
+)
 
 
 def project_formula_hit(
     hit: BattleAnalysisHit,
     evidence: BattleSkillDamageEvidence | None,
+    *,
+    weave_sources: BattleWeaveSourceLookup | None = None,
 ) -> BattleAnalysisHit:
     """Return a formula consumer view without mutating raw attribution."""
 
     if evidence is None:
-        return hit
+        return _weave_source_hit(hit, hit, weave_sources)
     panel_character_id = (
         evidence.panel_character_id
         if evidence.panel_character_id is not None
         else evidence.source_character_id
     )
-    return replace(
+    result = replace(
         hit,
         character_id=(
             panel_character_id
@@ -39,6 +45,18 @@ def project_formula_hit(
         formula_context_confidence=evidence.formula_context_confidence,
         formula_context_basis=evidence.formula_context_basis,
     )
+    return _weave_source_hit(hit, result, weave_sources)
+
+
+def _weave_source_hit(
+    hit: BattleAnalysisHit, formula_hit: BattleAnalysisHit,
+    weave_sources: BattleWeaveSourceLookup | None,
+) -> BattleAnalysisHit:
+    if weave_sources is not None and classify_battle_hit_channel(hit)[0] == "reaction_hexed":
+        source = find_paired_weave_source_hit(hit, weave_sources)
+        if source is not None:
+            return replace(formula_hit, character_id=source.character_id)
+    return formula_hit
 
 
 def project_replay_formula_context(

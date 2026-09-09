@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
+from src.domain.native_analysis import BattleComputeBackend, available_battle_compute
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -245,7 +246,16 @@ class BattleForkDamageStateService:
         hits: Sequence[BattleAnalysisHit],
         battle_end_us: int,
         time_stop_intervals: Sequence[tuple[int | None, int | None]] = (),
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleInferredBuffInterval, ...]:
+        backend = available_battle_compute(compute_backend)
+        if backend is not None:
+            from src.services.battle_native_fork_damage_state import infer_native_fork_damage
+            return infer_native_fork_damage(
+                backend, rules, actions=actions, hits=hits, battle_end_us=battle_end_us,
+                time_stop_intervals=time_stop_intervals, checkpoint=checkpoint,
+            )
         results = []
         results.extend(cls._infer_tiger(
             rules, actions, hits, battle_end_us, time_stop_intervals

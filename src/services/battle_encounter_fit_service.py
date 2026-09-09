@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from math import exp, isclose, isfinite, log, log1p
 from typing import Final
+
+from src.domain.native_analysis import BattleComputeBackend
 
 
 BATTLE_ENCOUNTER_FIT_ALGORITHM_VERSION: Final = "battle-encounter-robust-fit-v1"
@@ -193,6 +196,18 @@ class BattleEncounterFitService:
     def select(
         cls,
         candidates: tuple[BattleEncounterFitCandidate, ...],
+        *,
+        backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
+    ) -> BattleEncounterFitSelection:
+        if backend is not None and backend.supports_battle_compute:
+            return cls._native_select(candidates, backend, checkpoint=checkpoint)
+        return cls.select_python(candidates)
+
+    @classmethod
+    def select_python(
+        cls,
+        candidates: tuple[BattleEncounterFitCandidate, ...],
     ) -> BattleEncounterFitSelection:
         if not candidates:
             raise ValueError("encounter fit requires at least one strict candidate")
@@ -335,6 +350,87 @@ class BattleEncounterFitService:
                 row.candidate_ref for row in ranked[1:]
             ),
             audit_summary=audit_summary,
+        )
+
+    @staticmethod
+    def _native_select(
+        candidates: tuple[BattleEncounterFitCandidate, ...],
+        backend: BattleComputeBackend,
+        *,
+        checkpoint: Callable[[], None] | None = None,
+    ) -> BattleEncounterFitSelection:
+        refs = [str(row.candidate_ref or "").strip() for row in candidates]
+        if not refs:
+            raise ValueError("encounter fit requires at least one strict candidate")
+        if any(not value for value in refs):
+            raise ValueError("encounter fit candidate_ref must not be empty")
+        if len(set(refs)) != len(refs):
+            raise ValueError("encounter fit candidate_ref must be unique")
+        payload = {"candidates": []}
+        original = {}
+        for candidate in candidates:
+            predictions = []
+            for index, prediction in enumerate(candidate.predictions):
+                if checkpoint is not None and index % 64 == 0:
+                    checkpoint()
+                row = asdict(prediction)
+                row["event_id"] = str(prediction.event_id or "")
+                row["group_id"] = str(prediction.group_id or "")
+                for key in (
+                    "observed_damage", "non_critical_damage", "critical_damage",
+                    "expected_damage", "evidence_weight",
+                ):
+                    value = row[key]
+                    row[key] = (
+                        float(value) if value is not None and isfinite(float(value)) else None
+                    )
+                predictions.append(row)
+                event_id = str(prediction.event_id or "").strip()
+                if event_id:
+                    original.setdefault((candidate.candidate_ref, event_id), prediction)
+            payload["candidates"].append({
+                "candidate_ref": candidate.candidate_ref,
+                "predictions": predictions,
+            })
+        responses = backend.compute_batch(
+            "encounter_fit_v1", (payload,), checkpoint=checkpoint,
+        )
+        if len(responses) != 1:
+            raise ValueError("encounter fit response count mismatch")
+        response = dict(responses[0])
+        scores = []
+        for score_payload in response.pop("scores"):
+            score = dict(score_payload)
+            audits = []
+            for audit_payload in score.pop("hit_audits"):
+                audit = dict(audit_payload)
+                prediction = original.get((score["candidate_ref"], audit["event_id"]))
+                if prediction is not None:
+                    for key in (
+                        "observed_damage", "non_critical_damage", "critical_damage",
+                        "expected_damage",
+                    ):
+                        audit[key] = getattr(prediction, key)
+                audits.append(BattleEncounterHitFitAudit(**audit))
+            scores.append(BattleEncounterCandidateFitScore(**score, hit_audits=tuple(audits)))
+        common_hits = min(row.used_hit_count for row in scores)
+        common_groups = min(row.used_group_count for row in scores)
+        summary = (
+            f"共同合格逐击 {common_hits} 条、独立证据组 {common_groups} 个；"
+            "仅使用 non_critical_damage / critical_damage / expected_damage "
+            "原始公式预测的对数 Student-t 核残差，"
+            "corrected_expected_damage 未进入评分。"
+        )
+        if len(scores) > 1:
+            summary += (
+                f" 同血量公式画像冲突仍保留；胜者 {response['winner_ref']}，"
+                f"与次优分差 {response['score_gap']:.6f}、"
+                f"相对分差 {response['relative_score_gap']:.2%}，"
+                f"置信度{response['confidence']}。"
+            )
+        response["alternatives"] = tuple(response["alternatives"])
+        return BattleEncounterFitSelection(
+            **response, scores=tuple(scores), audit_summary=summary,
         )
 
     @staticmethod

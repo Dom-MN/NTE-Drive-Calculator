@@ -55,6 +55,9 @@ class BlueprintCandidateBuilder(BaseDispatchStrategy):
             crit_config,
             include_extra_shape_bonus=False,
         )
+        return self._score_blueprint_buckets(blueprint, target_set, set_buckets, extra_buckets)
+
+    def _score_blueprint_buckets(self, blueprint, target_set, set_buckets, extra_buckets):
         used_counts = {}
         total = 0.0
         required_slots = [
@@ -85,21 +88,29 @@ class BlueprintCandidateBuilder(BaseDispatchStrategy):
         crit_priority_modes = crit_priority_modes or {}
         ranked = []
         for role, bps in zip(valid_roles, role_bps_list):
-            role_ranked = [
-                (
-                    self._blueprint_theoretical_score(
-                        role,
-                        bp,
-                        drives_pool,
-                        custom_sets,
-                        crit_priority_modes.get(role),
-                        include_extra_shape_bonus=include_extra_shape_bonus,
-                    ),
-                    index,
-                    bp,
+            if not bps:
+                ranked.append([])
+                continue
+            target_set = self._target_set(role, custom_sets)
+            # Buckets depend on the role/pool/preferences and bonus mode, not
+            # on each blueprint. Never retain them beyond this frozen ranking.
+            buckets_by_bonus = {}
+
+            def buckets(uses_bonus):
+                if uses_bonus not in buckets_by_bonus:
+                    buckets_by_bonus[uses_bonus] = self._shape_score_buckets(
+                        role, drives_pool, crit_priority_modes.get(role),
+                        include_extra_shape_bonus=uses_bonus,
+                    )
+                return buckets_by_bonus[uses_bonus]
+
+            role_ranked = []
+            for index, bp in enumerate(bps):
+                uses_bonus = self._slot_uses_extra_shape_bonus("set", bp, include_extra_shape_bonus)
+                score = self._score_blueprint_buckets(
+                    bp, target_set, buckets(uses_bonus), buckets(False),
                 )
-                for index, bp in enumerate(bps)
-            ]
+                role_ranked.append((score, index, bp))
             role_ranked.sort(key=lambda item: (-item[0], item[1]))
             ranked.append(role_ranked)
         return ranked
@@ -117,7 +128,8 @@ class BlueprintCandidateBuilder(BaseDispatchStrategy):
         heap = [(-score_for(start), start)]
         count = 0
 
-        while heap and count < self.MAX_COMBO_LIMIT:
+        while heap and count < self.blueprint_combo_limit:
+            self._check_cancelled()
             _, indexes = heapq.heappop(heap)
             yield tuple(ranked_role_bps[role_idx][bp_idx][2] for role_idx, bp_idx in enumerate(indexes))
             count += 1
@@ -145,16 +157,19 @@ class BlueprintCandidateBuilder(BaseDispatchStrategy):
         total = 1
         for bps in role_bps_list:
             total *= len(bps)
-        if total <= self.MAX_COMBO_LIMIT:
-            yield from itertools.product(*role_bps_list)
+        if total <= self.blueprint_combo_limit:
+            for combo in itertools.product(*role_bps_list):
+                self._check_cancelled()
+                yield combo
         else:
-            logger.info(f"图纸组合数 {total} 过大，按理论上限筛选前 {self.MAX_COMBO_LIMIT} 组...")
+            logger.info(f"图纸组合数 {total} 过大，按当前设置筛选前 {self.blueprint_combo_limit} 组...")
             if not valid_roles or drives_pool is None:
                 count = 0
                 for combo in itertools.product(*role_bps_list):
+                    self._check_cancelled()
                     yield combo
                     count += 1
-                    if count >= self.MAX_COMBO_LIMIT:
+                    if count >= self.blueprint_combo_limit:
                         break
                 return
 

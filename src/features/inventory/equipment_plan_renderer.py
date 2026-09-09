@@ -383,7 +383,6 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
     if _sm:
         _ml = {
             "role_priority": tr("角色优先"),
-            "global_optimal": tr("全局最优"),
             "update_mode": tr("增量更新"),
             "game_inventory": tr("游戏配装"),
         }.get(_sm, _sm)

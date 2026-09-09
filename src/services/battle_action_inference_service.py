@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from dataclasses import replace
 import re
 from statistics import median
 from typing import Literal
+from src.domain.native_analysis import BattleComputeBackend, available_battle_compute
 
 from src.domain.battle_report import BattleAnalysisHit, BattleInferredAction
 from src.services.battle_action_normalization_service import (
@@ -704,7 +705,16 @@ class BattleActionInferenceService:
         *,
         time_stop_intervals: Sequence[tuple[int | None, int | None]] = (),
         animation_candidates: Sequence[BattleActionAnimationCandidate] = (),
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleInferredAction, ...]:
+        backend = available_battle_compute(compute_backend)
+        if backend is not None:
+            from src.services.battle_native_axis_compute import infer_native_actions
+            return infer_native_actions(
+                backend, hits, time_stop_intervals=time_stop_intervals,
+                animation_candidates=animation_candidates, checkpoint=checkpoint,
+            )
         by_character: dict[int, list[BattleAnalysisHit]] = defaultdict(list)
         for hit in hits:
             if hit.character_id is not None and _is_action_evidence(

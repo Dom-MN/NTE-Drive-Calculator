@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from src.domain.native_analysis import BattleComputeBackend, available_battle_compute
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -146,7 +147,14 @@ class BattleTimelineProjectionService:
     @staticmethod
     def group_damage_hits(
         hits: Sequence[BattleAnalysisHit],
+        *,
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleTimelineDamageGroup, ...]:
+        backend = available_battle_compute(compute_backend)
+        if backend is not None:
+            from src.services.battle_native_axis_compute import group_native_damage_hits
+            return group_native_damage_hits(backend, hits, checkpoint=checkpoint)
         active: dict[tuple[object, ...], list[BattleAnalysisHit]] = {}
         completed: list[list[BattleAnalysisHit]] = []
         for hit in sorted(

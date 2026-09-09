@@ -605,7 +605,7 @@ def _support_entries(
                 _ref("implementation", "src/services/battle_topple_hit_replay_service.py", "BattleToppleHitReplayService.replay", "战报逐角色消费者"),
                 _ref("public_behavior_test", "tests/test_battle_topple_hit_replay_service.py", "test_split_topple_uses_only_the_complete_same_half_roster", "阵容完整性边界"),
             ),
-            consumer_entries=("BattleToppleHitReplayService.replay", "BattleMarginalCalculationService._topple_ratio"),
+            consumer_entries=("BattleToppleHitReplayService.replay", "battle_topple_marginal.topple_ratio"),
             gap_codes=(),
             covered_dataset=dataset,
             covered_entities=("等级曲线", "倾陷强度", "UnbalMax", "防御", "抗性"),

@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from src.services.battle_state_payload import HIT_FIELDS, ACTION_FIELDS, state_rows
+from src.domain.native_analysis import BattleComputeBackend
+from src.services.battle_hit_state_compute import compute_hit_state, restore_q_final_states
 from typing import Any
 
 from src.domain.battle_report import (
@@ -87,6 +90,8 @@ def _zankou_q_actions(
 def reconstruct_zankou_q_final_damage(
     analysis: BattleAnalysisSnapshot,
     character: Mapping[str, Any] | None,
+    *, compute_backend: BattleComputeBackend | None = None,
+    checkpoint: Callable[[], None] | None = None,
 ) -> dict[str, ZankouQFinalDamageEvidence]:
     """Return the independently consumed +150% final multiplier for Q hits."""
 
@@ -95,6 +100,12 @@ def reconstruct_zankou_q_final_damage(
     selected = _selected_effects(character)
     if "Effect2" not in selected:
         return {}
+    if isinstance(compute_backend, BattleComputeBackend) and compute_backend.supports_battle_compute:
+        return restore_q_final_states(compute_hit_state("zankou_q", {
+            "hits": state_rows(analysis.hits, HIT_FIELDS),
+            "actions": state_rows(getattr(analysis, "inferred_actions", ()), ACTION_FIELDS),
+            "effect_four_enabled": "Effect4" in selected,
+        }, backend=compute_backend, checkpoint=checkpoint))
 
     hits_by_event = {hit.event_id: hit for hit in analysis.hits}
     triggers = tuple(

@@ -289,7 +289,6 @@ def _build_strategy_card(window, layout):
     window.strategy_group = QButtonGroup()
     strategy_options = [
         tr("角色优先 — 按角色顺序配装，优先照顾前排角色"),
-        tr("全局最优 — 追求全队总分最高，适合整体重排"),
         tr("增量更新 — 保留已穿戴装备，只用闲置装备补配"),
     ]
     for index, text in enumerate(strategy_options):

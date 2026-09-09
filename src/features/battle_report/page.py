@@ -263,7 +263,12 @@ class BattleReportPage(QWidget):
         self.marginal_page.role_changed.connect(self._marginal_role_changed)
         self._stack.addWidget(self.marginal_page)
 
-    def show_marginal(self, editor_data: dict) -> None:
+    def show_marginal(
+        self,
+        editor_data: dict,
+        *,
+        request_automatic_recalculation: bool = True,
+    ) -> None:
         self.marginal_page.set_editor_data(
             editor_data,
             selected_character_id=self.long_analysis_view.selected_character_id(),
@@ -274,12 +279,13 @@ class BattleReportPage(QWidget):
         if source_analysis is not None:
             self.marginal_page.set_source_analysis(source_analysis)
         self._stack.setCurrentWidget(self.marginal_page)
-        self._request_marginal_lazy_recalculation()
+        if request_automatic_recalculation:
+            self._request_marginal_lazy_recalculation()
 
     def show_report(self) -> None:
-        self.marginal_page.clear_candidate()
         self._stack.setCurrentIndex(0)
         self.marginal_closed.emit()
+        self.marginal_page.clear_candidate()
 
     def reset_marginal_draft(self, editor_data: dict) -> None:
         selected_character_id = self.marginal_page.selected_character_id()
@@ -352,6 +358,7 @@ class BattleReportPage(QWidget):
             )
             == BUFF_COUNTERFACTUAL_MODEL_VERSION
             and passive_model_current
+            and self.marginal_page.has_current_panel()
         ):
             return
         if use_candidate:
@@ -448,7 +455,7 @@ class BattleReportPage(QWidget):
             label.setText("—")
         self.long_analysis_view.clear()
 
-    def set_analysis(self, analysis, *, selected_character_id=None) -> None:
+    def set_analysis(self, analysis, *, selected_character_id=None, hit_details=None) -> None:
         self._source_analysis = analysis
         self._marginal_baseline_by_scope.clear()
         if self._latest_summary is not None:
@@ -514,8 +521,9 @@ class BattleReportPage(QWidget):
         self.long_analysis_view.set_analysis(
             analysis,
             selected_character_id=selected_character_id,
+            hit_details=hit_details,
         )
-        self.marginal_page.set_source_analysis(analysis)
+        self.marginal_page.set_source_analysis(analysis, hit_details=hit_details)
 
     def set_marginal_analysis(
         self,
@@ -524,6 +532,9 @@ class BattleReportPage(QWidget):
         detail_scope=None,
         is_candidate: bool = False,
         marginal_benefits=None,
+        marginal_panel=None,
+        candidate_display_analysis=None,
+        hit_details=None,
     ) -> None:
         """Update the selected-role half without replacing report scope."""
 
@@ -537,6 +548,9 @@ class BattleReportPage(QWidget):
         self.marginal_page.set_marginal_result(
             analysis,
             marginal_benefits=marginal_benefits,
+            marginal_panel=marginal_panel,
+            candidate_display_analysis=candidate_display_analysis,
+            hit_details=hit_details,
         )
 
     def complete_analysis_details(self, kind: str, payload: object) -> None:

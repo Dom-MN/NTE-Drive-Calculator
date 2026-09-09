@@ -22,7 +22,7 @@ def paint_warehouse_lock_button(
     background = "#f2cc60" if light_locked else "#3a2f13" if active else "#21262d"
     foreground = "#9a6700" if light_locked else "#e3b341" if active else "#8b949e"
     if not available:
-        background, foreground = "#1b2027", "#484f58"
+        background, foreground = "#21262d", "#484f58"
     painter.setBrush(QColor(theme_color(background)))
     painter.setPen(Qt.NoPen)
     painter.drawRoundedRect(rect, 4, 4)

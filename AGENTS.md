@@ -19,8 +19,8 @@ capabilities go only in the roadmap; current capabilities only in the feature do
 one authoritative location and every other document references it by link.
 
 Updating a document means overwriting the relevant section: delete stale conclusions, duplicated
-explanations, phase-by-phase logs and completed plans, and never append a "changes in this revision"
-style patch paragraph at the end. Documents must not become an archive for implementation detail,
+explanations, phase-by-phase logs and completed plans, and never append a change-log style
+patch paragraph at the end. Documents must not become an archive for implementation detail,
 personal environments or test output.
 
 ## 2. Development and definition of done
@@ -90,6 +90,15 @@ interface language are application-global; a new install defaults to the black t
 explicit legacy theme is migrated. The current release static schema is v31, with code and candidate at
 v32; static and account migrations are append-only and a published migration never changes meaning.
 
+An account export contains only the account's runtime data, the configuration it needs and the
+baseline screenshot: SQLite must be written into the archive through a consistent backup, and
+WAL/SHM sidecars, runtime logs and other temporary files must never be carried along. An import
+first validates the format version, member paths, duplicate members and the user database, then
+extracts into a staging area inside the accounts directory; replacing an account of the same name
+must switch atomically only after staging is complete, the index is writable and the database
+upgrade has succeeded. Any failure keeps the original account directory and the original index, and
+must never leave a half-imported account behind.
+
 ## 5. Static database, snapshots and source capability
 
 The static database is only ever generated as a candidate under `build/` by `tools/game_data`. After
@@ -109,18 +118,54 @@ must not add items, replace the set or advance the pointer.
 
 Source capability is decided through the public helper: `nte_core` provides real UIDs, character
 instances and reliable equipment state; a vision source supports analysis and regular mouse assembly but
-must not enter fast assembly or fake reliable character ownership.
+must not enter fast assembly, fake reliable character ownership, or read or modify discard and lock
+state.
 
 ## 6. Calculation, characters and loadouts
 
 A calculation freezes the account, generation, snapshot, static dataset, character order/equal-priority
-groups, target slot, locks and character configuration, and produces an immutable
+groups, target slot, locks, character configuration and the combination cap, and produces an
+immutable
 `WeightedAllocationPreview`. Saving consumes only that preview and re-checks the frozen boundaries
 before saving, never reading "the latest state" to fill gaps. Candidate construction removes locked real
 UIDs first; sets, main stats, rarity and the blacklist use one shared contract; real UIDs already
 assigned to an earlier character do not enter later candidates. Virtual placeholders score 0 and can be
 neither locked nor fast-assembled. Character drag ordering and the `=`/`>` semantics are defined by the
 shared priority-group tests and must not be rewritten in the UI.
+
+The only allocation strategy is character priority; a historical `global_optimal` setting is folded
+into `role_priority` by account migration, and no UI, dispatch, DAO validation or runtime
+compatibility entry point may be kept for it. The combination cap is an account-level allocation
+setting, defaulting to 500 with a minimum of 1 and no product maximum; it bounds how many blueprint
+combinations one priority group explores and does not change the scoring formula. F12 cancellation
+must run through blueprint enumeration, the equal-score reservation branch and result submission, and
+a cancelled result must never be saved or overwrite an existing plan.
+
+Strictly equal-scoring candidates of a higher-priority character defer their final ownership; the
+unit of reservation is one earlier blueprint slot, recording its character, type, slot and strictly
+equivalent candidates. One UID may be consumed only once across all characters and slots; pooling by
+drive type is only a filtering and matching performance optimisation and must not break
+cross-character global uniqueness or a character's blueprint completeness. An equal-priority group is
+allocated jointly by the real scores within the group first, and only then establishes its
+reservations as a whole.
+
+A regular Top-K blueprint result is only used to detect reservation back-fill conflicts. Conflict
+recovery must first identify genuinely blocking drives through a maximum one-to-one matching over all
+active earlier slots; each round protects exactly one currently occupied reserved UID that actually
+increases the number of back-fills, chosen stably in ascending order of the earlier base score, and
+then re-evaluates. After protection only the affected types are re-filtered; the request-scoped
+complete legal ordering cache keyed by character / type / stat priority tier must skip protected,
+fixed and consumed UIDs and then top the Top-K back up, so protection never leaves fewer than K
+candidates. Progressive protection commits as soon as it forms a complete back-fillable plan, and an
+ordinary score difference must not enter full-inventory recovery.
+
+Progressive protection commits as soon as it forms a complete back-fillable plan. Only when the
+progressive stage cannot form a complete blueprint, finds no genuine blocker, or exhausts protection
+does the current group plus every earlier reserved slot go into a final one-to-one recovery; a
+reservation-only UID must not become a new candidate for the current slot. Every path must re-check
+shape, set, locks, UID uniqueness, reservation consumability, cartridge uniqueness, the CRIT
+cap/minimum, stat priority and the blacklist; any failure only marks the current character/group
+`valid=False` and must not interrupt the remaining characters' calculation.
 
 The only source of the NTE Workshop weight equipment formulas is `ScoringEngine.calculate_drive_score`
 and `ScoringEngine.calculate_cartridge_score`. Calculation, in-game loadouts, card display, rewind and
@@ -136,8 +181,7 @@ taking precedence. The effective character panel uniformly consumes level/ascens
 level/ascension, unconditional permanent attributes, affinity 10, furniture bonuses and specific
 awakening and skill levels. Base CRIT Rate is 5% and base CRIT DMG is 54%; the character CRIT cap
 subtracts the signature weapon, unconditional Arc CRIT and affinity CRIT, and a manual cap may only
-tighten it; global optimum does not consume the CRIT minimum/cap from character management. Conditional
-Arc effects do not enter the permanent panel, the graduation rate or allocation scoring.
+tighten it. Conditional Arc effects do not enter the permanent panel, the graduation rate or allocation scoring.
 
 `slot_id` is the stable identity of one character's several plans and `slot_name` is display only. The
 current slot plan is saved against its own source snapshot; only different characters' current slots
@@ -150,7 +194,8 @@ differences.
 
 The warehouse reads a pinned snapshot; a state operation builds a plan first, the Integration executes
 it, and a later full snapshot or an official scoped event confirms it. A vision scan commits only a
-complete result in one transaction; cancellation, an exception or a count mismatch commits nothing
+complete result in one transaction; while that state is unknown, the discard/lock controls must be
+disabled rather than guess a default. Cancellation, an exception or a count mismatch commits nothing
 half-finished. Scanning, appraisal, rewind and automatic assembly all use the application-level stop
 key, and every stop path must release input state.
 
@@ -165,9 +210,15 @@ plan are frozen before execution.
 
 Battle-report capture saves only the Core's summary, record, axis and raw per-hit data; it must never
 guess crits, buffs/debuffs, shields, healing, the complete team, enemy instances or the scene from an
-aggregate summary. When capture ends it materialises a copy once from the then-latest complete native
-inventory and effective character growth, and does not read the active loadout. The original
-character/equipment snapshot is immutable; a battle-report edit copy is a single-match account-private
+aggregate summary. Battle-report page analysis goes only through the standalone analysis component's
+direct database read interface; without that capability, or on a version mismatch, it must not fall
+back to reading the database from Python. When capture ends it materialises a copy once from the then-latest complete native
+inventory and effective character growth, and does not read the active loadout. Without a complete native
+inventory it freezes the assumed cartridges/drives and the calculation panel from the release's
+graduation template, labelled "graduation template assumption"; character growth still prefers
+explicit account configuration. Assumed equipment serves the battle-report calculation only, never
+fabricates a native inventory or real UIDs, and a later sync does not replace the frozen assumption.
+The original character/equipment snapshot is immutable; a battle-report edit copy is a single-match account-private
 copy whose equipment override copies the complete calculated equipment and keeps no active pointer. The
 copy only takes part in fixed-axis per-hit damage replay and counterfactual margin calculation, and never
 rewrites the measured damage, DPS, timeline or original facts on the battle-report main page.
@@ -183,9 +234,12 @@ battle-report regression must be listed separately and never rewritten as a gene
 
 ## 9. External integrations, UI, localisation and logging
 
-nte-core, Npcap, mods, OCR, mouse/gamepad, binaries and game input are Integrations. Before promoting a
-third-party component, record the upstream version, commit, licence and SHA-256 and complete protocol,
-packaging and real Windows verification; local binaries in the root directory are never committed.
+nte-core, the standalone analysis component, Npcap, mods, OCR, mouse/gamepad, binaries and game input
+are Integrations. Before promoting a third-party component, record the upstream version, commit,
+licence and SHA-256 and complete protocol, packaging and real Windows verification; local binaries in
+the root directory are never committed. The analysis component must ship with `nte-analysis-core.exe`,
+`component.json` and its licence; the manifest hash, engine version `0.3.0` and the `battle_page_v1`
+capability together form the minimum compatibility contract for the battle-report page.
 
 New dialogs use `src.app.window_geometry`, bounded by the current screen's available area and centred
 relative to the owner/screen, covering mixed DPI; custom colours, selected states and widget states must
@@ -237,7 +291,9 @@ integer in the same sentence cannot trigger it. Details are in `docs/reference/l
 
 Before a release, at minimum complete: static checks, `core`, `full`, packaging-input review, the
 upgrade/rollback path, a clean install with theme default verification, account switching, inventory
-sync, and a real smoke test of the key calculation/save/assembly paths. A known failure must have clear
+sync, and a real smoke test of the key calculation/save/assembly paths. The release build and the
+installer must reject a standalone analysis component that is missing, mismatched, or lacks the
+battle-report page capability. A known failure must have clear
 ownership and a user-visible boundary; an unverified feature must never be marked stable.
 
 ## 11. Upstream synchronisation

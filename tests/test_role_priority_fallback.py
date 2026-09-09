@@ -139,29 +139,6 @@ class RolePriorityFallbackTests(unittest.TestCase):
             result["A"]["missing_core_reason"],
         )
 
-    def test_global_optimal_retries_with_full_drive_candidates_after_top_k_failure(self) -> None:
-        drives = tuple(_drive(f"drive-{index}") for index in range(3))
-        request = AllocationKernelRequest(
-            inventory=drives, roles_db={"A": {}}, sets_db={}, shapes_db={},
-            blueprints_db={"A": [{"set_pieces": ["H_2"], "extra_pieces": []}]},
-            role_order=("A",), strategy="global_optimal", module_set_targets={},
-            set_effect_modes={}, core_main_filters={}, core_set_targets={},
-            stat_priority_configs={}, property_limits={}, allow_missing_core=True,
-            drive_screen_limit=1,
-        )
-        kernel = AllocationKernel(None)
-        calls: list[bool] = []
-
-        def fake_execute_once(_request, _excluded, *, use_full_drive_candidates=False):
-            calls.append(use_full_drive_candidates)
-            return {"A": _plan(drives[0])} if use_full_drive_candidates else {}
-
-        kernel._execute_once = fake_execute_once  # type: ignore[method-assign]
-        result = kernel.execute(request)
-
-        self.assertEqual([False, True], calls)
-        self.assertTrue(result["A"]["valid"])
-
     def test_structural_diagnostic_names_a_missing_shape(self) -> None:
         drive = _drive("only-one")
         request = AllocationKernelRequest(

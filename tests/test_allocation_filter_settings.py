@@ -99,7 +99,7 @@ def test_account_service_rejects_invalid_persisted_values() -> None:
 
 @pytest.mark.parametrize(
     "strategy",
-    ("role_priority", "global_optimal", "update_mode"),
+    ("role_priority", "role_priority", "update_mode"),
 )
 def test_every_classic_strategy_receives_the_same_globally_filtered_pool(
     strategy: str,
@@ -173,3 +173,4 @@ def test_every_classic_strategy_receives_the_same_globally_filtered_pool(
     items, received_strategy = facade_calls[0]
     assert received_strategy == strategy
     assert [item["uid"] for item in items] == ["blue-drive", "gold-tape"]
+

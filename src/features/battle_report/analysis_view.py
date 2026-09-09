@@ -379,6 +379,7 @@ class BattleLongAnalysisView(
 
     def clear(self, message: str = "当前记录只有聚合摘要，暂无正式逐击轴。") -> None:
         self._analysis = None
+        self._hit_details = None
         self._current_composition = None
         self._topple_detail_requested_analysis = None
         self._analysis_record_id = None
@@ -420,10 +421,12 @@ class BattleLongAnalysisView(
         analysis: BattleAnalysisSnapshot,
         *,
         selected_character_id: int | None = None,
+        hit_details=None,
     ) -> None:
         self._analysis_record_id = analysis.battle_record_id
         self._selected_character_id = selected_character_id
         self._analysis = analysis
+        self._hit_details = hit_details
         self._hide_hit_formula_dialog()
         self._hide_hit_buff_dialog()
         self.timeline.set_analysis(analysis)
@@ -564,7 +567,7 @@ class BattleLongAnalysisView(
 
     def _select_detail_scope(self, mode: str) -> None:
         button = self.scope_buttons.get(mode)
-        if button is None or not button.isEnabled():
+        if button is None or not button.isEnabled() or mode == self._detail_scope:
             return
         self._detail_scope = mode
         button.setChecked(True)

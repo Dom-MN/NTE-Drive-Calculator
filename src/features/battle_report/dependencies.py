@@ -9,11 +9,15 @@ from PySide6.QtWidgets import QWidget
 
 from src.app.context import AppContext
 from src.app.constants import APP_VERSION
+from src.domain.stat_catalog import StatCatalog
 from src.features.battle_report.controller import BattleReportController
 from src.integrations.global_hotkeys import GlobalHotkeyManager
 from src.integrations.nte_core import NteCoreClient
+from src.integrations.analysis_core_release import create_bundled_analysis_client
 from src.observability import OperationContext
 from src.services.battle_report_history_service import BattleReportHistoryService
+from src.services.battle_native_page_service import BattleNativePageService
+from src.services.battle_marginal_calculation_support import drive_substat_marginal_units
 from src.services.battle_report_transfer_service import (
     BattleReportTransferDependencies,
     BattleReportTransferService,
@@ -43,9 +47,19 @@ class BattleReportServiceFactory:
         self,
         dependencies: BattleReportPersistenceDependencies,
     ) -> BattleReportHistoryService:
+        client = create_bundled_analysis_client(
+            static_database_path=dependencies.static_database_path,
+            cancelled=lambda: not self._context_is_current(dependencies),
+        )
         return BattleReportHistoryService(
             dependencies=dependencies,
             context_is_current=self._context_is_current,
+            direct_formula_backend=client,
+            native_page_loader=BattleNativePageService(
+                client=client, dependencies=dependencies,
+                semantics_path=self._app_context.paths.bundled_config_dir / 'gameplay_effect_semantics.json',
+                context_is_current=self._context_is_current,
+            ),
         )
 
     def transfer_service(self) -> BattleReportTransferService:
@@ -72,6 +86,10 @@ class BattleReportServiceFactory:
             context_is_current=self._transfer_context_is_current,
             history_service=self.history_service(persistence_dependencies),
         )
+
+    def marginal_units(self) -> dict[str, float]:
+        catalog = StatCatalog.from_config_dir(self._app_context.paths.config_dir)
+        return drive_substat_marginal_units(catalog.gold_base_values)
 
     def _context_is_current(
         self,
@@ -124,4 +142,5 @@ def build_battle_report_controller(
         persistence_factory=service_factory.persistence_service,
         history_factory=service_factory.history_service,
         transfer_factory=service_factory.transfer_service,
+        marginal_units_provider=service_factory.marginal_units,
     )

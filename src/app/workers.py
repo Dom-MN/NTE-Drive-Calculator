@@ -38,7 +38,7 @@ class WorkerThread(QThread):
         try:
             self.result_ready.emit(self.target())
         except CancelledError:
-            return
+            self.error.emit("任务已取消")
         except SystemExit as exc:
             logger.error(f"WorkerThread 捕获 SystemExit: {exc}")
             self.error.emit(f"系统异常退出: {exc}")

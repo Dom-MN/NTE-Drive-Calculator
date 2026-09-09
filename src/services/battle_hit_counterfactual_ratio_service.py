@@ -35,7 +35,10 @@ from src.services.battle_hit_counterfactual_formula_support import (
     scaling_id,
     scaling_ratio,
 )
-from src.services.battle_replay_formula_ratio_service import paired_replay_formula
+from src.services.battle_replay_formula_ratio_service import (
+    paired_replay_formula,
+    structured_formula_ratio,
+)
 from src.services.battle_reaction_counterfactual_ratio_service import (
     compare_standard_reaction,
 )
@@ -159,18 +162,11 @@ class BattleHitCounterfactualRatioService:
         ``BattleTargetInstanceMappingService.analysis_for_hit``. This Service
         never looks up a primary target or display-only monster identity.
         """
-        pair = paired_replay_formula(original_replay, candidate_replay)
-        if pair is not None:
-            ratio = _safe_ratio(pair.candidate_damage, pair.baseline_damage)
-            if ratio is not None:
-                return BattleCounterfactualRatio.complete(
-                    ratio,
-                    method=pair.method,
-                    confidence="高",
-                    dependency_scope="target_sensitive",
-                    included_dimension_ids=("structured_formula",),
-                    explanation=pair.explanation,
-                )
+        structured = structured_formula_ratio(
+            paired_replay_formula(original_replay, candidate_replay),
+        )
+        if structured is not None:
+            return structured
 
         channel_id, _channel_label = classify_battle_hit_channel(hit)
         if cls.is_kuhara_formula_hit(hit):
@@ -390,7 +386,7 @@ class BattleHitCounterfactualRatioService:
                     "critical",
                     "character_only",
                     critical_changes,
-                    "暴击乘区发生变化，但原击暴击分支或正式策略未知。",
+                    "暴击乘区发生变化，但正式暴击策略或固定概率未知。",
                 ))
             else:
                 component_ratio *= ratio

@@ -32,6 +32,8 @@ DIST_APP = ROOT / "dist" / "NTE_Drive_Calc"
 APP_EXE = DIST_APP / "NTE_Drive_Calc.exe"
 APP_INTERNAL = DIST_APP / "_internal"
 APP_NTE_CORE = APP_INTERNAL / "nte-core.exe"
+APP_ANALYSIS_CORE = APP_INTERNAL / "nte-analysis-core.exe"
+APP_ANALYSIS_CORE_MANIFEST = APP_INTERNAL / "analysis-core-meta" / "component.json"
 APP_MODS_PLUGIN = APP_INTERNAL / "dwmapi.dll"
 APP_MOD_LOADER = APP_INTERNAL / "nte-mod-loader.exe"
 APP_MOD_SET = APP_INTERNAL / "plugins" / "nte-mods.enabled"
@@ -178,6 +180,8 @@ def _validate_app_bundle() -> None:
         "主程序": APP_EXE,
         "PyInstaller 运行目录": APP_INTERNAL,
         "nte-core 本地组件": APP_NTE_CORE,
+        "战报分析本地组件": APP_ANALYSIS_CORE,
+        "战报分析组件清单": APP_ANALYSIS_CORE_MANIFEST,
         "nte-mods-plugin 本地组件": APP_MODS_PLUGIN,
         "nte-mod-loader 备用加载组件": APP_MOD_LOADER,
         "nte-mods 启用集合": APP_MOD_SET,

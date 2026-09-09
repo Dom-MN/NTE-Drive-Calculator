@@ -78,6 +78,8 @@ class PackagingScriptTests(unittest.TestCase):
             app_exe = root / "NTE_Drive_Calc.exe"
             internal = root / "_internal"
             core = internal / "nte-core.exe"
+            analysis_core = internal / "nte-analysis-core.exe"
+            analysis_manifest = internal / "analysis-core-meta/component.json"
             mods_plugin = internal / "dwmapi.dll"
             mod_loader = internal / "nte-mod-loader.exe"
             mod_set = internal / "plugins/nte-mods.enabled"
@@ -93,6 +95,9 @@ class PackagingScriptTests(unittest.TestCase):
             app_exe.touch()
             core.parent.mkdir(parents=True)
             core.touch()
+            analysis_core.touch()
+            analysis_manifest.parent.mkdir(parents=True)
+            analysis_manifest.touch()
             mods_plugin.touch()
             mod_loader.touch()
             mod_set.parent.mkdir(parents=True)
@@ -113,6 +118,12 @@ class PackagingScriptTests(unittest.TestCase):
                 patch.object(build_installer, "APP_EXE", app_exe),
                 patch.object(build_installer, "APP_INTERNAL", internal),
                 patch.object(build_installer, "APP_NTE_CORE", core),
+                patch.object(build_installer, "APP_ANALYSIS_CORE", analysis_core),
+                patch.object(
+                    build_installer,
+                    "APP_ANALYSIS_CORE_MANIFEST",
+                    analysis_manifest,
+                ),
                 patch.object(build_installer, "APP_MODS_PLUGIN", mods_plugin),
                 patch.object(build_installer, "APP_MOD_LOADER", mod_loader),
                 patch.object(build_installer, "APP_MOD_SET", mod_set),
@@ -146,6 +157,8 @@ class PackagingScriptTests(unittest.TestCase):
 
         self.assertIn('NTE_CORE_ENV = "NTE_CORE_EXE"', source)
         self.assertIn('THIRD_PARTY_DIR / "nte-core" / "bin" / "nte-core.exe"', source)
+        self.assertIn('ANALYSIS_CORE_PATH = THIRD_PARTY_DIR / "analysis-core"', source)
+        self.assertIn('"battle_page_v1" not in capabilities', source)
         self.assertIn('MODS_PLUGIN_ENV = "NTE_MODS_PLUGIN_DLL"', source)
         self.assertIn('MOD_LOADER_ENV = "NTE_MOD_LOADER_EXE"', source)
         self.assertIn('LEGACY_EQUIPMENT_PLUGIN_ENV = "NTE_EQUIPMENT_PLUGIN_DLL"', source)

@@ -685,7 +685,7 @@ class UserDataDaoSettingsTests(unittest.TestCase):
 
         second_version = self.dao.create_optimization_profile_version(
             profile["profile_id"],
-            allocation_strategy="global_optimal",
+            allocation_strategy="role_priority",
             characters=[
                 {
                     **initial_characters[0],
@@ -699,7 +699,7 @@ class UserDataDaoSettingsTests(unittest.TestCase):
         self.assertEqual(2, second_version["version_number"])
         latest = self.dao.get_optimization_profile(profile["profile_id"])
         original = self.dao.get_optimization_profile(profile["profile_id"], version_number=1)
-        self.assertEqual("global_optimal", latest["version"]["allocation_strategy"])
+        self.assertEqual("role_priority", latest["version"]["allocation_strategy"])
         self.assertEqual(
             {"CritDamageBase": 2.0}, latest["version"]["characters"][0]["property_weights"]
         )
@@ -784,15 +784,8 @@ class UserDataDaoSettingsTests(unittest.TestCase):
         second_database = Path(self.temp_dir.name) / "other_account.sqlite3"
         with UserDataDao(second_database, account_id="other") as other:
             self.dao.create_optimization_profile(
-                "Only default", allocation_strategy="global_optimal", characters=[]
+                "Only default", allocation_strategy="role_priority", characters=[]
             )
             self.assertEqual([], other.list_optimization_profiles())
 
-    def test_legacy_drive_priority_profile_is_migrated_to_global_optimal(self) -> None:
-        profile = self.dao.create_optimization_profile(
-            "Legacy drive priority", allocation_strategy="drive_priority", characters=[]
-        )
 
-        self.assertEqual(
-            "global_optimal", profile["version"]["allocation_strategy"],
-        )

@@ -19,6 +19,7 @@ from src.features.battle_report.build_change_summary import (
     fork_level_summary,
 )
 from src.features.battle_report.marginal_page import BattleMarginalPage
+from src.services.battle_marginal_panel_service import BattleMarginalPanelResult
 from src.features.battle_report.marginal_result_table_view import (
     render_attribute_results,
     render_buff_benefit_results,
@@ -313,14 +314,13 @@ class BattleMarginalCandidateUiTests(unittest.TestCase):
         page.character_combo.blockSignals(True)
         page.character_combo.addItem("测试角色", 1001)
         page.character_combo.blockSignals(False)
+        page._marginal_panel = BattleMarginalPanelResult(
+            character_id=1001, results=(result,), drive_property_ids=("CritBase",),
+        )
         with patch(
-            "src.features.battle_report.marginal_page."
-            "BattleMarginalCalculationService.default_units",
-            return_value={"CritBase": 0.01},
-        ), patch(
-            "src.features.battle_report.marginal_page."
+            "src.services.battle_marginal_calculation_service."
             "BattleMarginalCalculationService.calculate",
-            return_value=(result,),
+            side_effect=AssertionError("只读展示不得重新计算 worker 面板"),
         ):
             page._render_selected_role()
 
@@ -333,6 +333,9 @@ class BattleMarginalCandidateUiTests(unittest.TestCase):
         self.assertEqual("暴击率 +1.00%", page.attribute_table.item(0, 0).text())
         self.assertEqual("+1.00%", page.attribute_table.item(0, 3).text())
         self.assertEqual("+0.40%", page.attribute_table.item(0, 4).text())
+        self.assertEqual("属性", page.character_panel.table.horizontalHeaderItem(0).text())
+        self.assertEqual("静态面板", page.character_panel.table.item(0, 0).text())
+        self.assertEqual("动态面板", page.character_panel.table.item(1, 0).text())
 
     def test_page_renders_team_buff_gain_by_beneficiary(self) -> None:
         page = BattleMarginalPage()

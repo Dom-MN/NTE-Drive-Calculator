@@ -10,7 +10,7 @@ from src.app.dialogs import show_help
 from src.app.theme import current_style_sheet
 from src.app.workers import FullVisualScanParseWorkerThread, ScanWorkerThread
 from src.features.allocation.execute_page import build_execute_page
-from src.features.allocation.preference_modes import role_preference_mode_error, without_crit_rate_bounds
+from src.features.allocation.preference_modes import role_preference_mode_error
 from src.features.allocation.role_selector import RoleSelector
 from src.features.scanning.dependencies import (
     current_scanning_dependencies as _current_scanning_dependencies,
@@ -139,18 +139,13 @@ def _do_exec(self):
                 tr("由于版本更新解析逻辑变动，需要重新进行全量扫描"),
             )
             return
-    strat = ["role_priority", "global_optimal", "update_mode"][max(0, min(2, self.strategy_group.checkedId()))]
+    strat = ["role_priority", "update_mode"][max(0, min(1, self.strategy_group.checkedId()))]
     cs = self.role_selector.get_custom_sets()
     cw = self.role_selector.get_custom_weapons() if hasattr(self.role_selector, "get_custom_weapons") else {}
     tmf = self.role_selector.get_tape_main_filters()
     cpm = self.role_selector.get_crit_priority_modes()
     crc = self.role_selector.get_crit_rate_caps()
     crb = self.role_selector.get_crit_rate_baselines()
-    if strat == "global_optimal":
-        # Keep unsupported user-authored stat preferences visible to validation.
-        tmf = self.role_selector.get_tape_main_filter_overrides()
-        cpm = self.role_selector.get_crit_priority_mode_overrides()
-        cpm, crc = without_crit_rate_bounds(cpm, self.role_selector.get_crit_rate_cap_overrides())
     sem = self.role_selector.get_set_effect_modes()
     pg = self.role_selector.get_priority_groups() if hasattr(self.role_selector, "get_priority_groups") else None
     preference_error = role_preference_mode_error(strat, tmf, cpm, crc)
@@ -232,6 +227,7 @@ def _do_exec(self):
             crit_rate_baselines=crb,
             custom_weapons=cw,
             filter_settings=self._allocation_filter_settings,
+            blueprint_combo_limit=self._allocation_filter_settings.blueprint_combo_limit,
         )
 
 

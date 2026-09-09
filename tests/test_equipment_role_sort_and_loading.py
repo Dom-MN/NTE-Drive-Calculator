@@ -13,6 +13,7 @@ from src.features.inventory import equipment_display_loaders
 from src.features.inventory import equipment_display_view
 from src.features.inventory import equipment_plan_optimizer
 from src.features.inventory.equipment_master_detail_view import (
+    _loadout_slot_manage_style,
     sorted_equipment_role_states,
 )
 from src.features.inventory.equipment_plan_renderer import _allocation_lock_icon
@@ -86,6 +87,20 @@ def test_loadout_lock_icon_is_the_shared_warehouse_artwork() -> None:
 
     assert loadout == warehouse
     assert loadout.pixelColor(10, 11).name().casefold() == "#e3b341"
+
+
+def test_loadout_slot_manager_indicator_uses_a_light_theme_surface() -> None:
+    app = QApplication.instance() or QApplication([])
+    previous = app.property("nte_effective_theme")
+    try:
+        app.setProperty("nte_effective_theme", "light")
+        style = _loadout_slot_manage_style()
+    finally:
+        app.setProperty("nte_effective_theme", previous)
+
+    assert "background:#f6f8fa" in style
+    assert "background:#d8f5df" in style
+    assert "background:#0d1117" not in style
 
 
 

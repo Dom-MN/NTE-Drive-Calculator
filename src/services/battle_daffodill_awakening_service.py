@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from src.domain.native_analysis import available_battle_compute
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -104,12 +105,22 @@ class BattleDaffodillAwakeningService:
         battle_end_us: int,
         time_stop_intervals: Sequence[tuple[int | None, int | None]] = (),
         topple_duration_us: int | None = None,
+        compute_backend=None,
+        checkpoint=None,
     ) -> tuple[BattleInferredBuffInterval, ...]:
         character = _daffodill(build)
         if character is None:
             return ()
         effects = _selected_effects(character)
         character_name = str(character.get("observed_name") or "达芙蒂尔")
+        if (backend := available_battle_compute(compute_backend)) is not None:
+            from src.services.battle_team_state_compute import daffodill_intervals
+            return daffodill_intervals(
+                backend, actions=actions, hits=hits, battle_end_us=battle_end_us,
+                time_stop_intervals=time_stop_intervals, effects=effects,
+                character_name=character_name, topple_duration_us=topple_duration_us,
+                checkpoint=checkpoint,
+            )
         intervals: list[BattleInferredBuffInterval] = []
         intervals.extend(cls._qte_e_intervals(
             actions,

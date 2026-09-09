@@ -10,11 +10,14 @@ from src.optimizer.crit_constraint_repair import CritConstraintRepairMixin
 from src.optimizer.contracts import AllocationResult
 from src.solver.blueprint_utils import dedupe_blueprints_by_piece_signature
 
+from src.optimizer.deferred_drive_reservations import DeferredDriveReservationMixin
 from src.optimizer.role_priority_group_strategy import RolePriorityGroupStrategyMixin
+from src.optimizer.reservation_matching import match_reserved_group_slots
 
 class RolePriorityStrategy(
     CritConstraintRepairMixin,
     RolePriorityGroupStrategyMixin,
+    DeferredDriveReservationMixin,
     AllocationMatrixBuilder,
 ):
     """Greedy per-role allocation by priority order."""
@@ -518,6 +521,9 @@ class RolePriorityStrategy(
         assigned_tapes: Dict[str, Tape],
         crit_priority_modes: Dict[str, dict],
         crit_rate_caps: Dict[str, float] | None = None,
+        *,
+        reservation_candidates: tuple[tuple[str, ...], ...] | None = None,
+        reservation_shapes: tuple[str, ...] | None = None,
     ) -> AllocationResult:
         valid_group = []
         role_blueprints = []
@@ -534,6 +540,7 @@ class RolePriorityStrategy(
         best_priority_key = ()
         best_allocation = {}
         use_greedy = self._group_uses_crit_thresholds(valid_group, crit_priority_modes)
+        prepared_matrix = self._prepare_profit_matrix(drives_pool, crit_priority_modes)
         for bp_combo in self._iter_bp_combos(
             role_blueprints,
             valid_group,
@@ -590,13 +597,27 @@ class RolePriorityStrategy(
                     best_allocation = temp_alloc
                 continue
 
-            slots, profit_matrix, ranking_matrix = self._build_profit_matrix(
-                bp_combo, valid_group, drives_pool, custom_sets, crit_priority_modes
+            slots, profit_matrix, ranking_matrix = prepared_matrix.build(
+                bp_combo, valid_group, custom_sets,
             )
             if slots is None:
                 continue
 
-            row_ind, col_ind = linear_sum_assignment(-ranking_matrix)
+            if reservation_candidates is None:
+                row_ind, col_ind = linear_sum_assignment(-ranking_matrix)
+            else:
+                matching = match_reserved_group_slots(
+                    ranking_matrix, profit_matrix,
+                    tuple(drive.uid for drive in drives_pool), reservation_candidates,
+                    current_shapes=tuple(str(slot["shape"]) for slot in slots)
+                    if reservation_shapes is not None else None,
+                    drive_shapes=tuple(str(drive.shape_id) for drive in drives_pool)
+                    if reservation_shapes is not None else None,
+                    reservation_shapes=reservation_shapes,
+                )
+                if matching is None:
+                    continue
+                row_ind, col_ind = matching
             temp_alloc = self._init_temp_alloc(valid_group, assigned_tapes)
             is_valid = True
             assignments = []

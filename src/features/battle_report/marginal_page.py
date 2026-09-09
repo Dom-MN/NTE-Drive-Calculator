@@ -40,11 +40,14 @@ from src.features.battle_report.marginal_benefit_view import (
     build_marginal_benefit_sections,
     render_marginal_benefits,
 )
+from src.features.battle_report.marginal_character_panel import (
+    BattleMarginalCharacterPanel,
+    render_character_panel_and_margins,
+)
 from src.features.battle_report.marginal_result_table_view import (
     BUFF_BENEFIT_HEADERS,
     BUFF_BENEFIT_WIDTHS,
     display_projection,
-    render_attribute_results,
 )
 from src.features.battle_report.marginal_toolbar import build_marginal_toolbar
 from src.features.battle_report.marginal_replacement_controller import (
@@ -58,17 +61,8 @@ from src.features.battle_report.timeline_layout import TimelineSelection
 from src.features.battle_report.timeline_view import BattleUnifiedTimelineWidget
 from src.features.official_role.profile_editor import OfficialRoleProfileEditor
 from src.services.battle_build_equipment_service import freeze_equipment_context
-from src.services.battle_build_timeline_projection_service import (
-    BattleBuildTimelineProjectionService,
-)
 from src.services.battle_marginal_candidate_service import (
     BattleMarginalCandidateService,
-)
-from src.services.battle_marginal_calculation_service import (
-    BattleMarginalCalculationService,
-)
-from src.services.battle_marginal_calculation_support import (
-    drive_substat_marginal_units,
 )
 from src.services.battle_timeline_time_service import (
     ACTIVE_TIME_MODE,
@@ -97,6 +91,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
         self._analysis: BattleAnalysisSnapshot | None = None
         self._candidate_analysis: BattleAnalysisSnapshot | None = None
         self._marginal_benefits = None
+        self._marginal_panel = None
         self._details: list[dict] = []
         self._editors: list[OfficialRoleProfileEditor | None] = []
         self._editor_character_ids: list[int] = []
@@ -229,6 +224,8 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
         )
         timeline_layout.addWidget(self.counterfactual_timeline_scroll)
         root.addWidget(timeline_card)
+        self.character_panel = BattleMarginalCharacterPanel()
+        root.addWidget(self.character_panel)
         attribute_card, attribute_layout = analysis_section("驱动副词条单位边际")
         attribute_note = QLabel(
             tr("只展示实际可刷出的金色驱动副词条，每行默认单位为一格；面板属性是当前生效基线，"
@@ -362,14 +359,16 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             if selected_index >= 0:
                 self.character_combo.setCurrentIndex(selected_index)
         self.character_combo.blockSignals(False)
-        self._character_changed()
+        self._character_changed(notify=False)
 
     def clear_candidate(self) -> None:
         self._load_editor_data({"details": [], "marginal_equipment_editable": True})
         self._draft_dirty = False
         self._analysis = None
+        self._hit_details = None
         self._candidate_analysis = None
         self._marginal_benefits = None
+        self._marginal_panel = None
         for label in self.metric_labels.values():
             label.setText("—")
         for key, text in {
@@ -381,6 +380,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             self.metric_subtitles[key].setText(text)
         self.counterfactual_timeline.set_analysis(None)
         self.composition_panel.clear()
+        self.character_panel.clear()
         self.attribute_table.setRowCount(0)
         self.core_main_table.setRowCount(0)
         self.fork_benefit_table.setRowCount(0)
@@ -389,22 +389,33 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
         self.roles_pie.set_roles(())
         self.derived_settlements.render(None)
 
-    def set_source_analysis(self, analysis: BattleAnalysisSnapshot) -> None:
+    def set_source_analysis(self, analysis: BattleAnalysisSnapshot, *, hit_details=None) -> None:
         self._marginal_benefits = None
-        self._render_analysis(analysis)
+        self._marginal_panel = None
+        self._render_analysis(analysis, hit_details=hit_details)
 
     def set_marginal_result(
         self,
         analysis: BattleAnalysisSnapshot,
         *,
         marginal_benefits=None,
+        marginal_panel=None,
+        candidate_display_analysis: BattleAnalysisSnapshot | None = None,
+        hit_details=None,
     ) -> None:
         self._draft_dirty = False
         self._marginal_benefits = marginal_benefits
-        self._render_analysis(analysis)
+        self._marginal_panel = marginal_panel
+        details = None if hit_details is None else (hit_details.candidate if candidate_display_analysis is not None else hit_details.analysis)
+        self._render_analysis(analysis, candidate_display_analysis, hit_details=details)
 
-    def _render_analysis(self, analysis: BattleAnalysisSnapshot) -> None:
+    def _render_analysis(
+        self, analysis: BattleAnalysisSnapshot,
+        candidate_display_analysis: BattleAnalysisSnapshot | None = None,
+        hit_details=None,
+    ) -> None:
         self._analysis = analysis
+        self._hit_details = hit_details
         comparison = analysis.build_counterfactual
         self.derived_settlements.render(comparison)
         if comparison is None:
@@ -420,10 +431,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             self.roles_pie.set_roles(())
             self.composition_panel.clear()
         else:
-            self._candidate_analysis = BattleBuildTimelineProjectionService.project(
-                analysis,
-                comparison,
-            )
+            self._candidate_analysis = candidate_display_analysis
             self.counterfactual_timeline.set_analysis(self._candidate_analysis)
             projected_damage = display_projection(
                 candidate=comparison.candidate_damage,
@@ -524,18 +532,9 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             ),
             None,
         )
-        active_buffs = tuple(
-            row
-            for row in candidate.buff_intervals
-            if row.start_us <= original_hit.relative_time_us < row.end_us
-            and (
-                row.target_scope in {"team", "target", "unknown"}
-                or (
-                    row.target_scope == "self"
-                    and row.source_character_id == original_hit.character_id
-                )
-            )
-        )
+        details = getattr(self, "_hit_details", None)
+        buff_projection, active_buffs = ((None, ()) if details is None
+                                         else details.for_hit(original_hit, formula=True))
         dialog = getattr(self, "_counterfactual_hit_dialog", None)
         if dialog is None:
             dialog = BattleHitFormulaDialog(self)
@@ -548,6 +547,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             counterfactual=projection,
             related_counterfactuals=related_counterfactuals,
             related_analysis=candidate,
+            projection=buff_projection, related_hit_details=details,
         )
 
     def profiles(self) -> list[dict]:
@@ -593,6 +593,9 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
 
     def equipment_editable(self) -> bool:
         return self._equipment_editable
+    def has_current_panel(self) -> bool:
+        return (self._analysis is not None and self._marginal_panel is not None
+                and self._marginal_panel.character_id == self.selected_character_id())
 
     def allows_automatic_recalculation(self) -> bool:
         return not self._draft_dirty
@@ -600,7 +603,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
     def disabled_inferred_fact_ids(self) -> tuple[str, ...]:
         return () if self.use_inferred_facts.isChecked() else self._inferred_fact_ids
 
-    def _character_changed(self, _index: int = -1) -> None:
+    def _character_changed(self, _index: int = -1, *, notify: bool = True) -> None:
         index = self.character_combo.currentIndex()
         if 0 <= index < self.editor_stack.count():
             editor = self._ensure_editor(index)
@@ -609,7 +612,8 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             self.editor_stack.setCurrentIndex(index)
         self._render_selected_role()
         self._refresh_change_summary()
-        self.role_changed.emit(self.selected_detail_scope())
+        if notify:
+            self.role_changed.emit(self.selected_detail_scope())
 
     def _refresh_change_summary(self, *_args) -> None:
         index = self.character_combo.currentIndex()
@@ -720,6 +724,7 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
         analysis = self._analysis
         character_id = self.selected_character_id()
         if analysis is None or character_id is None:
+            self.character_panel.clear()
             self.attribute_table.setRowCount(0)
             self.buff_benefit_table.setRowCount(0)
             self.metric_labels["role"].setText("—")
@@ -778,22 +783,13 @@ class BattleMarginalPage(BattleMarginalBuffRenderMixin, QWidget):
             )
 
     def _render_attributes(self, baseline: BattleCharacterBaseline | None) -> None:
-        analysis = self._analysis
-        if baseline is None or analysis is None:
-            self.attribute_table.setRowCount(0)
-            return
-        scoring_engine = getattr(self.window(), "scoring_engine", None)
-        stat_catalog = getattr(scoring_engine, "stat_catalog", None)
-        units = drive_substat_marginal_units(
-            getattr(stat_catalog, "gold_base_values", None),
+        render_character_panel_and_margins(
+            self.character_panel,
+            self.attribute_table,
+            analysis=self._analysis,
+            baseline=baseline,
+            marginal_panel=self._marginal_panel,
         )
-        results = BattleMarginalCalculationService.calculate(
-            analysis=analysis,
-            character_id=baseline.character_id,
-            edited_values={},
-            units=units,
-        )
-        render_attribute_results(self.attribute_table, results)
 
     def _request_recalculate(self) -> None:
         self._refresh_change_summary()

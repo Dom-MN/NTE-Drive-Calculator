@@ -17,7 +17,6 @@ from src.features.battle_report.analysis_components import (
     restore_vertical_scroll_positions,
 )
 from src.features.battle_report.hit_buff_dialog import BattleHitBuffDialog
-from src.services.battle_buff_inference_service import BattleBuffInferenceService
 from src.services.skill_name_rendering_service import (
     preferred_battle_damage_name,
     render_battle_event_type,
@@ -48,14 +47,6 @@ class BattleAnalysisLogMixin:
     _analysis: Any
     _log_page: int
     _log_page_size: int
-
-    def _active_buffs_for_hit(self, hit: BattleAnalysisHit) -> tuple:
-        intervals = (
-            getattr(self._analysis, "buff_intervals", ())
-            if self._analysis is not None
-            else ()
-        )
-        return BattleBuffInferenceService.active_for_hit(intervals, hit)
 
     def _filtered_hits(self) -> tuple[BattleAnalysisHit, ...]:
         analysis = self._analysis
@@ -245,7 +236,9 @@ class BattleAnalysisLogMixin:
             ),
             None,
         )
-        dialog.show_for_hit(hit, self._active_buffs_for_hit(hit), replay=replay)
+        details = getattr(self, "_hit_details", None)
+        projection, intervals = ((None, ()) if details is None else details.for_hit(hit, formula=False))
+        dialog.show_for_hit(hit, intervals, replay=replay, projection=projection)
 
     def _hide_hit_buff_dialog(self) -> None:
         dialog = getattr(self, "_hit_buff_dialog", None)

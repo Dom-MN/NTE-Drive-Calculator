@@ -8,6 +8,8 @@ NTE Drive Calc - PyInstaller 打包脚本
 """
 
 import importlib.util
+import hashlib
+import json
 import os
 import shutil
 import sys
@@ -60,6 +62,9 @@ NTE_CORE_RELEASE_FILES = (
     "CLI_PROTOCOL.md",
     "THIRD_PARTY_LICENSES.md",
 )
+ANALYSIS_CORE_PATH = THIRD_PARTY_DIR / "analysis-core" / "bin" / "nte-analysis-core.exe"
+ANALYSIS_CORE_MANIFEST_PATH = THIRD_PARTY_DIR / "analysis-core" / "component.json"
+ANALYSIS_CORE_RELEASE_FILES = ("LICENSE", "SOURCE.md", "THIRD_PARTY_NOTICES.txt")
 
 SYSTEM_ICU_SHADOW_DLL = "icuuc.dll"
 FORBIDDEN_AMBIENT_ICU_DLLS = ("icuuc.dll", "icudt78.dll")
@@ -131,6 +136,26 @@ def _validate_no_runtime_caches(output: Path) -> None:
     if found:
         joined = "、".join(str(path) for path in found)
         raise RuntimeError(f"打包产物混入本机运行时缓存，已拒绝发布：{joined}")
+
+
+def _validate_analysis_component(binary: Path, manifest_path: Path) -> None:
+    """Require the battle-page-capable analysis component before packaging."""
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise RuntimeError("独立分析组件清单无效") from error
+    capabilities = manifest.get("capabilities") if isinstance(manifest, dict) else None
+    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("engine") != "nte-analysis-core"
+        or manifest.get("engine_version") != "0.3.0"
+        or manifest.get("sha256") != digest
+        or not isinstance(capabilities, list)
+        or "battle_page_v1" not in capabilities
+    ):
+        raise RuntimeError("独立分析组件缺少战报数据库直读能力或哈希不匹配")
 
 
 def _running_in_automation() -> bool:
@@ -246,6 +271,24 @@ nte_core_path = _required_build_file(
     ROOT / "build_resources" / "nte-core" / "nte-core.exe",
 )
 _append_add_binary(nte_core_path, ".")
+
+# Independent analysis component; never substitute the capture executable.
+analysis_core_path = _required_build_file("nte-analysis-core.exe", ANALYSIS_CORE_PATH)
+analysis_manifest_path = _required_build_file(
+    "analysis component manifest",
+    ANALYSIS_CORE_MANIFEST_PATH,
+)
+_validate_analysis_component(analysis_core_path, analysis_manifest_path)
+_append_add_binary(analysis_core_path, ".")
+_append_add_data(analysis_manifest_path, "analysis-core-meta")
+for analysis_notice in ANALYSIS_CORE_RELEASE_FILES:
+    _append_add_data(
+        _required_build_file(
+            analysis_notice,
+            THIRD_PARTY_DIR / "analysis-core" / analysis_notice,
+        ),
+        "licenses/analysis-core",
+    )
 
 # Release 目录若提供许可证和协议说明，则一并放入安装包，便于审计和再分发。
 nte_core_metadata_dirs = _nte_core_metadata_directories(nte_core_path)

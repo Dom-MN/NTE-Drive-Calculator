@@ -34,6 +34,19 @@ from src.services.game_ui_asset_catalog import GameUiAssetCatalog
 from src.ui.widgets import match_pinyin
 
 
+_LOADOUT_SLOT_MANAGE_STYLE = (
+    "QToolButton{border:2px solid #35dc83;border-radius:10px;"
+    "background:#161b22;padding:0}"
+    "QToolButton:hover{border-color:#82f5b5;background:#1b3a24}"
+)
+
+
+def _loadout_slot_manage_style() -> str:
+    """Return the slot-manager indicator style for the active application theme."""
+
+    return themed_style(_LOADOUT_SLOT_MANAGE_STYLE)
+
+
 class _HorizontalRoleScrollArea(QScrollArea):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -462,11 +475,7 @@ def show_equipment_master_detail(
             manage_button.setToolTip(tr("管理该角色的配装槽位"))
             manage_button.setFixedSize(20, 20)
             manage_button.move(124, 36)
-            manage_button.setStyleSheet(
-                "QToolButton{border:2px solid #35dc83;border-radius:10px;"
-                "background:#0d1117;padding:0}"
-                "QToolButton:hover{border-color:#82f5b5;background:#123525}"
-            )
+            manage_button.setStyleSheet(_loadout_slot_manage_style())
             inner_ring = QFrame(manage_button)
             inner_ring.setAttribute(Qt.WA_TransparentForMouseEvents)
             inner_ring.setFixedSize(12, 12)

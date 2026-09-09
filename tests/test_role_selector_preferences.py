@@ -1,13 +1,102 @@
 # 验证角色偏好弹窗的可选弧盘和暴击率输入交互。
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 class RoleSelectorPreferenceTests(unittest.TestCase):
+    def test_latest_manual_or_weapon_action_owns_the_single_crit_cap(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from src.features.allocation.role_selector import RoleSelector
+
+        QApplication.instance() or QApplication([])
+        selector = RoleSelector()
+        selector.load_roles(
+            {"A": {"default_weapon": "弧盘甲"}},
+            [],
+            weapons_db={
+                "弧盘甲": {"sub_stats": {"暴击率%": 18.0}},
+                "弧盘乙": {"sub_stats": {"暴击率%": 24.0}},
+            },
+        )
+        selector.selected = ["A"]
+
+        self.assertEqual({"A": 82.0}, selector.get_crit_rate_caps())
+        selector._set_crit_rate_cap("A", 90)
+        self.assertEqual("manual", selector.crit_rate_cap_sources["A"])
+        self.assertEqual({"A": 90.0}, selector.get_crit_rate_caps())
+
+        selector._set_custom_weapon("A", "弧盘乙")
+        selector._set_automatic_crit_rate_cap("A", "弧盘乙")
+        self.assertEqual("automatic", selector.crit_rate_cap_sources["A"])
+        self.assertEqual({"A": 76.0}, selector.get_crit_rate_caps())
+
+        selector._set_crit_rate_cap("A", 0)
+        self.assertEqual("manual", selector.crit_rate_cap_sources["A"])
+        self.assertEqual({}, selector.get_crit_rate_caps())
+
+    def test_zero_manual_cap_round_trips_as_unlimited(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from src.features.allocation.role_selector import RoleSelector
+
+        QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "priority.json"
+            selector = RoleSelector()
+            selector.load_roles(
+                {"A": {"default_weapon": "弧盘甲"}},
+                [],
+                weapons_db={"弧盘甲": {"sub_stats": {"暴击率%": 18.0}}},
+            )
+            selector.selected = ["A"]
+            selector._set_crit_rate_cap("A", 0)
+            selector._write_priority_config(path)
+
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            restored = RoleSelector()
+            restored.load_roles(
+                {"A": {"default_weapon": "弧盘甲"}},
+                [],
+                weapons_db={"弧盘甲": {"sub_stats": {"暴击率%": 18.0}}},
+            )
+            restored._load_priority_config_from(path)
+
+        self.assertEqual({"A": 0.0}, saved["crit_rate_caps"])
+        self.assertEqual({"A": "manual"}, saved["crit_rate_cap_sources"])
+        self.assertEqual("manual", restored.crit_rate_cap_sources["A"])
+        self.assertEqual({}, restored.get_crit_rate_caps())
+
+    def test_legacy_automatic_cap_is_classified_when_source_is_absent(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from src.features.allocation.role_selector import RoleSelector
+
+        QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "priority.json"
+            path.write_text(
+                json.dumps({"priority_list": ["A"], "crit_rate_caps": {"A": 82.0}}),
+                encoding="utf-8",
+            )
+            selector = RoleSelector()
+            selector.load_roles(
+                {"A": {"default_weapon": "弧盘甲"}},
+                [],
+                weapons_db={"弧盘甲": {"sub_stats": {"暴击率%": 18.0}}},
+            )
+            selector._load_priority_config_from(path)
+
+        self.assertEqual("automatic", selector.crit_rate_cap_sources["A"])
+        self.assertEqual({"A": 82.0}, selector.get_crit_rate_caps())
+
     def test_optional_weapon_choice_preserves_explicit_clear(self) -> None:
         from src.features.allocation.role_selector_preferences import (
             resolve_optional_priority_choice,

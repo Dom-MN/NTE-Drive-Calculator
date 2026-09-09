@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.services.battle_weave_source_service import BattleWeaveSourceIndex
+
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 
@@ -10,6 +12,9 @@ from src.domain.battle_counterfactual_quantification import (
     BattleCounterfactualRatio,
     BattleQuantificationGap,
 )
+from src.domain.native_analysis import DirectFormulaBackend, available_battle_compute
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
+from src.services.battle_buff_candidate_projection_batch import PreparedBuffCandidateProjection
 from src.domain.battle_report import (
     BattleAnalysisHit,
     BattleAnalysisSnapshot,
@@ -26,9 +31,7 @@ from src.services.battle_buff_interval_index import (
 from src.services.battle_direct_formula_batch_service import (
     BattleDirectFormulaBatchService,
 )
-from src.services.battle_hit_counterfactual_ratio_service import (
-    BattleHitCounterfactualRatioService,
-)
+from src.services.battle_native_counterfactual import compare_counterfactual_batch
 from src.services.battle_hit_replay_service import BattleHitReplayService
 from src.services.battle_selected_hit_replay_context import (
     PreparedReplayAuditContext,
@@ -44,33 +47,6 @@ from src.services.battle_analysis_progress import (
 from src.services.battle_hit_buff_projection_cache import (
     BattleHitBuffProjectionCache,
 )
-from src.services.battle_formula_hit_projection_service import project_formula_hit
-
-
-def _formula_character_id(
-    hit: BattleAnalysisHit,
-    evidence: BattleSkillDamageEvidence | None,
-) -> int | None:
-    return (
-        (
-            evidence.panel_character_id
-            if evidence.panel_character_id is not None
-            else evidence.source_character_id
-        )
-        if evidence is not None
-        and (
-            evidence.panel_character_id is not None
-            or evidence.source_character_id is not None
-        )
-        else hit.character_id
-    )
-
-
-def _formula_hit(
-    hit: BattleAnalysisHit,
-    evidence: BattleSkillDamageEvidence | None,
-) -> BattleAnalysisHit:
-    return project_formula_hit(hit, evidence)
 
 
 def _progressive_hits(
@@ -174,27 +150,33 @@ class BattleBuffCounterfactualBatchExecutor:
             Mapping[int, BattleToppleCharacterConfig] | None
         ),
         progress_callback: BattleAnalysisProgressCallback | None = None,
+        direct_formula_backend: DirectFormulaBackend | None = None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
+        prepared_candidate: PreparedBuffCandidateProjection | None = None,
     ) -> dict[str, BattleCounterfactualRatio]:
         if not active_hits:
             return {}
+        if projection_memo is None:
+            projection_memo = BattleBuffProjectionMemo()
+        projection_memo.bind_backend(direct_formula_backend, progress_callback)
         active_ids = frozenset(hit.event_id for hit in active_hits)
-        removed_interval_ids = frozenset(
-            interval.interval_id for interval in group_intervals
-        )
-        without_interval_index = interval_index.excluding(removed_interval_ids)
-        group_interval_index = BattleBuffIntervalIndex(group_intervals)
-        candidate_projection_cache = BattleHitBuffProjectionCache(
-            without_interval_index
-        )
-        group_projection_cache = BattleHitBuffProjectionCache(
-            group_interval_index
-        )
+        if prepared_candidate is None:
+            prepared_candidate = PreparedBuffCandidateProjection.create(
+                interval_index=interval_index, group_intervals=group_intervals,
+                active_hits=active_hits, memo=projection_memo, evidence_by_event=audit_inputs.evidence_by_event,
+                weave_sources=BattleWeaveSourceIndex(outgoing_hits),
+            )
+            prepared_candidate.candidate_cache.prepare((*active_hits, *prepared_candidate.formula_hits.values()))
+            prepared_candidate.group_cache.prepare(prepared_candidate.consumer_hits.values())
+        prepared_candidate.require_inputs(interval_index, group_intervals, active_hits, projection_memo)
+        without_interval_index = prepared_candidate.without_index
+        candidate_projection_cache = prepared_candidate.candidate_cache
+        group_projection_cache = prepared_candidate.group_cache
+        formula_hits = prepared_candidate.formula_hits
+        consumer_hits = prepared_candidate.consumer_hits
 
         formula_character_id_by_event = {
-            hit.event_id: _formula_character_id(
-                hit,
-                audit_inputs.evidence_by_event.get(hit.event_id),
-            )
+            hit.event_id: formula_hits[hit.event_id].character_id
             for hit in _progressive_hits(
                 active_hits,
                 progress_callback,
@@ -219,10 +201,7 @@ class BattleBuffCounterfactualBatchExecutor:
             message="正在合并当前 Buff 组的公式投影…",
         ):
             event_id = hit.event_id
-            formula_hit = _formula_hit(
-                hit,
-                audit_inputs.evidence_by_event.get(event_id),
-            )
+            formula_hit = formula_hits[event_id]
             candidate_formula_projection_by_event[event_id] = (
                 candidate_projection_by_event[event_id]
                 if formula_hit is hit
@@ -235,17 +214,8 @@ class BattleBuffCounterfactualBatchExecutor:
                 phase="buff_counterfactual_prepare",
                 message="正在核对当前 Buff 组的逐击覆盖范围…",
         ):
-            evidence = audit_inputs.evidence_by_event.get(hit.event_id)
-            formula_hit = project_formula_hit(hit, evidence)
-            consumer_hit = (
-                formula_hit
-                if formula_hit.character_id == hit.character_id
-                or evidence is not None
-                and evidence.formula_context_kind.startswith("linko_coattack:")
-                else hit
-            )
             group_projection_by_event[hit.event_id] = (
-                group_projection_cache.project(consumer_hit)
+                group_projection_cache.project(consumer_hits[hit.event_id])
             )
         target_condition_by_event = {
             event_id: target_condition
@@ -253,24 +223,32 @@ class BattleBuffCounterfactualBatchExecutor:
             in audit_inputs.target_condition_by_event.items()
             if event_id in active_ids
         }
+
+        def compare_hits(hits, candidates):
+            jobs = [
+                cls._comparison_input(
+                    hit, candidates.get(hit.event_id),
+                    formula_character_id_by_event=formula_character_id_by_event,
+                    original_projection_by_event=original_projection_by_event,
+                    candidate_projection_by_event=candidate_formula_projection_by_event,
+                    target_condition_by_event=target_condition_by_event, audit_inputs=audit_inputs,
+                )
+                for hit in _progressive_hits(hits, progress_callback, phase="buff_counterfactual_compare",
+                                             message="正在准备整批逐击反事实比较…")
+            ]
+            ratios = compare_counterfactual_batch(
+                jobs, backend=available_battle_compute(direct_formula_backend),
+                checkpoint=lambda: report_battle_analysis_progress(
+                    progress_callback, phase="buff_counterfactual_compare", message="正在批量比较逐击反事实…",
+                ),
+            )
+            return {hit.event_id: ratio for hit, ratio in zip(hits, ratios, strict=True)}
+
         if not any(interval.modifiers for interval in group_intervals):
+            raw_ratios = compare_hits(active_hits, {})
             return {
                 hit.event_id: _resolve_projection_gap(
-                    cls._compare(
-                        hit,
-                        None,
-                        formula_character_id_by_event=(
-                            formula_character_id_by_event
-                        ),
-                        original_projection_by_event=(
-                            original_projection_by_event
-                        ),
-                        candidate_projection_by_event=(
-                            candidate_formula_projection_by_event
-                        ),
-                        target_condition_by_event=target_condition_by_event,
-                        audit_inputs=audit_inputs,
-                    ),
+                    raw_ratios[hit.event_id],
                     group_projection=group_projection_by_event[hit.event_id],
                     group_intervals=group_intervals,
                 )
@@ -295,31 +273,15 @@ class BattleBuffCounterfactualBatchExecutor:
                 replay_hits=outgoing_hits,
                 skill_evidence=skill_evidence,
                 topple_character_configs=topple_character_configs,
+                direct_formula_backend=direct_formula_backend,
                 audit_inputs=audit_inputs,
+                buff_projection_cache=candidate_projection_cache,
                 audit_context=None,
                 interval_index=without_interval_index,
                 projection_by_event=None,
                 progress_callback=progress_callback,
             )
-            raw_ratios = {
-                hit.event_id: cls._compare(
-                    hit,
-                    candidate_by_event.get(hit.event_id),
-                    formula_character_id_by_event=formula_character_id_by_event,
-                    original_projection_by_event=original_projection_by_event,
-                    candidate_projection_by_event=(
-                        candidate_formula_projection_by_event
-                    ),
-                    target_condition_by_event=target_condition_by_event,
-                    audit_inputs=audit_inputs,
-                )
-                for hit in _progressive_hits(
-                    active_hits,
-                    progress_callback,
-                    phase="buff_counterfactual_compare",
-                    message="正在比较状态机制的逐击反事实…",
-                )
-            }
+            raw_ratios = compare_hits(active_hits, candidate_by_event)
         else:
             batches = BattleDirectFormulaBatchService.plan(
                 active_hits,
@@ -349,7 +311,9 @@ class BattleBuffCounterfactualBatchExecutor:
                 replay_hits=representatives,
                 skill_evidence=skill_evidence,
                 topple_character_configs=topple_character_configs,
+                direct_formula_backend=direct_formula_backend,
                 audit_inputs=audit_inputs,
+                buff_projection_cache=candidate_projection_cache,
                 audit_context=audit_inputs.select(representative_ids),
                 interval_index=without_interval_index,
                 projection_by_event=candidate_formula_projection_by_event,
@@ -357,6 +321,7 @@ class BattleBuffCounterfactualBatchExecutor:
             )
             raw_ratios: dict[str, BattleCounterfactualRatio] = {}
             fallback_hits: list[BattleAnalysisHit] = []
+            representative_ratios = compare_hits(representatives, candidate_by_event)
             for ordinal, batch in enumerate(batches, start=1):
                 if ordinal == 1 or (ordinal - 1) % 64 == 0:
                     report_battle_analysis_progress(
@@ -365,17 +330,7 @@ class BattleBuffCounterfactualBatchExecutor:
                         message="正在比较去重后的代表击反事实…",
                     )
                 representative = batch.representative
-                representative_ratio = cls._compare(
-                    representative,
-                    candidate_by_event.get(representative.event_id),
-                    formula_character_id_by_event=formula_character_id_by_event,
-                    original_projection_by_event=original_projection_by_event,
-                    candidate_projection_by_event=(
-                        candidate_formula_projection_by_event
-                    ),
-                    target_condition_by_event=target_condition_by_event,
-                    audit_inputs=audit_inputs,
-                )
+                representative_ratio = representative_ratios[representative.event_id]
                 raw_ratios[representative.event_id] = representative_ratio
                 if len(batch.members) == 1:
                     continue
@@ -403,33 +358,15 @@ class BattleBuffCounterfactualBatchExecutor:
                     replay_hits=fallback_hits,
                     skill_evidence=skill_evidence,
                     topple_character_configs=topple_character_configs,
+                    direct_formula_backend=direct_formula_backend,
                     audit_inputs=audit_inputs,
+                    buff_projection_cache=candidate_projection_cache,
                     audit_context=audit_inputs.select(fallback_ids),
                     interval_index=without_interval_index,
                     projection_by_event=candidate_formula_projection_by_event,
                     progress_callback=progress_callback,
                 )
-                for hit in _progressive_hits(
-                    fallback_hits,
-                    progress_callback,
-                    phase="buff_counterfactual_compare",
-                    message="正在比较未能共享结果的逐击反事实…",
-                ):
-                    raw_ratios[hit.event_id] = cls._compare(
-                        hit,
-                        fallback_candidates.get(hit.event_id),
-                        formula_character_id_by_event=(
-                            formula_character_id_by_event
-                        ),
-                        original_projection_by_event=(
-                            original_projection_by_event
-                        ),
-                        candidate_projection_by_event=(
-                            candidate_formula_projection_by_event
-                        ),
-                        target_condition_by_event=target_condition_by_event,
-                        audit_inputs=audit_inputs,
-                    )
+                raw_ratios.update(compare_hits(fallback_hits, fallback_candidates))
 
         return {
             hit.event_id: _resolve_projection_gap(
@@ -459,14 +396,18 @@ class BattleBuffCounterfactualBatchExecutor:
         interval_index: BattleBuffIntervalQuery,
         projection_by_event: Mapping[str, BattleHitBuffProjection] | None,
         progress_callback: BattleAnalysisProgressCallback | None,
+        direct_formula_backend: DirectFormulaBackend | None = None,
+        buff_projection_cache: BattleHitBuffProjectionCache | None = None,
     ) -> dict[str, BattleHitReplayResult]:
         results = BattleHitReplayService.replay(
             analysis,
             skill_evidence,
             topple_character_configs=topple_character_configs,
+            direct_formula_backend=direct_formula_backend,
             prepared_audit_context=audit_context,
             prepared_audit_inputs=audit_inputs,
             buff_interval_index=interval_index,
+            buff_projection_cache=buff_projection_cache,
             projection_by_event=projection_by_event,
             progress_callback=progress_callback,
             progress_phase="buff_counterfactual_replay",
@@ -480,7 +421,7 @@ class BattleBuffCounterfactualBatchExecutor:
         }
 
     @staticmethod
-    def _compare(
+    def _comparison_input(
         hit: BattleAnalysisHit,
         candidate_replay: BattleHitReplayResult | None,
         *,
@@ -489,7 +430,7 @@ class BattleBuffCounterfactualBatchExecutor:
         candidate_projection_by_event: Mapping[str, BattleHitBuffProjection],
         target_condition_by_event: Mapping[str, BattleTargetCondition | None],
         audit_inputs: PreparedReplayAuditInputs,
-    ) -> BattleCounterfactualRatio:
+    ) -> dict:
         event_id = hit.event_id
         formula_character_id = formula_character_id_by_event[event_id]
         baseline = (
@@ -497,7 +438,7 @@ class BattleBuffCounterfactualBatchExecutor:
             if formula_character_id is None
             else audit_inputs.baselines_by_character.get(formula_character_id)
         )
-        return BattleHitCounterfactualRatioService.compare(
+        return dict(
             hit=hit,
             original_baseline=baseline,
             candidate_baseline=baseline,

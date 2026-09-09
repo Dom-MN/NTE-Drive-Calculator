@@ -9,6 +9,9 @@ from typing import Any
 
 from src.domain.battle_encounter import BattleEncounterCandidate
 from src.domain.battle_report import BattleAnalysisSnapshot
+from src.domain.native_analysis import available_battle_compute
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
+from src.services.battle_analysis_progress import BattleAnalysisProgressCallback, report_battle_analysis_progress
 from src.services.battle_buff_inference_service import (
     BattleBuffInferenceService,
     BattleStaticBuffRule,
@@ -42,10 +45,20 @@ from src.services.battle_zankou_form_buff_service import (
     BattleZankouFormBuffService,
     BattleZankouFormConfig,
 )
+from src.services.battle_shinku_rage_buff_service import (
+    BattleShinkuRageBuffService,
+    BattleShinkuRageConfig,
+)
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 
 
 class BattleReportReplayHistoryMixin:
+    def new_projection_memo(
+        self, progress_callback: BattleAnalysisProgressCallback | None = None,
+    ) -> BattleBuffProjectionMemo:
+        """Create a request-owned projection batch bound to this history backend."""
+        return BattleBuffProjectionMemo(self._direct_formula_backend, progress_callback)
+
     _dependencies: Any
 
     def _load_target_control_policy(self, resolutions: tuple[Any, ...]) -> str:
@@ -77,10 +90,21 @@ class BattleReportReplayHistoryMixin:
         self,
         analysis: BattleAnalysisSnapshot,
         build: dict[str, Any] | None,
+        progress_callback: BattleAnalysisProgressCallback | None = None,
     ):
         static_path = self._dependencies.static_database_path
         if static_path is None or build is None:
             return ()
+        backend = available_battle_compute(self._direct_formula_backend)
+        if backend is not None:
+            # 原生协议、取消和数据错误必须上报，不能变成空技能证据继续计算。
+            with StaticGameDataDao(static_path) as static_dao:
+                return BattleSkillDamageEvidenceService.load(
+                    static_dao, analysis, build, compute_backend=backend,
+                    checkpoint=lambda: report_battle_analysis_progress(
+                        progress_callback, phase="prepare", message="正在重建逐击状态与技能证据…",
+                    ),
+                )
         try:
             with StaticGameDataDao(static_path) as static_dao:
                 return BattleSkillDamageEvidenceService.load(
@@ -148,6 +172,22 @@ class BattleReportReplayHistoryMixin:
         except (OSError, RuntimeError, ValueError):
             return None
 
+    def _load_shinku_rage_config(
+        self,
+        build: dict[str, Any] | None,
+    ) -> BattleShinkuRageConfig | None:
+        static_path = self._dependencies.static_database_path
+        if static_path is None or not any(
+            int(row.get("character_id") or 0) == 1076
+            for row in (build or {}).get("characters") or ()
+        ):
+            return None
+        try:
+            with StaticGameDataDao(static_path) as static_dao:
+                return BattleShinkuRageBuffService.load_config(static_dao)
+        except (OSError, RuntimeError, ValueError):
+            return None
+
     def _load_topple_character_configs(
         self,
         analysis: BattleAnalysisSnapshot,
@@ -184,6 +224,7 @@ class BattleReportReplayHistoryMixin:
         build: dict[str, Any] | None,
         evidence: dict[str, Any] | None,
         inferred_character_facts: tuple[Any, ...],
+        progress_callback: BattleAnalysisProgressCallback | None = None,
     ) -> BattleInferredEncounter:
         def project(candidate: BattleEncounterCandidate) -> BattleAnalysisSnapshot:
             condition = BattleInferredTargetConditionService.condition_for_candidate(
@@ -211,7 +252,7 @@ class BattleReportReplayHistoryMixin:
                     target_instance_resolutions=resolutions,
                     target_instance_mapping_required=True,
                 )
-            skill_evidence = self._load_skill_damage_evidence(analysis, build)
+            skill_evidence = self._load_skill_damage_evidence(analysis, build, progress_callback)
             topple_configs = self._load_topple_character_configs(analysis)
             return replace(
                 analysis,
@@ -219,7 +260,9 @@ class BattleReportReplayHistoryMixin:
                     analysis,
                     skill_evidence,
                     topple_character_configs=topple_configs,
+                    direct_formula_backend=self._direct_formula_backend,
                     apply_observed_refinements=False,
+                    progress_callback=progress_callback,
                 ),
                 hit_replay_model_version=HIT_REPLAY_MODEL_VERSION,
             )
@@ -233,6 +276,10 @@ class BattleReportReplayHistoryMixin:
         )
         outcome = BattleEncounterFitProjectionService.select(
             inferred,
+            backend=available_battle_compute(self._direct_formula_backend),
+            checkpoint=lambda: report_battle_analysis_progress(
+                progress_callback, phase="prepare", message="正在比较候选目标的逐击残差…",
+            ),
             project_candidate=project,
             group_analysis=group_analysis,
         )

@@ -13,6 +13,7 @@ from src.services.equipment_plugin_deployment import (
     MOD_WORKSPACE_FILES,
     deploy_plugin,
     find_game_executables,
+    game_process_running,
     game_executable,
     is_mods_plugin_dll,
     packaged_mod_workspace,
@@ -280,3 +281,15 @@ class EquipmentPluginDeploymentTests(unittest.TestCase):
             deployed.workspace_registry_value_before,
             r"C:\previous\mods",
         )
+
+    @patch("src.services.equipment_plugin_deployment.subprocess.run")
+    def test_detects_running_game_process_from_tasklist_csv(self, run) -> None:
+        run.return_value.stdout = '"HTGame.exe","123","Console","1","100 K"\n'
+
+        self.assertTrue(game_process_running())
+
+    @patch("src.services.equipment_plugin_deployment.subprocess.run")
+    def test_treats_tasklist_without_game_as_not_running(self, run) -> None:
+        run.return_value.stdout = "INFO: No tasks are running which match the specified criteria.\n"
+
+        self.assertFalse(game_process_running())

@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
+from src.domain.native_analysis import BattleComputeBackend
 
 from src.domain.battle_report import (
     BattleBuffModifierEvidence,
@@ -700,6 +701,8 @@ class BattleForkDamageCompletionService:
         hits: Sequence[Any],
         battle_end_us: int,
         time_stop_intervals: Sequence[tuple[int | None, int | None]] = (),
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[Any, ...]:
         from src.services.battle_fork_damage_state_service import (
             BattleForkDamageStateService,
@@ -711,4 +714,6 @@ class BattleForkDamageCompletionService:
             hits=hits,
             battle_end_us=battle_end_us,
             time_stop_intervals=time_stop_intervals,
+            compute_backend=compute_backend,
+            checkpoint=checkpoint,
         )

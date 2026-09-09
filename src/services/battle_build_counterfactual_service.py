@@ -29,45 +29,37 @@ from src.services.battle_damage_composition_service import (
 from src.services.battle_build_quantification_service import (
     BattleBuildQuantificationService,
 )
-from src.services.battle_buff_attribute_projection_service import (
-    BattleBuffAttributeProjectionService,
-)
-from src.services.battle_buff_interval_index import BattleBuffIntervalIndex
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
+from src.services.battle_build_comparison_batch import prepare_build_comparison_ratios
 from src.services.battle_daffodill_marginal_service import (
     DAFFODILL_EFFECT_FIVE_METHOD,
     BattleDaffodillMarginalService,
 )
-from src.services.battle_hit_counterfactual_ratio_service import (
-    BattleHitCounterfactualRatioService,
-)
 from src.services.battle_replay_formula_ratio_service import (
     paired_replay_formula,
     replay_formula_value,
-)
-from src.services.battle_target_instance_mapping_service import (
-    BattleTargetInstanceMappingService,
+    structured_formula_ratio,
 )
 from src.services.battle_analysis_progress import (
     BattleAnalysisProgressCallback,
     report_battle_analysis_progress,
 )
-from src.services.battle_build_role_counterfactual_support import (
-    build_role_counterfactuals,
+from src.services.battle_build_awakening_gap_service import (
+    awakening_change_gaps,
+    mark_awakening_roles_partial,
+    with_awakening_gaps,
 )
+from src.services.battle_build_role_counterfactual_support import build_role_counterfactuals
+from src.services.battle_build_weave_counterfactual_service import link_weave
 from src.services.battle_build_vital_support import (
     linked_lacrimosa_vital_hits,
     safe_ratio,
 )
-BUILD_COUNTERFACTUAL_MODEL_VERSION = "battle-build-counterfactual-v6"
-_STRUCTURED_METHODS = {
-    "structured_expected",
-    "structured_selected",
-    DAFFODILL_EFFECT_FIVE_METHOD,
-}
+BUILD_COUNTERFACTUAL_MODEL_VERSION = "battle-build-counterfactual-v10"
+_STRUCTURED_METHODS = {"structured_expected", "structured_selected", DAFFODILL_EFFECT_FIVE_METHOD}
 _STRUCTURED_VITAL_METHODS = {
     "linked_source_hit_ratio", "linked_source_hit_ratio_observed_anchor",
-    "mechanic_enabled_expected_hp_ratio",
-    "fadia_source_max_hp_ratio", "mechanic_disabled",
+    "mechanic_enabled_expected_hp_ratio", "fadia_source_max_hp_ratio", "mechanic_disabled",
 }
 class BattleBuildCounterfactualService:
     """Compare two independently replayed builds while preserving the real axis."""
@@ -79,6 +71,7 @@ class BattleBuildCounterfactualService:
         original: BattleAnalysisSnapshot,
         candidate: BattleAnalysisSnapshot,
         progress_callback: BattleAnalysisProgressCallback | None = None,
+        projection_memo: BattleBuffProjectionMemo | None = None,
     ) -> BattleBuildCounterfactual:
         if original.battle_record_id != candidate.battle_record_id:
             raise ValueError("当前基线与候选配置不属于同一战报")
@@ -88,36 +81,27 @@ class BattleBuildCounterfactualService:
         ):
             raise ValueError("当前基线与候选配置没有冻结到同一分析时段")
 
-        original_hits = {
-            hit.event_id: hit
-            for hit in original.hits
-            if hit.direction == "outgoing"
-        }
-        candidate_hits = {
-            hit.event_id: hit
-            for hit in candidate.hits
-            if hit.direction == "outgoing"
-        }
+        original_hits = {hit.event_id: hit for hit in original.hits if hit.direction == "outgoing"}
+        candidate_hits = {hit.event_id: hit for hit in candidate.hits if hit.direction == "outgoing"}
         original_replays = {row.event_id: row for row in original.hit_replays}
         candidate_replays = {row.event_id: row for row in candidate.hit_replays}
-        original_baselines = {
-            row.character_id: row for row in original.baselines
+        formula_pairs = {
+            event_id: paired_replay_formula(original_replays.get(event_id), candidate_replays.get(event_id))
+            for event_id in original_hits
         }
-        candidate_baselines = {
-            row.character_id: row for row in candidate.baselines
-        }
+        structured_ratios = {key: structured_formula_ratio(pair) for key, pair in formula_pairs.items()}
+        original_baselines = {row.character_id: row for row in original.baselines}
+        candidate_baselines = {row.character_id: row for row in candidate.baselines}
+        awakening_gaps = awakening_change_gaps(original_baselines, candidate_baselines)
         build_inputs_unchanged = (
             BattleDaffodillMarginalService.direct_formula_inputs_unchanged(
                 original, candidate,
             )
         )
-        original_interval_index = BattleBuffIntervalIndex(
-            BattleDaffodillMarginalService.direct_formula_intervals(original)
+        comparison_ratios = prepare_build_comparison_ratios(
+            original, candidate, structured_ratios,
+            projection_memo=projection_memo, progress_callback=progress_callback,
         )
-        candidate_interval_index = BattleBuffIntervalIndex(
-            BattleDaffodillMarginalService.direct_formula_intervals(candidate)
-        )
-        routed_by_target: dict[tuple[str, str], BattleAnalysisSnapshot] = {}
         total_hits = len(original_hits)
         report_battle_analysis_progress(
             progress_callback,
@@ -132,34 +116,8 @@ class BattleBuildCounterfactualService:
             original_hits.items(),
             start=1,
         ):
-            formula_pair = paired_replay_formula(
-                original_replays.get(event_id),
-                candidate_replays.get(event_id),
-            )
-            target_key = (hit.scope_half.casefold(), hit.target_id)
-            routed = routed_by_target.get(target_key)
-            if routed is None:
-                routed = BattleTargetInstanceMappingService.analysis_for_hit(
-                    original,
-                    hit,
-                )
-                routed_by_target[target_key] = routed
-            quantification = BattleHitCounterfactualRatioService.compare(
-                hit=hit,
-                original_baseline=original_baselines.get(hit.character_id),
-                candidate_baseline=candidate_baselines.get(hit.character_id),
-                original_projection=BattleBuffAttributeProjectionService.project_hit(
-                    hit,
-                    original_interval_index,
-                ),
-                candidate_projection=BattleBuffAttributeProjectionService.project_hit(
-                    candidate_hits.get(event_id, hit),
-                    candidate_interval_index,
-                ),
-                original_replay=original_replays.get(event_id),
-                candidate_replay=candidate_replays.get(event_id),
-                target_condition=routed.target_condition,
-            )
+            formula_pair = formula_pairs[event_id]
+            quantification = comparison_ratios[event_id]
             if (
                 quantification.status == "unavailable"
                 and build_inputs_unchanged
@@ -226,6 +184,7 @@ class BattleBuildCounterfactualService:
                     completed=ordinal,
                     total=total_hits,
                 )
+        projected_hits = list(link_weave(projected_hits, original_hits))
         skill_ratios, type_ratios, role_ratios = cls._ratio_catalogs(
             original_hits,
             projected_hits,
@@ -266,6 +225,7 @@ class BattleBuildCounterfactualService:
             fixed_damage=fixed_derived_damage,
             fixed_unchanged=fixed_derived_unchanged,
         )
+        quantification = with_awakening_gaps(quantification, awakening_gaps)
         known_projection_damage = (
             None
             if quantification.quantified_increment is None
@@ -313,9 +273,10 @@ class BattleBuildCounterfactualService:
             structured_methods=_STRUCTURED_METHODS,
             structured_vital_methods=_STRUCTURED_VITAL_METHODS,
         )
+        role_rows = mark_awakening_roles_partial(role_rows, awakening_gaps)
         assumptions = (
             "固定原战报动作、逐击、目标与时段，只替换角色配置后重放。",
-            "原击已识别暴击分支时，候选沿用同一分支；分支不唯一但暴击策略已知时才使用期望公式。",
+            "每击按正式暴击策略比较候选与原始理论期望，以原始实测伤害加权；不冻结本场暴击结果。",
             "每击按半场和目标实例消费冻结画像；身份未知但画像等价仍可完整量化，未变化的未知共同乘区允许相消。",
             "目标敏感 peer 不跨半场或目标；peer 只形成独立 heuristic，不进入已量化收益。",
             "未量化逐击只以原始值保留固定轴，不冒充候选值或精确零收益。",

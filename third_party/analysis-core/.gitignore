@@ -1,0 +1,3 @@
+# 只跟踪正式发布的分析程序，其他本机生成物继续忽略。
+/bin/*
+!/bin/nte-analysis-core.exe

@@ -317,7 +317,7 @@ class AllocationContextTests(unittest.TestCase):
         )
         self.user_dao.create_optimization_profile_version(
             profile["profile_id"],
-            allocation_strategy="global_optimal",
+            allocation_strategy="role_priority",
             characters=[
                 {
                     "character_id": 1003,
@@ -558,3 +558,4 @@ class AllocationContextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

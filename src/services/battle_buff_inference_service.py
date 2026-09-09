@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
 from src.domain.battle_buff_rule import BattleStaticBuffRule
+from src.domain.native_analysis import BattleComputeBackend
 from src.domain.battle_report import (
     BattleAnalysisHit, BattleBuffModifierEvidence, BattleInferredAction,
     BattleInferredBuffInterval, BattleTreatmentEvent,
 )
 from src.services.battle_buff_interval_support import BattleBuffIntervalSupportMixin
+from src.services.battle_buff_state_compute import compute_rule_intervals, finalize_buff_intervals
 from src.services.battle_buff_semantic_service import (
     confirmed_buff_target_scope,
     render_buff_name,
@@ -306,9 +308,13 @@ def _selected_effects(
                 for shape_id in (suit or {}).get("required_shape_ids") or ()
             }
             active_count = len({
-                _geometry_id(item.get("geometry"))
+                _geometry_id(shape_id)
                 for item in equipment
                 if str(item.get("kind") or "") == "module"
+                for shape_id in (
+                    item.get("graduation_assumed_shape_ids")
+                    or (item.get("geometry"),)
+                )
             }.intersection(required_shapes))
             definitions = static_dao.list_combat_effect_definitions(
                 owner_kind="equipment_suit",
@@ -630,7 +636,14 @@ class BattleBuffInferenceService(BattleBuffIntervalSupportMixin):
         treatment_events: Sequence[BattleTreatmentEvent] = (),
         critical_events: Sequence[Any] = (),
         target_control_policy: str = "eligible_default",
+        compute_backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> tuple[BattleInferredBuffInterval, ...]:
+        rule_intervals = compute_rule_intervals(
+            rules, actions=actions, hits=hits, battle_end_us=battle_end_us,
+            time_stop_intervals=time_stop_intervals,
+            backend=compute_backend, checkpoint=checkpoint,
+        )
         grouped: dict[
             tuple[int, str, str],
             list[BattleStaticBuffRule],
@@ -648,22 +661,8 @@ class BattleBuffInferenceService(BattleBuffIntervalSupportMixin):
             add_rules = [
                 row for row in rule_group if "remove" not in row.effect_type.casefold()
             ]
-            remove_occurrences = sorted(
-                (
-                    occurrence
-                    for row in rule_group
-                    if "remove" in row.effect_type.casefold()
-                    for occurrence in cls._occurrences(
-                        row,
-                        actions=actions,
-                        hits=hits,
-                        battle_end_us=battle_end_us,
-                        time_stop_intervals=time_stop_intervals,
-                    )
-                ),
-                key=lambda row: row.time_us,
-            )
             for rule in add_rules:
+                occurrence_ends = rule_intervals[id(rule)]
                 control_policy_basis = ""
                 if BattleTargetControlPolicyService.is_mofeikesi_control_requirement(
                     rule.application_requirement_asset_path
@@ -675,20 +674,7 @@ class BattleBuffInferenceService(BattleBuffIntervalSupportMixin):
                     )
                     if not succeeds:
                         rule = replace(rule, target_scope="unknown")
-                occurrences = cls._occurrences(
-                    rule,
-                    actions=actions,
-                    hits=hits,
-                    battle_end_us=battle_end_us,
-                    time_stop_intervals=time_stop_intervals,
-                )
-                for occurrence, end_us in cls._occurrence_ends(
-                    rule,
-                    occurrences,
-                    remove_occurrences,
-                    battle_end_us,
-                    time_stop_intervals,
-                ):
+                for occurrence, end_us in occurrence_ends:
                     intervals.append(BattleInferredBuffInterval(
                         interval_id=f"buff:{ordinal}:{rule.rule_id}",
                         buff_asset_path=rule.target_asset_path,
@@ -731,7 +717,15 @@ class BattleBuffInferenceService(BattleBuffIntervalSupportMixin):
             time_stop_intervals=time_stop_intervals,
             treatment_events=treatment_events,
             critical_events=critical_events,
+            compute_backend=compute_backend,
+            checkpoint=checkpoint,
         ))
+        finalized = finalize_buff_intervals(
+            intervals, confirmed_all_boss=target_control_policy == CONTROL_CONFIRMED_ALL_BOSS,
+            backend=compute_backend, checkpoint=checkpoint,
+        )
+        if finalized is not None:
+            return finalized
         intervals = _consume_formal_boss_requirement(
             intervals,
             target_control_policy,

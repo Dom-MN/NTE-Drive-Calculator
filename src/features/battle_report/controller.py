@@ -26,9 +26,7 @@ from src.features.battle_report.analysis_controller_mixin import (
 from src.features.battle_report.build_snapshot_controller import (
     BattleBuildSnapshotController,
 )
-from src.features.battle_report.capture_controls import (
-    BattleCaptureControlsMixin,
-)
+from src.features.battle_report.capture_controls import BattleCaptureControlsMixin
 from src.features.battle_report.marginal_session_controller import (
     BattleMarginalSessionController,
 )
@@ -87,6 +85,7 @@ class BattleReportController(
         history_factory: BattleHistoryFactory,
         transfer_factory: BattleTransferFactory,
         hotkey_manager: GlobalHotkeyManager,
+        marginal_units_provider: Callable[[], dict[str, float]],
     ) -> None:
         super().__init__(dialog_parent)
         self._app_context = app_context
@@ -98,6 +97,7 @@ class BattleReportController(
         self._persistence_factory = persistence_factory
         self._history_factory = history_factory
         self._transfer_factory = transfer_factory
+        self._marginal_units_provider = marginal_units_provider
         asset_root = app_context.paths.asset_dir / "game_ui"
         self._asset_root = asset_root
         self._page = BattleReportPage(game_ui_asset_root=asset_root)
@@ -142,7 +142,7 @@ class BattleReportController(
             service_provider=self._current_history_service,
             record_id_provider=lambda: self._latest_state.battle_record_id,
             is_running=self.is_running,
-            reload_analysis=self._load_analysis,
+            reload_analysis=self._load_changed_analysis,
             show_error=self._show_history_error,
         )
         self._marginal_session_controller = BattleMarginalSessionController(

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from src.domain.battle_encounter import BattleEncounterCandidate
+from src.domain.native_analysis import BattleComputeBackend
 from src.domain.battle_report import BattleAnalysisSnapshot
 from src.services.battle_encounter_fit_service import (
     BattleEncounterFitCandidate,
@@ -14,9 +15,9 @@ from src.services.battle_encounter_fit_service import (
     BattleEncounterFitSelection,
     BattleEncounterFitService,
 )
-from src.services.battle_buff_attribute_projection_service import (
-    BattleBuffAttributeProjectionService,
-)
+from src.services.battle_buff_interval_index import BattleBuffIntervalIndex
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
+from src.services.battle_hit_buff_projection_cache import BattleHitBuffProjectionCache
 from src.services.battle_inferred_target_condition_service import (
     BattleInferredEncounter,
     BattleInferredTargetConditionService,
@@ -33,27 +34,13 @@ class BattleEncounterFitProjectionOutcome:
     selection: BattleEncounterFitSelection
 
 
-def _fit_group_id(hit, replay, analysis: BattleAnalysisSnapshot) -> str:
+def _fit_group_id(hit, replay, applied_intervals: tuple[str, ...]) -> str:
     source = (
         str(getattr(hit, "gameplay_effect_id", "") or "").strip()
         or str(getattr(hit, "damage_name", "") or "").strip()
         or str(getattr(hit, "ability_id", "") or "").strip()
         or str(getattr(hit, "skill_name", "") or "").strip()
         or str(getattr(hit, "event_id", "") or "").strip()
-    )
-    intervals = tuple(
-        row
-        for row in tuple(getattr(analysis, "buff_intervals", ()) or ())
-        if str(getattr(row, "source_kind", "") or "")
-        != "outer_realm_season_buff"
-    )
-    applied_intervals = (
-        ()
-        if not intervals
-        else BattleBuffAttributeProjectionService.project_hit(
-            hit,
-            intervals,
-        ).applied_interval_ids
     )
     state_factors = tuple(
         (
@@ -121,6 +108,8 @@ class BattleEncounterFitProjectionService:
             [BattleEncounterCandidate], BattleAnalysisSnapshot
         ],
         group_analysis: BattleAnalysisSnapshot | None = None,
+        backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> BattleEncounterFitProjectionOutcome | None:
         matches = inferred.formula_matches
         if len(matches) < 2:
@@ -138,12 +127,31 @@ class BattleEncounterFitProjectionService:
         reference_hits = {
             row.event_id: row for row in reference_analysis.hits
         }
+        fit_hits = {
+            replay.event_id: stable_hits.get(replay.event_id) or reference_hits[replay.event_id]
+            for replay in reference_analysis.hit_replays
+            if replay.event_id in stable_hits or replay.event_id in reference_hits
+        }
+        intervals = tuple(
+            row for row in tuple(getattr(stable_analysis, "buff_intervals", ()) or ())
+            if row.source_kind != "outer_realm_season_buff"
+        )
+        projection_cache = None
+        if intervals:
+            projection_memo = BattleBuffProjectionMemo(
+                backend,
+                None if checkpoint is None else lambda _progress: checkpoint(),
+            )
+            projection_cache = BattleHitBuffProjectionCache(
+                BattleBuffIntervalIndex(intervals), memo=projection_memo,
+            )
+            projection_cache.prepare(fit_hits.values())
         group_ids = {
             replay.event_id: _fit_group_id(
-                stable_hits.get(replay.event_id)
-                or reference_hits[replay.event_id],
+                fit_hits[replay.event_id],
                 replay,
-                stable_analysis,
+                () if projection_cache is None
+                else projection_cache.project(fit_hits[replay.event_id]).applied_interval_ids,
             )
             for replay in reference_analysis.hit_replays
             if replay.event_id in stable_hits or replay.event_id in reference_hits
@@ -162,7 +170,9 @@ class BattleEncounterFitProjectionService:
             )
             for match in matches
         ]
-        selection = BattleEncounterFitService.select(tuple(candidates))
+        selection = BattleEncounterFitService.select(
+            tuple(candidates), backend=backend, checkpoint=checkpoint,
+        )
         if (
             selection.selection_mode == "ambiguous_default"
             and inferred.environment_ref in analyses

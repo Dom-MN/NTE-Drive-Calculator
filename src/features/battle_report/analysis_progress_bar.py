@@ -50,24 +50,42 @@ class BattleAnalysisProgressBar(QFrame):
         self.hide()
 
     def show_for(self, kind: str) -> None:
-        self.progress.setRange(0, 0)
-        self.progress.setTextVisible(False)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(1)
+        self.progress.setFormat('%p%')
+        self.progress.setTextVisible(True)
         self.message_label.setText(
-            _DETAIL_COPY.get(kind, tr("正在重建当前范围的战报分析…"))
+            tr(_DETAIL_COPY.get(kind, "正在重建当前范围的战报分析…"))
         )
         self.show()
 
     def update_progress(self, progress: BattleAnalysisProgress) -> None:
         message = progress.message
-        if progress.determinate:
+        if progress.overall_percent is not None:
+            self.progress.setRange(0, 100)
+            self.progress.setValue(max(1, min(100, progress.overall_percent)))
+            self.progress.setFormat('%p%')
+            self.progress.setTextVisible(True)
+            if progress.determinate:
+                message = tr(
+                    "{message}（{completed}/{total}）",
+                    message=message, completed=progress.completed, total=progress.total,
+                )
+            self.progress.setToolTip(
+                tr("整体进度按阶段工作量估算；实际完成后推进，全部完成才到 100%。")
+            )
+        elif progress.determinate:
             assert progress.completed is not None
             assert progress.total is not None
             completed = max(0, min(progress.completed, progress.total))
             self.progress.setRange(0, progress.total)
             self.progress.setValue(completed)
-            self.progress.setFormat("%v / %m")
+            self.progress.setFormat(tr("本阶段 %v / %m"))
             self.progress.setTextVisible(True)
-            message = f"{message}（{completed}/{progress.total}）"
+            message = tr(
+                "{message}（{completed}/{total}）",
+                message=message, completed=completed, total=progress.total,
+            )
         else:
             self.progress.setRange(0, 0)
             self.progress.setTextVisible(False)

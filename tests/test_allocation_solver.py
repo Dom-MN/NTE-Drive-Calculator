@@ -60,7 +60,7 @@ def fixture_role(character_id: int, *, weight_id: str, target_suit: str = "Prefe
 
 
 def fixture_context(roles: tuple[AllocationRolePreference, ...], candidates: tuple[AllocationCandidate, ...],
-                    *, strategy: str = "global_optimal") -> AllocationContext:
+                    *, strategy: str = "role_priority") -> AllocationContext:
     suits = (SuitConstraint("Preferred", SHAPES), SuitConstraint("Other", SHAPES))
     return AllocationContext(
         account_id="solver-test", static_dataset=StaticDatasetReference(10, "fixture", 1, "now"),
@@ -108,7 +108,7 @@ class AllocationSolverTests(unittest.TestCase):
     def test_top_one_matches_existing_dispatcher_for_supported_strategies(self) -> None:
         role = fixture_role(1, weight_id="Score")
         frozen_candidates = complete_role_candidates(1, "Score", shape_a_score=3.0)
-        for strategy in ("role_priority", "global_optimal"):
+        for strategy in ("role_priority", "role_priority"):
             with self.subTest(strategy=strategy):
                 context = fixture_context((role,), frozen_candidates, strategy=strategy)
                 old_run = run_legacy_allocation(context)
@@ -298,7 +298,7 @@ class AllocationSolverTests(unittest.TestCase):
                         source="gamepad",
                     )
                     profile = user_dao.create_optimization_profile(
-                        "solver frozen context", allocation_strategy="global_optimal", characters=[{
+                        "solver frozen context", allocation_strategy="role_priority", characters=[{
                             "character_id": 1003, "target_suit_id": "Suit11", "suit_requirement_mode": "four_piece",
                             "core_main_property_id": "DamageUpCosmosBase", "property_weights": {"AtkAdd": 1.0},
                         }],
@@ -362,7 +362,7 @@ class AllocationSolverTests(unittest.TestCase):
                         "item_count": len(rows), "items": rows,
                     }})
                     profile = user_dao.create_optimization_profile(
-                        "shared candidate pool", allocation_strategy="global_optimal", characters=[
+                        "shared candidate pool", allocation_strategy="role_priority", characters=[
                             {"character_id": 1010, "ordinal": 0, "priority_group": 0, "suit_requirement_mode": "none",
                              "core_main_property_id": "DamageUpNatureBase", "property_weights": {"AtkAdd": 1.0}},
                             {"character_id": 1055, "ordinal": 1, "priority_group": 0, "suit_requirement_mode": "none",
@@ -387,3 +387,4 @@ class AllocationSolverTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

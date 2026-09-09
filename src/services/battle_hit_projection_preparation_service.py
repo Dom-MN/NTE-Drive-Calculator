@@ -12,10 +12,12 @@ from src.domain.battle_report import (
     BattleSkillDamageEvidence,
 )
 from src.services.battle_buff_interval_index import BattleBuffIntervalIndex
+from src.services.battle_buff_projection_memo import BattleBuffProjectionMemo
 from src.services.battle_hit_buff_projection_cache import (
     BattleHitBuffProjectionCache,
 )
 from src.services.battle_formula_hit_projection_service import project_formula_hit
+from src.services.battle_weave_source_service import BattleWeaveSourceIndex
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,17 +34,22 @@ class BattleHitProjectionPreparationService:
     def prepare(
         analysis: BattleAnalysisSnapshot,
         skill_evidence: Sequence[BattleSkillDamageEvidence],
+        *,
+        projection_memo: BattleBuffProjectionMemo | None = None,
     ) -> PreparedBattleHitProjections:
         interval_index = BattleBuffIntervalIndex(analysis.buff_intervals)
         evidence_by_event = {row.event_id: row for row in skill_evidence}
-        projection_cache = BattleHitBuffProjectionCache(interval_index)
+        projection_cache = BattleHitBuffProjectionCache(interval_index, memo=projection_memo)
         formula_by_event: dict[str, BattleHitBuffProjection] = {}
         beneficiary_by_event: dict[str, BattleHitBuffProjection] = {}
-        for hit in analysis.hits:
-            if hit.direction != "outgoing":
-                continue
+        outgoing = tuple(hit for hit in analysis.hits if hit.direction == "outgoing")
+        sources = BattleWeaveSourceIndex(analysis.hits)
+        formula_hits = tuple(project_formula_hit(
+            hit, evidence_by_event.get(hit.event_id), weave_sources=sources,
+        ) for hit in outgoing)
+        projection_cache.prepare(formula_hits)
+        for hit, formula_hit in zip(outgoing, formula_hits, strict=True):
             evidence = evidence_by_event.get(hit.event_id)
-            formula_hit = project_formula_hit(hit, evidence)
             projection = projection_cache.project(formula_hit)
             formula_by_event[hit.event_id] = projection
             if (

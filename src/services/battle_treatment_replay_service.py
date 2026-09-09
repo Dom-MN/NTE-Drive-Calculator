@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from src.domain.native_analysis import BattleComputeBackend
+from src.services.battle_native_treatment import infer_treatment_batch
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
@@ -41,7 +43,18 @@ class BattleTreatmentReplayService:
         state_buff_intervals: Sequence[BattleInferredBuffInterval] = (),
         zankou_effect_three_recover_ratio: float | None = None,
         infer_buffs: bool,
+        backend: BattleComputeBackend | None = None,
+        checkpoint: Callable[[], None] | None = None,
     ) -> BattleTreatmentReplayProjection:
+        if backend is not None and backend.supports_battle_compute:
+            events, buff_intervals = infer_treatment_batch(
+                build=build, actions=actions, hits=hits, battle_end_us=battle_end_us,
+                time_stop_intervals=time_stop_intervals,
+                state_buff_intervals=state_buff_intervals,
+                zankou_effect_three_recover_ratio=zankou_effect_three_recover_ratio,
+                infer_buffs=infer_buffs, backend=backend, checkpoint=checkpoint,
+            )
+            return BattleTreatmentReplayProjection(events=events, buff_intervals=buff_intervals)
         events = BattleTreatmentEventService.infer(
             build=build,
             actions=actions,

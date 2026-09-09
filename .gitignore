@@ -71,3 +71,4 @@ nte_capture*.json
 
 # Local battle-damage audit ledgers (may contain account-specific evidence)
 /docs/local-audits/
+/output/

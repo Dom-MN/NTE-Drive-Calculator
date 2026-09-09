@@ -125,6 +125,7 @@ class InventorySyncService:
         self._event_lock = threading.Lock()
         self._latest_inventory_event: dict[str, Any] | None = None
         self._event_ready = threading.Event()
+        self._capture_ready = threading.Event()
         self._snapshot_guard_lock = threading.Lock()
         self._snapshot_guard_token: object | None = None
         self._snapshot_guard_uids: frozenset[tuple[int, int]] | None = None
@@ -441,6 +442,7 @@ class InventorySyncService:
         )
         self._stop_requested.clear()
         self._event_ready.clear()
+        self._capture_ready.clear()
         with self._event_lock:
             self._latest_inventory_event = None
         self._publish(
@@ -464,6 +466,15 @@ class InventorySyncService:
         with self._event_lock:
             self._latest_inventory_event = dict(event)
         self._event_ready.set()
+
+    def _on_capture_status_event(self, event: dict[str, Any]) -> None:
+        """只在库存抓包链路实际就绪后放行登录提示。"""
+
+        payload = event.get("params") if event.get("method") == "event.capture.status" else event
+        if not isinstance(payload, Mapping) or payload.get("profile") != "inventory":
+            return
+        if payload.get("status") == "running":
+            self._capture_ready.set()
 
     def scoped_equipment_snapshot_cursor(self) -> int:
         """Return the in-memory cursor used to fence one equipment dispatch."""

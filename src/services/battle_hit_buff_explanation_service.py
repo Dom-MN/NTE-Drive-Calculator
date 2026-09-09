@@ -154,8 +154,12 @@ class BattleHitBuffExplanationService:
         cls,
         hit: BattleAnalysisHit,
         intervals: Sequence[BattleInferredBuffInterval],
+        *, projection=None, allow_projection_fallback: bool = True,
     ) -> str:
-        projection = BattleBuffAttributeProjectionService.project_hit(hit, intervals)
+        if projection is None and allow_projection_fallback:
+            projection = BattleBuffAttributeProjectionService.project_hit(hit, intervals)
+        if projection is None:
+            return "本击未生成原生 Buff 详情；请先加载对应时段的逐击分析。"
         active_by_id = {row.interval_id: row for row in intervals}
         decisions = tuple(
             decision

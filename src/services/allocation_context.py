@@ -683,10 +683,6 @@ def build_allocation_context(
     allocation_strategy = _required_text(
         version.get("allocation_strategy"), "allocation_strategy"
     )
-    # 2.0 起已移除“驱动优先”；保留旧档案的读取兼容，自动迁移到
-    # 语义最接近且能完成整队重算的全局最优模式。
-    if allocation_strategy == "drive_priority":
-        allocation_strategy = "global_optimal"
     return AllocationContext(
         account_id=_required_text(account.get("account_id"), "account_id"),
         static_dataset=StaticDatasetReference(

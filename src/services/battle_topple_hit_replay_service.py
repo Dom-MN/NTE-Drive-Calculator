@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 
 from src.domain.battle_report import (
     BattleAnalysisHit,
     BattleAnalysisSnapshot,
     BattleCharacterBaseline,
+    BattleHitBuffProjection,
     BattleHitReplayFactor,
     BattleHitReplayResult,
     BattleHitReplayTerm,
@@ -17,16 +18,9 @@ from src.domain.battle_report import (
 from src.services.battle_buff_attribute_projection_service import (
     BattleBuffAttributeProjectionService,
 )
-from src.services.damage_calculation_service import (
-    DamageCalculationService,
-    DamageScene,
-    DamageScalingStat,
-    DirectDamageInput,
-    EnemyDefenseProfileInput,
-    ToppleDamageInput,
-    calculate_enemy_topple_limit_multiplier,
+from src.services.battle_special_replay_numeric import (
+    mitigation_input, numeric_replay,
 )
-from src.services.battle_hit_replay_support import settle_replay_damage
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,23 +110,6 @@ def _buff_terms(projection, property_ids: Sequence[str]) -> tuple[BattleHitRepla
     )
 
 
-def _signed_error(observed: float, predicted: float) -> float | None:
-    if observed <= 0.0:
-        return None
-    return (predicted - observed) / observed * 100.0
-
-
-def _target_multiplier(analysis: BattleAnalysisSnapshot) -> tuple[float, str]:
-    condition = analysis.target_condition
-    assert condition is not None
-    if condition.environment_kind == "feast" and condition.enemy_topple_limit >= 70.0:
-        return 25.0, "争锋高阶 Boss 实测档位 2500%"
-    return (
-        calculate_enemy_topple_limit_multiplier(condition.enemy_topple_limit),
-        "普通档 max(1, UnbalMax ÷ 3)",
-    )
-
-
 def _half_label(scope_half: str) -> str:
     return {"upper": "上半场", "lower": "下半场"}.get(scope_half, scope_half)
 
@@ -191,7 +168,29 @@ def _baselines_for_hit(
 class BattleToppleHitReplayService:
     """Replay one observed topple event as a sum of all configured role cells."""
 
+    @staticmethod
+    def projection_hits(
+        hit: BattleAnalysisHit, analysis: BattleAnalysisSnapshot,
+        character_configs: Mapping[int, BattleToppleCharacterConfig], *,
+        source_character_id: int | None = None,
+    ) -> tuple[BattleAnalysisHit, ...]:
+        """Prepare all role cells together before entering per-hit replay."""
+        if source_character_id is None:
+            baselines, errors = _baselines_for_hit(hit, analysis)
+            if errors:
+                return ()
+        else:
+            baselines = tuple(row for row in analysis.baselines
+                              if row.character_id == source_character_id)
+        return tuple(
+            replace(hit, character_id=baseline.character_id,
+                    character_name=baseline.character_name,
+                    damage_attribute=character_configs[baseline.character_id].damage_attribute)
+            for baseline in baselines if baseline.character_id in character_configs
+        )
+
     @classmethod
+    @numeric_replay
     def replay(
         cls,
         *,
@@ -200,6 +199,7 @@ class BattleToppleHitReplayService:
         character_configs: Mapping[int, BattleToppleCharacterConfig],
         source_character_id: int | None = None,
         formula_type: str = "倾陷伤害（逐角色求和）",
+        projection_for_hit: Callable[[BattleAnalysisHit], BattleHitBuffProjection] | None = None,
     ) -> BattleHitReplayResult:
         condition = analysis.target_condition
         if condition is None:
@@ -210,8 +210,7 @@ class BattleToppleHitReplayService:
             )
         factors: list[BattleHitReplayFactor] = []
         missing: list[str] = []
-        contributions: list[float] = []
-        target_multiplier, target_formula = _target_multiplier(analysis)
+        prepared = []
         if source_character_id is None:
             baselines, roster_errors = _baselines_for_hit(hit, analysis)
         else:
@@ -238,25 +237,39 @@ class BattleToppleHitReplayService:
                     f"{baseline.character_name} 缺少静态属性或倾陷等级曲线"
                 )
                 continue
-            contribution = cls._character_contribution(
-                hit=hit,
-                analysis=analysis,
-                baseline=baseline,
-                config=config,
-                target_multiplier=target_multiplier,
+            projection, cell_inputs = cls._character_inputs(
+                hit=hit, analysis=analysis, baseline=baseline, config=config,
+                projection_for_hit=projection_for_hit,
             )
-            factors.append(contribution)
-            contributions.append(contribution.value)
+            prepared.append((baseline, config, projection, cell_inputs))
 
-        if not contributions or missing:
+        if not prepared or missing:
             return cls._unreplayable(
                 hit,
                 *missing or ("没有可计算的出场角色格子",),
                 formula_type=formula_type,
             )
-        predicted = settle_replay_damage(sum(contributions))
-        signed_error = _signed_error(hit.damage, predicted)
-        absolute_error = None if signed_error is None else abs(signed_error)
+        numbers = yield ("special_topple_v1", {
+            "observed": hit.damage, "enemy_topple_limit": condition.enemy_topple_limit,
+            "feast": condition.environment_kind == "feast",
+            "cells": [cell for _, _, _, cell in prepared],
+        })
+        target_multiplier = numbers["target_multiplier"]
+        target_formula = (
+            "争锋高阶 Boss 实测档位 2500%"
+            if condition.environment_kind == "feast" and condition.enemy_topple_limit >= 70.0
+            else "普通档 max(1, UnbalMax ÷ 3)"
+        )
+        factors.extend(
+            cls._character_contribution(
+                baseline=baseline, config=config, projection=projection,
+                cell_inputs=inputs, numbers=cell_numbers, target_multiplier=target_multiplier,
+            )
+            for (baseline, config, projection, inputs), cell_numbers
+            in zip(prepared, numbers["cells"], strict=True)
+        )
+        predicted = numbers["selected"]
+        signed_error, absolute_error = numbers["signed_error"], numbers["absolute_error"]
         confidence = (
             "高" if absolute_error is not None and absolute_error <= 0.5
             else "中" if absolute_error is not None and absolute_error <= 2.0
@@ -307,14 +320,14 @@ class BattleToppleHitReplayService:
         )
 
     @staticmethod
-    def _character_contribution(
+    def _character_inputs(
         *,
         hit: BattleAnalysisHit,
         analysis: BattleAnalysisSnapshot,
         baseline: BattleCharacterBaseline,
         config: BattleToppleCharacterConfig,
-        target_multiplier: float,
-    ) -> BattleHitReplayFactor:
+        projection_for_hit: Callable[[BattleAnalysisHit], BattleHitBuffProjection] | None = None,
+    ) -> tuple:
         condition = analysis.target_condition
         assert condition is not None
         role_hit = replace(
@@ -323,78 +336,32 @@ class BattleToppleHitReplayService:
             character_name=baseline.character_name,
             damage_attribute=config.damage_attribute,
         )
-        projection = BattleBuffAttributeProjectionService.project_hit(
-            role_hit,
-            analysis.buff_intervals,
+        projection = (
+            BattleBuffAttributeProjectionService.project_hit(role_hit, analysis.buff_intervals)
+            if projection_for_hit is None else projection_for_hit(role_hit)
         )
         frozen = {row.property_id: row.value for row in baseline.stats}
         values = BattleBuffAttributeProjectionService.apply_additive(
             frozen,
             projection,
         )
-        strength = (
-            max(0.0, float(values.get("UnbalIntensityBase", 0.0)))
-            * (1.0 + float(values.get("UnbalIntensityUp", 0.0)))
-            + float(values.get("UnbalIntensityAdd", 0.0))
-        )
-        topple_damage_up = float(values.get("UnbalDamageUp", 0.0))
+        return projection, {
+            "strength_base": float(values.get("UnbalIntensityBase", 0.0)),
+            "strength_up": float(values.get("UnbalIntensityUp", 0.0)),
+            "strength_add": float(values.get("UnbalIntensityAdd", 0.0)),
+            "damage_up": float(values.get("UnbalDamageUp", 0.0)),
+            "level_multiplier": config.level_multiplier,
+            "mitigation": mitigation_input(condition, baseline.character_level, values,
+                                           projection, config.damage_attribute,
+                                           clamp_defense=False),
+        }
+
+    @staticmethod
+    def _character_contribution(
+        *, baseline, config, projection, cell_inputs, numbers, target_multiplier,
+    ) -> BattleHitReplayFactor:
+        strength, topple_damage_up = numbers["strength"], cell_inputs["damage_up"]
         attribute = config.damage_attribute
-        base_resistance = dict(condition.resistances).get(attribute, 0.20)
-        resistance_properties = (
-            f"DamageResist{attribute.title()}Base",
-            f"DamageResist{attribute.title()}Add",
-        )
-        target_resistance = sum(
-            row.additive_value
-            for row in projection.modifiers
-            if row.target_scope == "target"
-            and row.property_id in resistance_properties
-        )
-        penetration_property = f"DamagePenetrate{attribute.title()}"
-        resistance_penetration = float(values.get(penetration_property, 0.0))
-        mitigation = DirectDamageInput(
-            skill_multiplier=0.0,
-            scaling_stat=DamageScalingStat.ATTACK,
-            attack_base=0.0,
-            attack_up=0.0,
-            attack_add=0.0,
-            health_base=0.0,
-            health_up=0.0,
-            health_add=0.0,
-            defense_base=0.0,
-            defense_up=0.0,
-            defense_add=0.0,
-            character_level=baseline.character_level,
-            enemy_level=condition.enemy_level,
-            crit_rate=0.0,
-            crit_damage=0.0,
-            defense_penetration=float(values.get("DefIgnore", 0.0)),
-            defense_reduction=condition.defense_reduction,
-            boss_resistance=base_resistance + target_resistance,
-            resistance_penetrations=(resistance_penetration,),
-            scene=(
-                DamageScene.OPEN_WORLD
-                if condition.scene == "open_world"
-                else DamageScene.OUTER_REALM
-            ),
-            enemy_defense_profile=(
-                None
-                if condition.enemy_defense_base is None
-                else EnemyDefenseProfileInput(
-                    defense_base=condition.enemy_defense_base,
-                    defense_up=condition.enemy_defense_up,
-                    defense_add=condition.enemy_defense_add,
-                )
-            ),
-        )
-        result = DamageCalculationService.calculate_topple(ToppleDamageInput(
-            level_multiplier=config.level_multiplier,
-            mitigation=mitigation,
-            character_topple_strength=strength,
-            topple_damage_increases=(topple_damage_up,),
-            enemy_topple_limit=condition.enemy_topple_limit,
-            enemy_topple_limit_multiplier_override=target_multiplier,
-        ))
         strength_terms = (
             *_baseline_terms(
                 baseline,
@@ -426,7 +393,7 @@ class BattleToppleHitReplayService:
                 term_id=f"character:{baseline.character_id}:defense",
                 property_id="DefenseMultiplier",
                 label="防御区",
-                value=result.defense_multiplier,
+                value=numbers["defense"],
                 source_group="calculated",
                 source_name="角色与敌方",
                 is_percent=False,
@@ -436,7 +403,7 @@ class BattleToppleHitReplayService:
                 term_id=f"character:{baseline.character_id}:resistance",
                 property_id=f"ResistanceMultiplier:{attribute}",
                 label=f"{attribute} 抗性区",
-                value=result.resistance_multiplier,
+                value=numbers["resistance"],
                 source_group="calculated",
                 source_name="角色与敌方",
                 is_percent=False,
@@ -446,7 +413,7 @@ class BattleToppleHitReplayService:
         return BattleHitReplayFactor(
             factor_id=f"topple_character:{baseline.character_id}",
             label=f"{baseline.character_name}倾陷贡献",
-            value=result.damage,
+            value=numbers["damage"],
             evidence_basis=(
                 f"{baseline.source} 面板 + 官方 {config.damage_attribute} 属性 + "
                 "命中时 Buff"
@@ -454,8 +421,8 @@ class BattleToppleHitReplayService:
             formula=(
                 f"{config.level_multiplier:g} × "
                 f"(1 + {strength:g}/300 + {topple_damage_up:g}) × "
-                f"{target_multiplier:g} × {result.defense_multiplier:.6f} × "
-                f"{result.resistance_multiplier:.6f}"
+                f"{target_multiplier:g} × {numbers['defense']:.6f} × "
+                f"{numbers['resistance']:.6f}"
             ),
             terms=terms,
         )

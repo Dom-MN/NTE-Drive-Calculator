@@ -43,7 +43,7 @@ class WeightedAllocationRunnerTests(unittest.TestCase):
                 built_at_utc="2026-08-31T00:00:00+00:00",
             ),
             snapshot=None,
-            profile_id=1, profile_version=1, allocation_strategy="global_optimal",
+            profile_id=1, profile_version=1, allocation_strategy="role_priority",
             solver_version="test", roles=(role,), candidates=(), shapes=(), suits=(),
         )
         detail = {"profile": {"fork_refinement_level": 5}}
@@ -79,3 +79,4 @@ class WeightedAllocationRunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

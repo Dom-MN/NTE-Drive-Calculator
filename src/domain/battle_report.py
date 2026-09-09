@@ -113,7 +113,7 @@ class BattleSummaryPersistenceOutcome:
     battle_record_id: int | None = None
     pruned_battle_record_ids: tuple[int, ...] = ()
     retention_kind: Literal["auto", "manual"] | None = None
-
+    warning_message: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class StoredBattleSummary:
@@ -561,6 +561,7 @@ class BattleCharacterBaseline:
     inherent_hp: float | None = None
     source_max_hp: float | None = None
     enabled_team_passive_ids: tuple[str, ...] = ()
+    selected_awaken_effect_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import shutil
+import threading
+from concurrent.futures import CancelledError
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +17,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QInputDialog, QLabel, QMessa
 from src.i18n import tr, display_term
 from src.app.theme import current_style_sheet
 from src.app.workers import WorkerThread
+from src.integrations.global_hotkeys import GlobalHotkeyManager
 from src.optimizer.plan_diff import build_plan_diff
 from src.optimizer.contracts import (
     DIFF_ADDED,
@@ -132,6 +135,8 @@ def _run_allocation(
     crit_rate_baselines: dict[str, Any] | None = None,
     custom_weapons: dict[str, Any] | None = None,
     filter_settings: AllocationFilterSettings | None = None,
+    blueprint_combo_limit: int = 500,
+    cancel_check=None,
 ) -> Any:
     try:
         database_path, config_dir, user_config_dir, _, static_database_path = _allocation_paths(self)
@@ -166,6 +171,8 @@ def _run_allocation(
             "crit_rate_caps": crit_rate_caps or {},
             "crit_rate_baselines": crit_rate_baselines or {},
             "custom_weapons": custom_weapons or {},
+            "blueprint_combo_limit": blueprint_combo_limit,
+            "cancel_check": cancel_check,
         }
         logger.info(
             f"使用官方背包稳定快照 {projection.snapshot_id} 计算："
@@ -187,6 +194,8 @@ def _run_allocation(
             user_database_path=database_path,
         )
         if unlocked_sel:
+            if cancel_check is not None and cancel_check():
+                raise CancelledError(tr("分配计算已取消"))
             fp, _ = a.execute_allocation_inventory(
                 list(filtered_items),
                 unlocked_sel,
@@ -226,6 +235,8 @@ def _start_allocation_worker(self: Any) -> None:
             getattr(self, "_pending_crit_rate_baselines", {}),
             getattr(self, "_pending_custom_weapons", {}),
             getattr(self, "_pending_filter_settings", AllocationFilterSettings()),
+            getattr(self, "_pending_blueprint_combo_limit", 500),
+            self._cancel_event.is_set,
         ),
         parent=self,
     )
@@ -400,6 +411,7 @@ def _confirm_unsaved_allocation_before_recompute(self: Any) -> bool:
 
 def _on_done(self: Any, r: Any) -> None:
     try:
+        self._hotkey_manager.stop(owner="allocation")
         logger.info(
             f"_on_done 收到结果: type={type(r).__name__}, keys={list(r.keys()) if isinstance(r, dict) else 'N/A'}"
         )
@@ -426,8 +438,12 @@ def _on_done(self: Any, r: Any) -> None:
 
 
 def _on_exec_error(self: Any, err: str) -> None:
+    self._hotkey_manager.stop(owner="allocation")
     self.btn_run.setEnabled(True)
     self.btn_run.setText(tr("⚡  开始计算"))
+    if err == "任务已取消":
+        logger.info("分配计算已由全局停止键取消")
+        return
     QMessageBox.critical(
         self.dialog_parent,
         tr("计算失败"),
@@ -534,6 +550,9 @@ def _save_alloc(self: Any, show_message: bool = True) -> bool:
                         "source": "allocation",
                         "source_role_name": role_name,
                         "strategy": getattr(self, "_pending_strat", ""),
+                        "blueprint_combo_limit": int(
+                            getattr(self, "_pending_blueprint_combo_limit", 500)
+                        ),
                         "last_diff": _persistable_plan_diff(role_diff),
                         "changed_uids": sorted(_plan_changed_uids(plan, role_diff)),
                         "assignment_scores": _plan_assignment_scores(
@@ -628,6 +647,7 @@ class AllocationController(QObject):
         save_preferences: Callable[[], None],
         refresh_roles: Callable[[], None],
         refresh_equipment: Callable[[], None],
+        hotkey_manager: GlobalHotkeyManager,
     ) -> None:
         super().__init__(dialog_parent)
         self.app_context = app_context
@@ -637,6 +657,8 @@ class AllocationController(QObject):
         self._save_preferences_callback = save_preferences
         self._refresh_roles_callback = refresh_roles
         self._refresh_equipment_callback = refresh_equipment
+        self._hotkey_manager = hotkey_manager
+        self._cancel_event = threading.Event()
         self.btn_run: QPushButton | None = None
         self._worker: WorkerThread | None = None
         self.final_plan: dict = {}
@@ -657,6 +679,7 @@ class AllocationController(QObject):
         self._pending_crit_rate_baselines: dict[str, Any] = {}
         self._pending_custom_weapons: dict[str, Any] = {}
         self._pending_filter_settings = AllocationFilterSettings()
+        self._pending_blueprint_combo_limit = 500
         self._allocation_custom_weapons: dict[str, Any] = {}
         self._ui_preferences: dict[str, Any] = {}
 
@@ -677,6 +700,7 @@ class AllocationController(QObject):
         crit_rate_baselines: dict[str, Any],
         custom_weapons: dict[str, Any],
         filter_settings: AllocationFilterSettings,
+        blueprint_combo_limit: int = 500,
     ) -> None:
         if self.btn_run is None:
             raise RuntimeError("allocation run button has not been bound")
@@ -692,7 +716,17 @@ class AllocationController(QObject):
         self._pending_custom_weapons = custom_weapons
         filter_settings.validate()
         self._pending_filter_settings = filter_settings
+        self._pending_blueprint_combo_limit = int(blueprint_combo_limit)
+        if self._pending_blueprint_combo_limit < 1:
+            raise ValueError(tr("图纸组合数必须为正整数"))
+        self._cancel_event.clear()
+        self._hotkey_manager.start(owner="allocation", on_stop=self.cancel)
         _start_allocation_worker(self)
+
+    def cancel(self) -> None:
+        """Handle the shared F12 stop key at optimizer safe points."""
+
+        self._cancel_event.set()
 
     def confirm_recompute(self) -> bool:
         self._ui_preferences = self._preferences_provider()
@@ -712,6 +746,8 @@ class AllocationController(QObject):
         self._allocation_lock_snapshot = None
         self._selected_locked_role_names = frozenset()
         self._pending_filter_settings = AllocationFilterSettings()
+        self._cancel_event.set()
+        self._hotkey_manager.stop(owner="allocation")
         self._equipment_presentation.clear()
 
     def _run_allocation(self, *args: Any, **kwargs: Any) -> Any:
