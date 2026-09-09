@@ -19,6 +19,16 @@ official upstream capability:
 Coverage, single-character combined margin, team gains and combat profiling are designed only once those
 official inputs exist. Debug samples do not enter the product data model.
 
+The standalone Rust analysis core now serves whole pages through a direct database read; the analysis
+and candidate orchestration boundary is in
+[External integrations](integrations.md#11-nte-analysis-core). What remains to accept is every
+retained report and range diff, unknown inputs, editor candidate freezing, automatic target snapshot
+restore, cancellation and account switching, plus packaging, upgrade, rollback and a real Windows page
+check. Performance is measured separately for the official page service and for real interaction:
+capability in source is not the same as a deployed build or a measured gain. The C++ project under
+`native/counterfactual-core/` stays a separate validation harness and does not enter the production
+path.
+
 ## 2. Team gains and global loadouts
 
 The long-term goal is to unify direct-damage margin, Cycle, Break, DOT, team buffs and equipment

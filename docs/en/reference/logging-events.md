@@ -59,6 +59,42 @@ character instances — never UID lists. Battle-report fields may include `battl
 `persistence_status`, `retention_kind`, `inserted`, `changed`, `pruned_record_count`, `character_count`,
 `skill_count` and `total_hits`; raw summaries and damage detail are never logged.
 
+Inventory sync logs the following decision chain at INFO without requiring verbose logging:
+
+| Event | Diagnostic |
+| --- | --- |
+| `inventory_sync.baseline_selected` | Whether this run's dedup baseline is valid, its source, item count and settle window; a vision source is never a native baseline. |
+| `inventory_sync.baseline_invalid` | A saved snapshot could not seed the dedup baseline; a new complete snapshot is still accepted, and the raw validation error is not logged. |
+| `inventory_sync.core_connected` | Core/data version (when the handshake provides one in a valid format), protocol and capabilities; never the executable's absolute path. |
+| `inventory_sync.event_evaluated` | The stabilisation verdict for the event taken, its fixed reason code, the completeness flag, field types, declared/actual counts, generation/sequence and the assembly-guard item count. |
+| `inventory_sync.session_summary` | Cumulative processed count, per-verdict and per-rejection counts, commit/save failures, items awaiting stability and time since the last processed event; a final summary is emitted on both stop and error. |
+| `inventory_sync.snapshot_committed` | The new snapshot summary, the previous inventory's source and item count, and how long the content stayed stable; a shrinking count is recorded as fact, never treated as incomplete on the strength of a historical count. |
+| `inventory_sync.failed` | Keeps the domain error code and uses `failure_stage` to separate settings loading, Core start-up, capture start, event handling, saving and post-commit work. |
+
+`event_evaluated` is rate-limited per "verdict + fixed reason code": the first is logged immediately
+and later ones of the same kind at most every 30 seconds, with no loss to the aggregate counts. The
+session summary is logged every 30 seconds and on exit. The processed count is how many times the
+worker thread took an event from the latest slot and judged it — not the number of network packets,
+not the total events Core emitted, and not the pre-merge callback count; zero only means this session
+has not processed an inventory event yet and is not on its own proof that the adapter saw no traffic.
+Rejection reason codes separate an incomplete snapshot, a declared-count mismatch, a duplicate
+equipment/character instance, other structural invalidity, an assembly-inventory guard mismatch, a
+stale or duplicate sequence, and old-format events ignored during a character-list upgrade. Raw
+validation text, which can contain UIDs, is never logged.
+
+`inventory_sync.snapshot_commit_retry` also records this session's save attempts and the candidate
+item count. SQLite save-failure diagnostics include `save_error_code`, `save_stage`,
+`sqlite_exception_type`, `sqlite_errorcode`, `sqlite_errorname`, `sqlite_message` and
+`rollback_status`; a code or name the driver did not supply is not written. `save_stage` separates
+opening the transaction, writing the snapshot, equipment and stats, updating the equipment-character
+and independent-character mappings, switching the current pointer and committing. A failed rollback
+adds the same class of safe SQLite fields under `rollback_error` and keeps the first error.
+Classification uses the primary SQLite error code while diagnostics keep the full extended code.
+Messages allow only fixed SQLite text and table, column or constraint names in a restricted format;
+other raw messages stay private so a trigger or binding error cannot smuggle out business data or
+paths. These diagnostics never read or log SQL parameters, UIDs, complete snapshots or the account
+display name.
+
 Mouse-scan report events log only the profile, resolution, expected/captured counts, page count, queue
 high-water mark, duration and the safe-termination type. Post-scan state management logs only planned
 and completed counts plus aggregate state transitions, never target indexes.

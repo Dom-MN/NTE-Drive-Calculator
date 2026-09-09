@@ -35,6 +35,109 @@ Per-hit pagination, buff/debuff intervals, complete growth/weapon snapshots, fou
 setups, enemy instances, official scene IDs and historical per-hit export are not yet product contracts.
 Debug samples do not substitute for a public CLI capability.
 
+### 1.1 nte-analysis-core
+
+`nte-analysis-core.exe` is a standalone Rust analysis component, built, deployed and process-managed
+separately from the capture `nte-core.exe`. It neither links nor starts the capture Core and never
+touches the game, packet capture or the network. The official battle-report page consumes the component's
+declared `battle_page_v1` capability: updating the Python source alone does not enable a capability that
+is not deployed, and a missing capability or a version or hash mismatch must be reported as a component
+error.
+
+The whole-page protocol is UTF-8 JSON over stdin/stdout, with one short-lived process per page request.
+The request freezes the account, generation, record number, account and static database paths, semantic
+configuration, analysis range, characters and user candidates, and never passes Python-precomputed
+per-hit or buff data. The semantic configuration `gameplay_effect_semantics.json` is read only from the
+configuration directory shipped with the app, never from a same-named file in the user-writable
+configuration directory. A missing release asset is reported as an incomplete installation and can be
+retried once the asset is repaired; analysis must never continue with empty rules. Rust verifies the
+account database identity, the static schema and the bound dataset, and takes the shared facts in a
+read-only transaction, releasing the account connection as soon as reading finishes so a long calculation
+does not hold the account WAL. The static catalogue and rule cache belong to that request alone;
+candidates apply their frozen edits separately and never follow the active loadout or share a mutable
+panel between candidates. Public rule declarations are generated from official static sources by the
+build tooling and bound to the dataset — the runtime never calls a Python builder, and unrecognised
+characters, mechanisms and evidence stay unknown.
+
+Rust owns raw axis parsing and source pairing, action and time-stop projection, target mapping and
+fitting, panel and skill evidence, character and Arc state, healing and buffs, complete per-hit replay,
+composition, counterfactual comparison and marginal candidate orchestration. The response carries the
+page analysis, the target catalogue, candidate display axes, marginal gains and the dynamic panel. On a
+non-overview response, `hit_details` uses `interned_v1` shared string, attribute, decision and projection
+tables referenced by analysis/candidate, raw-attribution/formula-source and event ID. Python validates
+the table indexes and event bindings and, on click, only assembles existing read-only objects with
+explanatory copy; a missing detail stays ungenerated rather than falling back to computing buff rules.
+Counterfactual damage composition and its character and damage entries are decoded recursively into
+official domain types — an unvalidated JSON dictionary is never handed to the page for drawing.
+
+`detail_level: editor` is a separate narrow entry point on the same protocol, needing only the frozen
+account, generation, record number and account database path. Rust reads the necessary columns from the
+final per-hit data and returns the character inference facts and half-scope attribution in
+`editor_facts`, loading no static configuration and running no whole-match replay. Python still prepares
+the editor's growth configuration, inventory candidates and equipment selection, and generates the
+explanatory copy through the shared display service.
+
+A component declaring `battle_page_identity_v1` supports `detail_level: identity`, which reuses the
+official page's read-only fact loading and returns only a SHA-256 digest of the ordered inputs without
+creating a replay engine. Keyed on that digest, the complete calculation request, the account generation,
+and the component, static database and semantic configuration identities, Python reuses at most two
+compressed raw responses within a total compressed budget of 32 MiB; a single raw response over 64 MiB is
+not cached. The cache belongs to one history service and is cleared when the report changes, and every
+hit re-decodes the domain objects. A digest that changes across a cold calculation cancels the result,
+and failed or incomplete responses are never cached; a component without that capability simply
+calculates normally. Persisting a purely presentational selection does not change the native digest,
+while a real input change such as a target-inference snapshot does invalidate the cache.
+
+A component declaring `battle_parallel_v1` may compute buff-removal groups and Console candidates in
+parallel inside the one process. The owner prepares the database input, each worker owns its mutable
+projection state exclusively, and the complete result is assembled in the original order, leaving per-hit
+floating-point operations and summation order unchanged. By default it picks at most four workers from
+the available CPUs, a frozen memory budget and the task size, reducing concurrency or going serial when
+resources are low, memory cannot be queried or thread creation fails. Progress is still sent by the owner
+per actually completed candidate, and cancellation still ends the whole standalone analysis process.
+`--threads auto|1|2|4` exists only for explicit performance comparison; Python never dispatches per-hit
+work itself or starts several core processes.
+
+The response re-checks the version, dataset, account, generation and record identity; cancellation or an
+invalidated frozen context ends and reclaims that analysis process without affecting the capture process,
+and never silently turns a failure into a Python-calculated success. Account and static configuration are
+validated again before returning and before saving. A component declaring `battle_progress_v1` can emit
+bounded NDJSON stage events on stderr under `--progress`, while stdout still returns exactly one complete
+page result. Buff removal and Console candidates count actually completed items; other stages report only
+stage status. Python validates and forwards progress on the calling thread while continuously draining
+both pipes, and progress shares the cancellation and request-identity boundary with the final result.
+From the stages the frozen request contains, Python maps core events to a monotonic overall workload
+percentage and sends 100% only once everything has succeeded. An older component without the progress
+capability can only advance at start, assembly and success, and never grows with elapsed time. Events
+carry no character, account or raw report content. Rust does not write the account database: automatic
+target inference is returned as a complete versioned `derived_snapshot`, which Python saves on a
+best-effort basis through the existing DAO — an identical result skips the write, a user-confirmed
+condition wins, and a failure never discards a finished page result. The snapshot belongs to the derived
+layer only and does not change the original report.
+
+The lower-level `direct_v1`, `buff_projection_v1`, `buff_projection_plan_v1` and `battle_compute_v1`
+remain in use for standalone algorithm calls, older component boundaries and differential verification.
+A projection keeps half-open time boundaries, source and target labels, interval order, duplicate
+evidence, stack coverage and complete adopt/exclude decisions; shared string and interval tables compress
+transport only and never reduce mechanism coverage or sample it. Valid input beyond an explicit workload
+limit may be split into ordered batches; other protocol errors are reported directly. The original Python
+algorithm serves as the differential reference, and its orchestration time must never be counted as the
+whole-page native entry point's time.
+
+In a source checkout the runtime component lives in `third_party/analysis-core`; inside PyInstaller the
+binary ships alongside `analysis-core-meta/component.json`, and the version and SHA-256 are checked
+before loading. `tools/counterfactual/package_rust_core.py` collects the standalone output, provenance,
+licence and source digest, and `--destination` can write to an isolated verification directory first. A
+missing, corrupt or capability-mismatched component is not a version that passes deployment acceptance.
+
+The differential tooling verifies against a frozen account copy only and never modifies original account
+data, covering the complete result, every retained report, ranges, missing input, user candidates,
+cancellation and derived restore. Performance is recorded separately for native internal calculation,
+process and transport, and the complete page service — a local kernel speed-up never stands in for the
+end-to-end gain. Headless verification excludes Qt drawing, account switching and real interaction, so an
+official deployment still has to complete [Windows validation](validation/windows.md) plus the component
+upgrade and rollback checks.
+
 ## 2. Vision, OCR and game input
 
 `src/integrations/vision` exclusively owns window coordinates, screenshots, cell detection, mouse actions

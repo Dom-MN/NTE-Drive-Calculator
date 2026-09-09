@@ -24,7 +24,27 @@ snapshot; it does not reimplement business queries.
 nte-core inventory events pass through collection, a completeness check and content stabilisation in
 `InventorySnapshotStabilizer`, then commit equipment, stats, character instances and the current pointer
 in a single transaction. Stability is judged by a complete content fingerprint plus a quiet window,
-never by the historical maximum count.
+never by the historical maximum count. A missing character-list field and an explicitly empty list
+are different snapshot contents: when a character list arrives, a new snapshot is written even if the
+equipment is unchanged, and history is never rewritten.
+
+Native sync deduplicates only against a saved native snapshot. Coming back to native sync from a
+vision inventory always saves a new native-source snapshot, even when the items are identical. Sync
+status distinguishes the two sources: a vision scan provides no character instances and is never
+described as an old-Core snapshot. When a native snapshot carries no character list, or no character
+instance has been observed yet, the status says so rather than implying anything about the Core
+version or about fast assembly being available for every character; assembly still resolves target
+character identity through its own public validation. Identical content arriving again refreshes the
+status without saving another snapshot.
+
+When a stable snapshot fails to save, the interface distinguishes a database lock conflict,
+read-only or permission problems, insufficient space, corruption, a read/write or open failure, a
+schema mismatch, a constraint conflict and a transaction error, and says the cause is unknown when
+it cannot classify one. Technical detail keeps the SQLite exception type, the raw extended error
+code and name, the failing stage, a safe message and the rollback result; a rollback error never
+masks the first save error. Retries continue in the background at the existing interval — the app
+never repairs the database or creates a new account on its own. Log fields and the privacy boundary
+are in [Logging event specification](reference/logging-events.md).
 
 `inventory.get_latest` reads the most recent capture and does not force a refresh. Downstream work
 resolves the current `snapshot_id` once at start and does not follow the latest pointer while running.
@@ -102,9 +122,13 @@ temporary vision UID into an official UID with deferred warehouse write-back.
 ## 4. Calculation, character configuration and custom characters
 
 A calculation request freezes the account, generation, snapshot, static dataset, profile, character
-order/equal-priority groups, target loadout slot and lock snapshot, and returns an immutable
-`WeightedAllocationPreview`. Saving consumes only that preview and never re-reads the latest inventory
-or configuration.
+order/equal-priority groups, target loadout slot, lock snapshot and the blueprint combination cap,
+and returns an immutable `WeightedAllocationPreview`. Saving consumes only that preview and never
+re-reads the latest inventory or configuration. Combination evaluation reuses the scores already in
+the current pinned candidate pool and changes no blueprint candidate, search order, tie-break or
+search limit; switching pools or entering a new reservation-conflict branch re-prepares that data,
+while checks that depend on the current loadout state, such as the CRIT threshold, still run one
+step at a time.
 
 Candidate rules:
 
@@ -113,8 +137,8 @@ Candidate rules:
 2. Account-level "filter settings" select no rarity or type by default. Once Cartridge or Module is
    selected, at least one rarity must be selected too. For a selected type, only the selected rarities
    reach the character-management filter and the rest are filtered out; unselected types follow the
-   default rules. This filter runs once before character configuration, and character-priority, global-
-   optimum and incremental-update modes share the same candidate result.
+   default rules. This filter runs once before character configuration, and the character-priority and
+   incremental-update modes share the same candidate result.
 3. The Module sub-stat blacklist is a hard filter by default. With "blacklist means zero weight" on,
    matching Modules are not eliminated — the blacklisted stats score zero in the Top-K ranking. Custom
    sub-stat selection prefers the deepest/most-hit candidate pool, widening step by step when no
@@ -125,12 +149,32 @@ Candidate rules:
    stat, and it does not change the blacklist's current hard-filter or zero-weight semantics.
 6. Equal-priority group CRIT recovery goes: swap the Cartridge only, then freeze the required set pieces
    and re-pick the extra pieces, then rebuild only the failed characters from scratch.
-7. UIDs already assigned to an earlier character do not enter later candidate pools; virtual placeholders
-   score 0 and never enter a lock or fast assembly.
+7. Under character priority, UIDs fixed by an earlier group do not enter later candidate pools, but
+   Modules that tie on score and are genuinely equivalent within the final blueprint defer their
+   ownership. Equivalent candidates must match on shape, score, stat priority, extra-shape gain and
+   CRIT constraints; a later group may use them, but every such use keeps a one-to-one back-fill for
+   all of the earlier reserved slots. An equal-priority group completes its joint allocation first
+   and only then establishes reservations as a whole; ownership is back-filled by stable UID when
+   the calculation ends. When an ordinary same-tier matrix search exhausts the reservation branches
+   with no back-fillable result, the earlier reserved slots join the same matching to recover a
+   complete plan within the original blueprint candidate range, still checking the original CRIT cap
+   and the other constraints; an existing back-fillable result and the explicit CRIT-minimum path
+   keep their original rules. Virtual placeholders score 0 and never enter a lock or fast assembly.
+8. The allocation settings' "blueprint combination cap" defaults to 500 and limits how many entries
+   of the blueprint Cartesian product the current priority group evaluates: for a single-character
+   group that is just that character, for an equal-priority group it is the group's joint
+   combinations. Any positive integer is accepted; above the theoretical number of combinations only
+   that total is evaluated. The global stop key cancels at a combination-enumeration boundary.
 
 Unless explicitly overridden, official characters use the graduation template set and signature weapon;
-Cartridge main/sub stats default to unselected; and the CRIT Rate cap is generated from the max-level
-default signature weapon. Upgrades preserve existing account configuration, including the historical
+Cartridge main/sub stats default to unselected; and the automatic-equipment CRIT Rate cap in character
+management counts the level, ascension and unconditional `CritBase` of the automatically selected Arc
+(including refinement's permanent attributes) plus the `CritBase` of an enabled affinity 10. The
+minimum is checked against equipment-side CRIT only and ignores affinity. The last manual entry or
+Arc selection in character management overrides the current cap, and a manual `0` means no CRIT Rate
+cap; a manual cap may only tighten it further. Both character priority and incremental update consume
+the character-management CRIT Rate cap and minimum. Upgrades preserve existing account configuration,
+including the historical
 "Cycle intensity" setting for the protagonist 「零」.
 
 Account base weights are a persistent calculation input. The dynamic weights on the character detail
@@ -162,7 +206,7 @@ one current plan at a time; overwriting creates a new plan version and atomicall
 `current_plan_id`, while historical plans still resolve against their own source snapshots.
 
 Multiple slots on one character are alternative loadouts: they may reference the same real UID and that
-is not an equipment-reuse conflict. Character-priority, global-optimum and incremental-update modes all
+is not an equipment-reuse conflict. Both the character-priority and incremental-update modes
 treat the character as the UID conflict boundary; a conflict is handled only when different characters'
 current slots reference the same UID.
 
@@ -280,6 +324,46 @@ regular mouse path is the current public capability; cloud-mode code is retained
 it off — the blocking conditions are in [the roadmap](roadmap.md).
 
 ## 9. Battle reports
+
+The battle-report calculation pages load through the standalone `nte-analysis-core.exe` and its
+direct database read interface. The request carries only the frozen account, generation, record
+number, database and configuration paths, analysis range and user candidates; the Rust side takes the
+raw summary, per-hit data, frozen growth and equipment, edit copies and target conditions in a
+read-only transaction, then runs action and source resolution, target identification and fitting,
+character and Arc state, healing, buffs, per-hit formula replay, damage composition, counterfactual
+comparison, candidate gains and the dynamic panel. The overview, per-hit, buff and marginal pages all
+share that entry point. Native calculation keeps the existing mechanism-coverage boundary and never
+turns missing evidence into zero or into a complete gain. The component protocol, failure behaviour
+and verification boundary are in
+[External integrations](integrations.md#11-nte-analysis-core).
+
+A finished result is kept for at most two entries within the current account session and is cleared
+when the report changes; returning to a recent identical configuration re-validates the calculation
+inputs before reusing it. Any change to the range, marginal character, candidate configuration,
+target conditions, raw evidence or static rules recalculates, and the cache is never written to the
+account database. While per-hit formulas, buff auditing and marginal calculation are running, a
+full-width progress bar is pinned outside the scrolling content and the page stack. It shows a 1–100%
+workload estimate weighted by the stages the request actually contains, advanced by core stage and
+completion events; it never grows with elapsed time, never resets when a stage changes, and only
+reaches 100% once every calculation and the result assembly have succeeded.
+
+When the account has no complete native inventory, the summary, record and per-hit data are still
+saved, and that match's assumed Consoles, Modules, sets and all stats are frozen from the release's
+graduation template, with the calculation panel frozen through the same formula. The save prompt and
+the loadout source are both marked as a graduation-template assumption. Assumed equipment is stored
+with the character snapshot under its own source metadata and creates neither an inventory snapshot
+nor real UIDs. It supports per-hit replay, attribute gains, Console main-stat comparison and growth
+edits, but template equipment is read-only: no per-item replacement and no in-game assembly. Export
+and import keep the assumed source and stats, and a later inventory or a retried save never replaces
+that baseline.
+
+The marginal page shows a wide character panel above the Module sub-stat unit margins: the header
+lists the frozen base, extra, percentage and total ATK/HP/DEF, CRIT Rate, CRIT DMG, universal DMG,
+own-element and other element damage, Cycle, Break, DEF ignore, each element's penetration, healing,
+shield and charge. The first row is the static panel and the second is the dynamic panel weighted by
+formula-panel damage. The own element is decided only from that character's own non-reaction,
+non-overlay hits, and is not guessed. An attribute with no formula link or too little dynamic
+evidence shows as unknown rather than presenting the static value as dynamic.
 
 Battle reports use aggregate events and summaries from the nte-core combat session, and history is
 written to the current account's database. Inventory sync and battle reports share the capture process

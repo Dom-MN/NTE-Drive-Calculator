@@ -125,6 +125,8 @@ wrong, please include where you can:
 Where to report:
 
 - GitHub Issues: <https://github.com/hxwd94666/NTE-Drive-Calc/issues>
+- Discord: <https://discord.gg/P3ZvMN7Hwj>
+- QQ group: 1029030672
 
 <a id="development"></a>
 
