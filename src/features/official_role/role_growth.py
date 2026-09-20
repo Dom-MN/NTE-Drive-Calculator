@@ -37,7 +37,7 @@ from src.services.advancement_stage_service import (
 )
 from src.services.damage_calculation_service import skill_tier_for_effective_level
 from src.services.official_role_awakening_service import (
-    awaken_skill_level_delta,
+    awaken_effect_description, awaken_effect_title, awaken_skill_level_delta,
     render_awaken_effect_description,
 )
 from src.services.world_bonus_settings_service import world_bonus_property_stats
@@ -338,11 +338,11 @@ def _build_awakening_group(
     ]
     for index, effect in enumerate(normal_effects, start=1):
         effect_id = str(effect.get("effect_id") or "")
-        title = str(effect.get("title_zh") or f"觉醒 {index}")
-        check = QCheckBox(f"{index}. {title}")
+        check = QCheckBox(f"{index}. " + (awaken_effect_title(effect) or tr("觉醒 {index}", index=index)))
         check.setChecked(effect_id in selected_ids)
         layout.addWidget(check)
-        description = QLabel(_plain_effect_text(effect.get("description_zh")) or tr("暂无效果说明"))
+        description = QLabel(_plain_effect_text(
+            awaken_effect_description(effect)) or tr("暂无效果说明"))
         description.setWordWrap(True)
         description.setContentsMargins(24, 0, 8, 2)
         description.setStyleSheet("color:#8b949e;")
@@ -359,7 +359,7 @@ def _build_awakening_group(
         threshold = _resonance_threshold(effect)
         if threshold is None:
             continue
-        title = str(effect.get("title_zh") or f"{threshold} 觉效果")
+        title = awaken_effect_title(effect) or tr("{threshold} 觉效果", threshold=threshold)
         label = QLabel()
         label.setWordWrap(True)
         label.setContentsMargins(8, 0, 8, 0)

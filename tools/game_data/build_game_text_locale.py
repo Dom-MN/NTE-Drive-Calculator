@@ -29,10 +29,25 @@ STATIC_DATABASE = ROOT / "data" / "game_static.sqlite3"
 LOCALES_DIR = ROOT / "locales"
 
 # (table, text-table column, key column, Chinese column)
+# Every static table that carries the string-table key alongside its Chinese.
+# Anything listed here needs no hand translation: the join is redone from a new
+# export after a game update, so characters added later arrive on their own.
 KEYED_SOURCES = (
     ("equipment_suit_effect", "description_text_table", "description_text_key", "description_zh"),
     ("character_awaken_effect", "title_text_table", "title_text_key", "title_zh"),
     ("character_awaken_effect", "description_text_table", "description_text_key", "description_zh"),
+    ("gameplay_ability_description", "description_text_table", "description_text_key", "description_zh"),
+    ("gameplay_ability_catalog", "name_text_table", "name_text_key", "name_zh"),
+    ("equipment_item", "name_text_table", "name_text_key", "name_zh"),
+    ("equipment_suit", "name_text_table", "name_text_key", "name_zh"),
+    ("progression_item", "name_text_table", "name_text_key", "name_zh"),
+    ("fork_item", "name_text_table", "name_text_key", "name_zh"),
+    ("fork_lottery_campaign", "title_text_table", "title_text_key", None),
+    ("character", "name_text_table", "name_text_key", "name_zh"),
+    ("item_quality_term", "grade_text_table", "grade_text_key", "grade_zh"),
+    ("item_quality_term", "color_text_table", "color_text_key", "color_zh"),
+    # equipment_core_random_attribute is deliberately absent: its keys point at
+    # ST_Fork buff rows that the export does not carry, so none of them resolve.
 )
 # Tables whose Chinese text has no key column but follows a naming convention.
 DERIVED_SOURCES = (
@@ -119,8 +134,10 @@ def main() -> int:
     }
     LOCALES_DIR.mkdir(parents=True, exist_ok=True)
     output = LOCALES_DIR / f"gametext.{arguments.language}.json"
-    output.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    # Bytes, not write_text: on Windows the latter rewrites "\n" as CRLF and the
+    # repository is LF-only.
+    output.write_bytes(
+        (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     )
     print(f"wrote {output.relative_to(ROOT).as_posix()}: {len(entries)} entries")
     if missing:

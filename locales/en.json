@@ -2565,5 +2565,7 @@
   "伤害类型": "Damage type",
   "当前倍率": "Current multiplier",
   "（专属外观）": " (exclusive appearance)",
-  "（同类型）": " (same type)"
+  "（同类型）": " (same type)",
+  "觉醒 {index}": "Awakening {index}",
+  "{threshold} 觉效果": "Awakening {threshold} effect"
 }

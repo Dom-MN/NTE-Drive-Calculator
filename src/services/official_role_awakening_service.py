@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import display_text
+
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -123,6 +125,26 @@ def _description_damage_value(
     return value * 100.0
 
 
+def awaken_effect_title(effect: Mapping[str, Any]) -> str:
+    """Official title for one awakening, falling back to the stored Chinese."""
+
+    return display_text(
+        effect.get("title_text_table"),
+        effect.get("title_text_key"),
+        fallback=str(effect.get("title_zh") or ""),
+    )
+
+
+def awaken_effect_description(effect: Mapping[str, Any]) -> str:
+    """Official description for one awakening, before value substitution."""
+
+    return display_text(
+        effect.get("description_text_table"),
+        effect.get("description_text_key"),
+        fallback=str(effect.get("description_zh") or ""),
+    )
+
+
 def render_awaken_effect_description(
     effect: Mapping[str, Any],
     profile: Mapping[str, Any],
@@ -130,7 +152,7 @@ def render_awaken_effect_description(
 ) -> str:
     """Render official numbered placeholders from linked damage tier arrays."""
 
-    description = str(effect.get("description_zh") or "")
+    description = awaken_effect_description(effect)
     for ordinal, damage in enumerate(effect.get("description_damage_entries") or ()):
         value = _description_damage_value(damage, profile, awakenings)
         if value is None:
