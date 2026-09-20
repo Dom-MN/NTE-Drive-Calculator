@@ -90,7 +90,7 @@ The fixed 50% CRIT rate rule for DOT and some Cycle damage is handled per damage
 
 ## Defence zone
 
-The default scene is Outer Realm:
+The default scene is Beyond the Rails:
 
 ```text
 enemy defence = (enemy level + 90) × (1 - DEF penetration) × (1 - DEF reduction)
@@ -203,7 +203,7 @@ enemy Break cap zone = enemy Break cap value / 3
 ```
 
 The official `UnbaldamagePara` curve explicitly records levels 1–80, where the level-80 character
-multiplier is `3603`. The Outer Realm Boss's Break cap value defaults to `50`; for a specified enemy,
+multiplier is `3603`. The Beyond the Rails Boss's Break cap value defaults to `50`; for a specified enemy,
 read `UnbalMax` from its attribute pack first and fall back to the default only when no pack is
 available. Break damage does not use ATK/HP/DEF multiplier attributes, nor DMG bonus, vulnerability,
 crit or independent increases; the defence and resistance zones follow the current target's rules.
@@ -221,7 +221,7 @@ not affect Break damage or the enemy Break cap calculation.
 | Dark Star damage | `DT_ReactionDamageData/Buff_Reaction_4_new` | 16 official tiers; final tier 45000 |
 | Skill multipliers | `DT_SkillDamageData` | ATK, HP and DEF multiplier tiers stored per GE |
 | Cycle constants | `DT_ReactionEffectFigure` | Official single-point curve values with confirmed units |
-| Enemy parameters | `DT_MonsterPackData*` | Defence, resistance and `UnbalMax` for standard/Outer Realm packs |
+| Enemy parameters | `DT_MonsterPackData*` | Defence, resistance and `UnbalMax` for standard/Beyond the Rails packs |
 
 Raw SQLite arrays keep their official `source_tier` and are never rewritten into derived levels. The
 service interprets the 15 skill tiers and 16 Cycle tiers according to the confirmed rules below, keeping
@@ -298,4 +298,4 @@ This chain follows only the dedicated configuration under
 `HT/Content/DataAssets/DataAssetSet/Abyss`: `AbyssCloneLevelDataTable` → `MonsterPoolID` →
 `DT_AbyssMonsterPool` → `AttributeID` → `DT_MonsterPackData`. All 366 unique `AttributeID` values
 currently resolve to a normal attribute pack. `FT_` is the prefix for the 999 Yoruko game mode — it does
-not indicate an Outer Realm or Abyss scene and must not be used to determine the scene.
+not indicate an Beyond the Rails or Abyss scene and must not be used to determine the scene.
