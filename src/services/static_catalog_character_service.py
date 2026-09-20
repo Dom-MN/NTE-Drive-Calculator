@@ -462,6 +462,8 @@ class StaticCatalogCharacterService:
             short_description_zh=_optional_text(row.get("short_description_zh")),
             unlock_id=_optional_text(row.get("unlock_id")),
             unlock_description_zh=_optional_text(row.get("unlock_description_zh")),
+            description_text_table=_optional_text(row.get("description_text_table")),
+            description_text_key=_optional_text(row.get("description_text_key")),
         )
 
     @staticmethod

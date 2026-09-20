@@ -85,6 +85,8 @@ class StaticCatalogCharacterPassiveService:
                     short_description_zh=_text(item.get("short_description_zh")),
                     unlock_id=_text(item.get("unlock_id")),
                     unlock_description_zh=_text(item.get("unlock_description_zh")),
+                    description_text_table=_text(item.get("description_text_table")),
+                    description_text_key=_text(item.get("description_text_key")),
                 )
                 for item in row.get("descriptions", ())
             ),

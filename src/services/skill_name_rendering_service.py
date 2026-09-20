@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_text, tr
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -229,8 +229,14 @@ class SkillNameRenderingService:
         gameplay_effect_rows: Iterable[Mapping[str, object]] = (),
     ) -> None:
         damage_rows = tuple(damage_bindings)
+        # Keep the string-table key beside the Chinese so the official name
+        # can be resolved at render time instead of being translated by hand.
         self._ability_names = {
-            str(row.get("ability_id") or ""): str(row.get("name_zh") or "").strip()
+            str(row.get("ability_id") or ""): (
+                str(row.get("name_zh") or "").strip(),
+                row.get("name_text_table"),
+                row.get("name_text_key"),
+            )
             for row in ability_rows
             if str(row.get("ability_id") or "")
             and str(row.get("name_zh") or "").strip()
@@ -312,7 +318,11 @@ class SkillNameRenderingService:
             )
 
     def resolve_ability_name(self, ability_id: str) -> str | None:
-        return self._ability_names.get(str(ability_id or "").strip())
+        entry = self._ability_names.get(str(ability_id or "").strip())
+        if entry is None:
+            return None
+        name_zh, text_table, text_key = entry
+        return display_text(text_table, text_key, fallback=name_zh)
 
     def resolve_ability_id(
         self,

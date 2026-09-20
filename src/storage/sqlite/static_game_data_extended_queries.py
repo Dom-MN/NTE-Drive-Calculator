@@ -351,11 +351,11 @@ class StaticGameDataExtendedQueriesMixin(ForkPermanentPropertyProjectionMixin):
         return ability
 
     def list_gameplay_ability_names(self) -> list[dict[str, Any]]:
-        """Return stable ability IDs and official Chinese display names."""
+        """Return stable ability IDs, Chinese names and their string-table keys."""
 
         return self._rows(
             """
-            SELECT ability_id, name_zh
+            SELECT ability_id, name_zh, name_text_table, name_text_key
             FROM gameplay_ability_catalog ORDER BY ability_id
             """
         )

@@ -417,6 +417,7 @@ class StaticCatalogCharacterQueries(
             skill["descriptions"] = self._rows(
                 """
                 SELECT ordinal, description_type, title_zh, description_zh,
+                       description_text_table, description_text_key,
                        short_description_zh, unlock_id, unlock_description_zh,
                        replacement_values_json
                 FROM gameplay_ability_description
@@ -578,7 +579,8 @@ class StaticCatalogCharacterQueries(
         descriptions = self._rows(
             f"""
             SELECT ability_id, ordinal, description_type, title_zh,
-                   description_zh, short_description_zh, unlock_id,
+                   description_zh, description_text_table, description_text_key,
+                   short_description_zh, unlock_id,
                    unlock_description_zh
             FROM gameplay_ability_description
             WHERE ability_id IN ({placeholders})

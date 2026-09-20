@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_text, tr
 
 import re
 from dataclasses import dataclass
@@ -464,7 +464,11 @@ class SkillActionCard(QFrame):
         ) or passive.descriptions[:1]
         rendered = False
         for item in descriptions:
-            text = _plain(item.description_zh or item.short_description_zh)
+            text = _plain(display_text(
+                item.description_text_table,
+                item.description_text_key,
+                fallback=item.description_zh or item.short_description_zh or "",
+            ))
             if not text:
                 continue
             label = QLabel(text, self.drawer)

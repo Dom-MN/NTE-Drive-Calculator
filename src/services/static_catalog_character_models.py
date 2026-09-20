@@ -210,6 +210,10 @@ class SkillDescription:
     short_description_zh: str | None
     unlock_id: str | None
     unlock_description_zh: str | None
+    # The string table the game itself uses, so the official English is a
+    # lookup rather than a translation anyone has to maintain.
+    description_text_table: str | None = None
+    description_text_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
