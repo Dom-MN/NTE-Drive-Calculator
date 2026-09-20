@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 import json
@@ -456,7 +458,10 @@ class SkillNameRenderingService:
         official_ability = self.resolve_ability_name(resolved_ability)
         ability_category = ability_category_name(resolved_ability)
         if official_ability and ability_category:
-            skill_name = f"{ability_category}：{official_ability}"
+            skill_name = tr(
+                "{category}：{name}",
+                category=tr(ability_category), name=official_ability,
+            )
         else:
             skill_name = official_ability or ability_category or ""
         if _contains_cjk(observed_damage):
@@ -504,12 +509,17 @@ class SkillNameRenderingService:
         fallback: str | None = None,
     ) -> str:
         stable_type = str(damage_type or "").strip()
-        return _DAMAGE_TYPE_NAMES.get(
-            stable_type,
+        # Damage *type* labels collide with the sub-stat names in the glossary
+        # (光属性伤害 is "Cosmos DMG Bonus" as a stat), so these resolve through
+        # the UI catalogue, which tr() consults first.
+        return tr(
             _DAMAGE_TYPE_NAMES.get(
-                stable_type.upper(),
-                str(fallback or stable_type or "未知伤害"),
-            ),
+                stable_type,
+                _DAMAGE_TYPE_NAMES.get(
+                    stable_type.upper(),
+                    str(fallback or stable_type or tr("未知伤害")),
+                ),
+            )
         )
 
     def render_ability_name(
@@ -523,5 +533,7 @@ class SkillNameRenderingService:
         official_name = self.resolve_ability_name(stable_id)
         category = ability_category_name(stable_id)
         if official_name and include_category and category:
-            return f"{category}：{official_name}"
-        return official_name or category or str(fallback or stable_id or "未知技能")
+            return tr("{category}：{name}", category=tr(category), name=official_name)
+        if not official_name and category:
+            return tr(category)
+        return official_name or str(fallback or stable_id or tr("未知技能"))

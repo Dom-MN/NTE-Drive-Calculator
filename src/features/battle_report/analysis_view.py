@@ -161,7 +161,7 @@ class BattleLongAnalysisView(
         )
         help_button = QPushButton("?")
         help_button.setObjectName("btnHelp")
-        help_button.setToolTip(help_text)
+        help_button.setToolTip(tr(help_text))
         help_button.clicked.connect(
             lambda _checked=False, button=help_button: show_help(
                 button,
@@ -182,7 +182,7 @@ class BattleLongAnalysisView(
         self.scope_button_group.setExclusive(True)
         self.scope_buttons: dict[str, QPushButton] = {}
         for mode, label in (("current", "跟随"), ("first", "上半"), ("second", "下半")):
-            button = QPushButton(label)
+            button = QPushButton(tr(label))
             button.setCheckable(True)
             button.clicked.connect(
                 lambda _checked=False, value=mode: self._select_detail_scope(value)
@@ -254,7 +254,7 @@ class BattleLongAnalysisView(
         self.composition_group.setExclusive(True)
         self.composition_buttons: dict[str, QPushButton] = {}
         for grouping, label in (("coarse", "粗分"), ("fine", "细分")):
-            button = QPushButton(label)
+            button = QPushButton(tr(label))
             button.setCheckable(True)
             button.clicked.connect(
                 lambda _checked=False, value=grouping: (
@@ -296,7 +296,7 @@ class BattleLongAnalysisView(
             ("targets", "目标"),
             ("marginal", "边际计算"),
         ):
-            button = QPushButton(label)
+            button = QPushButton(tr(label))
             self.audit_buttons[key] = button
             audit_row.addWidget(button)
         audit_row.addStretch()
@@ -371,7 +371,7 @@ class BattleLongAnalysisView(
         size: QSize = QSize(1080, 760),
     ) -> tuple[QDialog, QVBoxLayout]:
         dialog = QDialog(self)
-        dialog.setWindowTitle(title)
+        dialog.setWindowTitle(tr(title))
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(16, 16, 16, 16)
         fit_dialog_to_available_screen(dialog, size)
@@ -384,7 +384,7 @@ class BattleLongAnalysisView(
         self._topple_detail_requested_analysis = None
         self._analysis_record_id = None
         self._selected_character_id = None
-        self.capability_label.setText(message)
+        self.capability_label.setText(tr(message))
         self.capability_label.show()
         self.action_summary_label.setText(tr("当前没有可用的动作推算。"))
         self.timeline.set_analysis(None)
@@ -413,7 +413,7 @@ class BattleLongAnalysisView(
     def set_loading(self, message: str) -> None:
         """Keep the previous projection visible while its replacement loads."""
 
-        self.capability_label.setText(message)
+        self.capability_label.setText(tr(message))
         self.capability_label.show()
 
     def set_analysis(
@@ -444,7 +444,7 @@ class BattleLongAnalysisView(
         outer_tip = (
             ""
             if not outer_buffs
-            else "；赛季 Buff：" + "、".join(outer_buffs)
+            else tr("；赛季 Buff：") + tr("、").join(outer_buffs)
         )
         condition = analysis.target_condition
         self.environment_button.setEnabled(True)
@@ -468,7 +468,7 @@ class BattleLongAnalysisView(
             environment_name = display_battle_environment_name(condition)
             summary = environment_name
             if condition.feast_options:
-                summary += f"；争锋加成 {len(condition.feast_options)} 项"
+                summary += tr("；争锋加成 {count} 项", count=len(condition.feast_options))
             if condition.witch_buff_name_zh:
                 summary += f"；{condition.witch_buff_name_zh}"
             summary += outer_tip
@@ -657,7 +657,9 @@ class BattleLongAnalysisView(
             return
         start_display = self._display_time_us(analysis.range_start_us)
         end_display = self._display_time_us(analysis.range_end_us)
-        mode_name = "扣除时停" if self._time_mode == ACTIVE_TIME_MODE else "包含时停"
+        mode_name = (
+            tr("扣除时停") if self._time_mode == ACTIVE_TIME_MODE else tr("包含时停")
+        )
         capability_name = format_analysis_evidence(analysis)
         hit_replays = getattr(analysis, "hit_replays", ())
         selected_hits, selected_actions, selected_inputs = (

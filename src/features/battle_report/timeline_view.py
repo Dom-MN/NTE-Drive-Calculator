@@ -167,7 +167,9 @@ class BattleUnifiedTimelineWidget(BattleTimelineRangeMixin, QWidget):
         analysis = self._visible_analysis()
         if analysis is None or not analysis.timeline_hits:
             painter.setPen(QColor(theme_color("#8b949e")))
-            painter.drawText(self.rect(), Qt.AlignCenter, "当前战报没有可展示的正式逐击轴")
+            painter.drawText(
+                self.rect(), Qt.AlignCenter, tr("当前战报没有可展示的正式逐击轴")
+            )
             return
 
         plot_left = float(LABEL_WIDTH)

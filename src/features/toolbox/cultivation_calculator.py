@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen
@@ -173,7 +173,7 @@ class CultivationCalculatorDialog(QDialog):
         self._role.clicked.connect(self._select_role)
         grid.addWidget(QLabel(tr("角色"), controls), 0, 0)
         grid.addWidget(self._role, 0, 1, 1, 2)
-        self._character_toggle = _participation_toggle(controls, "角色养成")
+        self._character_toggle = _participation_toggle(controls, tr("角色养成"))
         self._character_toggle.toggled.connect(self._set_character_progression_enabled)
         grid.addWidget(self._character_toggle, 0, 3)
         self._current_level = _level_spinbox(controls)
@@ -206,7 +206,7 @@ class CultivationCalculatorDialog(QDialog):
         self._fork.clicked.connect(self._select_fork)
         fork_grid.addWidget(QLabel(tr("弧盘"), self._fork_controls), 0, 0)
         fork_grid.addWidget(self._fork, 0, 1, 1, 2)
-        self._fork_toggle = _participation_toggle(self._fork_controls, "弧盘养成")
+        self._fork_toggle = _participation_toggle(self._fork_controls, tr("弧盘养成"))
         self._fork_toggle.toggled.connect(self._refresh_fork_participation)
         fork_grid.addWidget(self._fork_toggle, 0, 3)
         self._fork_current_level = _level_spinbox(self._fork_controls)
@@ -230,7 +230,7 @@ class CultivationCalculatorDialog(QDialog):
         skill_caption.setStyleSheet(themed_style("font-size:14px;font-weight:800;color:#c9d1d9"))
         skill_header.addWidget(skill_caption)
         skill_header.addStretch(1)
-        self._skills_toggle = _participation_toggle(input_body, "技能目标")
+        self._skills_toggle = _participation_toggle(input_body, tr("技能目标"))
         self._skills_toggle.toggled.connect(self._set_skills_enabled)
         skill_header.addWidget(self._skills_toggle)
         input_layout.addLayout(skill_header)
@@ -281,10 +281,10 @@ class CultivationCalculatorDialog(QDialog):
         result_layout.addWidget(self._result, 1)
         content.addWidget(result_panel, 6)
         layout.addLayout(content, 1)
-        self._set_result_message("选择角色后填写目标等级和技能目标，再计算所需材料。")
+        self._set_result_message(tr("选择角色后填写目标等级和技能目标，再计算所需材料。"))
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close, parent=self)
-        self._copy_button = buttons.addButton("复制清单", QDialogButtonBox.ActionRole)
+        self._copy_button = buttons.addButton(tr("复制清单"), QDialogButtonBox.ActionRole)
         self._copy_button.setEnabled(False)
         self._copy_button.clicked.connect(self._copy_plan)
         buttons.rejected.connect(self.reject)
@@ -294,18 +294,18 @@ class CultivationCalculatorDialog(QDialog):
         try:
             self._roles = self._service.list_roles()
         except Exception as exc:
-            self._set_result_message(f"读取角色列表失败：{exc}", error=True)
+            self._set_result_message(tr("读取角色列表失败：{error}", error=exc), error=True)
             return
         if self._roles:
             self._load_selected_seed(self._roles[0].character_id)
         else:
-            self._set_result_message("当前静态库没有可用于养成计算的角色。", error=True)
+            self._set_result_message(tr("当前静态库没有可用于养成计算的角色。"), error=True)
 
     def _select_role(self) -> None:
         selected = select_cultivation_item(
             self,
-            title="选择角色",
-            description="选择要计算养成材料的角色。角色页已保存的养成状态会自动预填。",
+            title=tr("选择角色"),
+            description=tr("选择要计算养成材料的角色。角色页已保存的养成状态会自动预填。"),
             options=tuple(
                 (
                     str(role.character_id),
@@ -323,10 +323,10 @@ class CultivationCalculatorDialog(QDialog):
         try:
             seed = self._service.load_seed(int(character_id))
         except Exception as exc:
-            self._set_result_message(f"读取角色养成状态失败：{exc}", error=True)
+            self._set_result_message(tr("读取角色养成状态失败：{error}", error=exc), error=True)
             return
         self._seed = seed
-        self._role.setText(seed.character_name)
+        self._role.setText(display_term(seed.character_name))
         self._current_level.setValue(seed.current_level)
         self._set_stages(self._current_stage, seed.current_level, seed.current_breakthrough_stage)
         self._target_level.setValue(80)
@@ -335,7 +335,7 @@ class CultivationCalculatorDialog(QDialog):
         self._apply_fork_seed(seed.fork)
         self._last_plan = None
         self._copy_button.setEnabled(False)
-        self._set_result_message("已按角色页保存的等级、突破和技能等级预填。")
+        self._set_result_message(tr("已按角色页保存的等级、突破和技能等级预填。"))
 
     def _select_fork(self) -> None:
         try:
@@ -346,8 +346,8 @@ class CultivationCalculatorDialog(QDialog):
             return
         selected = select_cultivation_item(
             self,
-            title="选择弧盘",
-            description="选择要计算养成材料的弧盘。选择后可填写等级和突破前后状态。",
+            title=tr("选择弧盘"),
+            description=tr("选择要计算养成材料的弧盘。选择后可填写等级和突破前后状态。"),
             options=tuple(
                 (
                     item.fork_id,
@@ -374,7 +374,7 @@ class CultivationCalculatorDialog(QDialog):
         if seed is None:
             self._fork.setText(tr("选择弧盘"))
             return
-        self._fork.setText(seed.fork_name)
+        self._fork.setText(display_term(seed.fork_name))
         self._fork_current_level.setValue(seed.current_level)
         self._set_stages(
             self._fork_current_stage,
@@ -539,7 +539,7 @@ class CultivationCalculatorDialog(QDialog):
             card_layout.addWidget(heading)
             material_text = " · ".join(
                 f"{material.name} × {material.quantity:,}" for material in section.materials
-            ) or "无额外材料"
+            ) or tr("无额外材料")
             values = QLabel(material_text, card)
             values.setWordWrap(True)
             values.setStyleSheet(themed_style("color:#c9d1d9"))
@@ -577,7 +577,8 @@ class CultivationCalculatorDialog(QDialog):
     def _copy_plan(self) -> None:
         if self._last_plan is None:
             return
-        lines = [f"{self._last_plan.character_name} · 养成材料"]
+        lines = [tr("{name} · 养成材料",
+                    name=display_term(self._last_plan.character_name))]
         if self._last_plan.fork_required_experience:
             lines.append(f"弧盘升级经验 × {self._last_plan.fork_required_experience:,}")
         for material in self._last_plan.totals:
@@ -622,7 +623,7 @@ def _participation_toggle(parent: QWidget, label: str) -> QToolButton:
 def _level_spinbox(parent: QWidget) -> QSpinBox:
     control = _CultivationSpinBox(parent)
     control.setRange(1, 80)
-    control.setSuffix(" 级")
+    control.setSuffix(tr(" 级"))
     return control
 
 
@@ -636,8 +637,12 @@ def _stages_for_level(level: int) -> tuple[int, ...]:
 def _stage_label(level: int, stage: int) -> str:
     alternatives = _stages_for_level(level)
     if len(alternatives) == 2:
-        return f"突破 {stage}（{'突破前' if stage == alternatives[0] else '突破后'}）"
-    return f"突破 {stage}"
+        return tr(
+            "突破 {stage}（{phase}）",
+            stage=stage,
+            phase=tr("突破前") if stage == alternatives[0] else tr("突破后"),
+        )
+    return tr("突破 {stage}", stage=stage)
 
 
 def _asset_path(value: object) -> str | None:

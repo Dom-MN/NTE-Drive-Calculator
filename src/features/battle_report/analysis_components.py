@@ -94,7 +94,7 @@ def analysis_table(
     if len(headers) != len(default_widths):
         raise ValueError("battle table headers and default widths must match")
     table = QTableWidget(0, len(headers))
-    table.setHorizontalHeaderLabels(headers)
+    table.setHorizontalHeaderLabels([tr(header) for header in headers])
     table.setEditTriggers(QAbstractItemView.NoEditTriggers)
     table.setSelectionBehavior(QAbstractItemView.SelectRows)
     table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -117,11 +117,11 @@ def analysis_section(title: str, description: str = "") -> tuple[QFrame, QVBoxLa
     layout = QVBoxLayout(card)
     layout.setContentsMargins(20, 16, 20, 16)
     layout.setSpacing(10)
-    heading = QLabel(title)
+    heading = QLabel(tr(title))
     heading.setObjectName("cardTitle")
     layout.addWidget(heading)
     if description:
-        label = QLabel(description)
+        label = QLabel(tr(description))
         label.setWordWrap(True)
         label.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
         layout.addWidget(label)

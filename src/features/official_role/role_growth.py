@@ -204,7 +204,7 @@ def _build_base_group(window, character_id: int, detail: dict, editor: dict) -> 
     for stat_index, (label_text, key) in enumerate(stat_specs):
         grid_row = stat_index // 2
         grid_column = (stat_index % 2) * 2
-        label = QLabel(label_text)
+        label = QLabel(tr(label_text))
         label.setMinimumWidth(92)
         spin = NoWheelDoubleSpinBox()
         spin.setRange(-999999, 999999)
@@ -391,7 +391,7 @@ def _build_awakening_group(
             current_profile(),
             detail.get("awakenings") or (),
         )
-        return _plain_effect_text(rendered) or "暂无效果说明"
+        return _plain_effect_text(rendered) or tr("暂无效果说明")
 
     def refresh_descriptions() -> None:
         for effect, label in description_labels:
@@ -401,7 +401,7 @@ def _build_awakening_group(
         selected_count = sum(check.isChecked() for check in checks.values())
         for effect, threshold, label in resonance_labels:
             active = selected_count >= threshold
-            state = "已激活" if active else f"未激活（需要 {threshold} 个觉醒）"
+            state = tr("已激活") if active else tr("未激活（需要 {count} 个觉醒）", count=threshold)
             label.setText(
                 f"{state}｜{label.property('resonance_title')}\n"
                 f"{rendered_description(effect)}"
@@ -430,7 +430,7 @@ def _skill_name(skill: dict) -> str:
     return str(
         skill.get("display_name_zh")
         or skill.get("skill_id")
-        or "技能"
+        or tr("技能")
     )
 
 
@@ -493,7 +493,7 @@ def _show_skill_detail(
     summary.setStyleSheet("font-weight:bold;color:#58a6ff;")
     dialog_layout.addWidget(summary)
     table = QTableWidget(len(rows), 4)
-    table.setHorizontalHeaderLabels(("倍率项", "倍率属性", "伤害类型", "当前倍率"))
+    table.setHorizontalHeaderLabels((tr("倍率项"), tr("倍率属性"), tr("伤害类型"), tr("当前倍率")))
     table.verticalHeader().setVisible(False)
     table.setEditTriggers(QTableWidget.NoEditTriggers)
     table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -638,7 +638,7 @@ def _build_fork_group(
     fork_combo.addItem(tr("未装备弧盘"), None)
     for fork in detail["forks"]:
         exclusive = str(character_id) in {str(value) for value in fork.get("exclusive_character_ids") or []}
-        suffix = "（专属外观）" if exclusive else "（同类型）"
+        suffix = tr("（专属外观）") if exclusive else tr("（同类型）")
         fork_combo.addItem(f"{fork.get('name_zh') or fork['fork_id']} {suffix}", fork["fork_id"])
     fork_index = fork_combo.findData(profile.get("fork_id"))
     fork_combo.setCurrentIndex(fork_index if fork_index >= 0 else 0)
