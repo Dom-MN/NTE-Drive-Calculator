@@ -298,6 +298,10 @@ integer in the same sentence cannot trigger it. Details are in `docs/reference/l
 - New UI copy must pass `tests.test_i18n` — `test_every_tr_key_resolves` fails on a `tr()` key missing
   from `locales/en.json` — and `python tools/quality/i18n_coverage.py --scope ui`, which finds Chinese
   handed to a widget that was never wrapped at all. The test suite cannot see the latter.
+- A new game term in `locales/glossary.en.json` must be checked against the game's own string tables
+  with `python tools/quality/verify_terms.py --locres <export>`. The export is game content and is never
+  committed, so this is a manual check rather than a gate; nothing else can tell a coined name from a
+  real one.
 - Do not add `setattr(MainWindow, ...)`, `globals()` dynamic exports, a service locator, cross-feature
   private calls or page-index navigation.
 - Never commit the account database, WAL/SHM, logs, screenshots, PCAP, OCR temporary files,

@@ -176,6 +176,51 @@ fields (the per-element penetrations, base/extra/total ATK/HP/DEF and so on) hav
 official name at all, so they are the project's own wording and are the first to review. Never let a
 coinage sit in `official_terms`.
 
+### Producing the export
+
+The export is local preparation; its output is never committed.
+
+Two things are needed:
+
+- **A usmap** (Unreal type mappings) to parse this game's asset structure:
+  <https://ayakamods.com/mods/nte-unreal-mappings.3608/>
+- **UEExtractor**: <https://github.com/SolicenTEAM/UEExtractor>
+
+Drop the game directory onto `UEExtractor.exe`, or call it from the command line. This game needs its
+version named, as the tool carries a dedicated branch for it:
+
+```text
+UEExtractor.exe "<game directory>" -v=GAME_NevernessToEverness
+```
+
+The flags that matter here: `-v=GAME_NevernessToEverness` (or `NTE`) enables this game's locres
+handling; `--path=HT/Content/Localization` restricts the run to localisation assets and finishes much
+sooner; `--hash` includes the string hash and `--headmark` writes a header row. The translation flags
+(`--lang:*`, `--api:*`) are irrelevant and must not be used — the point is the game's own English, not
+machine translation.
+
+This game's paks are encrypted, so UEExtractor needs an AES key to read them. That key is a content
+protection measure; obtaining it is the operator's own responsibility and is not documented here.
+
+The output is one CSV per pak with columns `key,source,Translation`, where **`source` is the English**
+and `Translation` is empty. Export both `pakchunk0-Windows` and the patch `pakchunk0-Windows_0_P` — the
+patch overrides the base pak, and both are searched together.
+
+### Checking against it
+
+```bash
+python tools/quality/verify_terms.py --locres <export directory>
+```
+
+It grades every entry in `glossary.en.json`. Anything listed in `_meta.official_terms` whose English
+appears nowhere in the string tables fails the run and exits 1 — that is the shape of the "Mindrot" and
+"Contest Feast" class of coinage. A term seen only inside a longer name (`Mental` occurs only in
+`Mental DMG Bonus`) is reported separately and is fine. A term parked as unverified whose English the
+game ships verbatim is flagged as ready to promote.
+
+Because the export is never committed, this is not a repository gate; run it after adding terms and
+before a release.
+
 ## Short keys are ambiguous
 
 `en.json` is keyed by the source string, so a one- or two-character key collides across contexts:

@@ -152,6 +152,48 @@ ReactionName_*`（环合反应）、`ST_UI_N` 与 `ST_GameplayDec`（玩法名�
 本来就没有面向玩家的正式名，属于本项目自拟，需优先复核。不要把自拟词混进
 `official_terms`。
 
+### 导出字符串表
+
+导出属于本机准备工作，产物不入库。
+
+需要两样东西：
+
+- **usmap**（Unreal 类型映射），用于解析本作的资产结构：
+  <https://ayakamods.com/mods/nte-unreal-mappings.3608/>
+- **UEExtractor**：<https://github.com/SolicenTEAM/UEExtractor>
+
+把游戏目录拖到 `UEExtractor.exe` 上，或按命令行调用。本作需指定游戏版本，
+它带有专门分支：
+
+```text
+UEExtractor.exe "<游戏目录>" -v=GAME_NevernessToEverness
+```
+
+与本项目相关的参数：`-v=GAME_NevernessToEverness`（或 `NTE`）启用本作的
+locres 处理；`--path=HT/Content/Localization` 可只处理本地化资产，缩短耗时；
+`--hash` 附带字符串哈希；`--headmark` 输出表头。翻译类参数（`--lang:*`、
+`--api:*`）与核对无关，不要使用——我们要的是游戏自带英文，不是机器翻译。
+
+本作的 pak 是加密的，UEExtractor 需要 AES 密钥才能读取。密钥属于游戏内容保护
+措施，如何取得由使用者自行负责，本文不记录。
+
+产物是每个 pak 一个 CSV，列为 `key,source,Translation`：**`source` 就是英文**，
+`Translation` 为空。`pakchunk0-Windows` 与补丁 `pakchunk0-Windows_0_P` 都要导出，
+补丁覆盖基础包，两份一起查。
+
+### 用工具核对
+
+```bash
+python tools/quality/verify_terms.py --locres <导出目录>
+```
+
+它逐条比对 `glossary.en.json`：列在 `_meta.official_terms` 却在字符串表中完全
+找不到的，判为失败并退出 1——这正是 Mindrot、Contest Feast 那一类自拟译名的
+形态。只作为长名称一部分出现的（`Mental` 只见于 `Mental DMG Bonus`）另列为
+提示，属正常。标为 unverified 但字符串表中整串存在的，会提示可以提升。
+
+导出不入库，因此这不是仓库门禁，属于新增术语后和发布前的手工检查。
+
 ## 短键有歧义
 
 `en.json` 以源串作键，单字或双字键因此会跨语境撞车：`"中"` 已被某处片段占用为
