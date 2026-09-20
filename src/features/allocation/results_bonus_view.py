@@ -219,7 +219,7 @@ def _make_bonus_mode_switch(self, default_mode, on_change, mode_defs=None):
     )
     mode_defs = list(mode_defs or (("equipment", "空幕属性汇总"), ("character", "角色属性汇总")))
     for index, (mode, label) in enumerate(mode_defs):
-        btn = QPushButton(label)
+        btn = QPushButton(tr(label))
         btn.setCheckable(True)
         btn.setCursor(Qt.PointingHandCursor)
         btn.setStyleSheet(toggle_style)

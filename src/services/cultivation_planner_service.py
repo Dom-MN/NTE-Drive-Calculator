@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -22,6 +24,7 @@ from src.services.static_catalog_character_models import (
     CharacterDetail,
     CharacterSkill,
 )
+from src.services.skill_name_rendering_service import SkillNameRenderingService
 from src.services.static_catalog_character_service import StaticCatalogCharacterService
 from src.services.static_catalog_fork_service import (
     ForkCatalogDetail,
@@ -148,6 +151,21 @@ class CultivationPlannerService:
         self._character_queries_factory = character_queries_factory
         self._terminology_dao_factory = terminology_dao_factory
         self._user_dao_factory = user_dao_factory
+        self._skill_names: SkillNameRenderingService | None = None
+
+    def _ability_names(self) -> SkillNameRenderingService:
+        """Official skill names, resolved the same way every other page does."""
+
+        if self._skill_names is None:
+            dao = self._terminology_dao_factory(self._static_database_path)
+            self._skill_names = SkillNameRenderingService(
+                ability_rows=dao.list_gameplay_ability_names(),
+            )
+        return self._skill_names
+
+    def _skill_name(self, skill: CharacterSkill) -> str:
+        resolved = self._ability_names().resolve_ability_name(skill.skill_id)
+        return resolved or skill.name_zh or skill.skill_id
 
     def list_roles(self) -> tuple[CultivationRole, ...]:
         """Return every role that has a formal catalog entry, sorted by catalog order."""
@@ -186,7 +204,7 @@ class CultivationPlannerService:
             CultivationSkill(
                 skill_id=skill.skill_id,
                 category=_skill_category(skill),
-                name=skill.name_zh or skill.skill_id,
+                name=self._skill_name(skill),
                 current_level=_skill_level(level_by_skill.get(skill.skill_id), skill),
                 maximum_level=_skill_maximum_level(skill),
             )
@@ -301,7 +319,7 @@ class CultivationPlannerService:
                 gaps.extend(projection.gaps)
                 if projection.requirements:
                     sections.append((
-                        f"{_skill_category(skill)} · {skill.name_zh or skill.skill_id}",
+                        f"{_skill_category(skill)} · {self._skill_name(skill)}",
                         projection.requirements,
                         None,
                     ))
@@ -585,7 +603,7 @@ def _skill_category(skill: CharacterSkill) -> str:
         return "E"
     if skill.skill_id.endswith("_QTE"):
         return "QTE"
-    return "技能"
+    return tr("技能")
 
 
 def _canonical_fork_item_id(item_id: str) -> str:

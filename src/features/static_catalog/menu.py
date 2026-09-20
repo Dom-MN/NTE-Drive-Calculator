@@ -210,7 +210,8 @@ class StaticCatalogMenu(QWidget):
         available = {domain.key for domain in domains if domain.key != "coverage"}
         self._content.addWidget(self._hero())
         for group_key, title, subtitle in MENU_GROUPS:
-            heading = QLabel(f"{title}  ·  {subtitle}", self)
+            heading = QLabel(tr("{title}  ·  {subtitle}",
+                                title=tr(title), subtitle=tr(subtitle)), self)
             heading.setWordWrap(True)
             heading.setStyleSheet(themed_style(
                 "color:#c9d1d9;font-size:12px;font-weight:800;margin-top:1px"

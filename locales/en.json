@@ -2567,5 +2567,12 @@
   "（专属外观）": " (exclusive appearance)",
   "（同类型）": " (same type)",
   "觉醒 {index}": "Awakening {index}",
-  "{threshold} 觉效果": "Awakening {threshold} effect"
+  "{threshold} 觉效果": "Awakening {threshold} effect",
+  "{title}  ·  {subtitle}": "{title}  ·  {subtitle}",
+  "角色与养成": "Characters and growth",
+  "从可操作对象进入，逐层查看成长、技能与关联机制。": "Start from a playable subject and work down through growth, skills and related mechanisms.",
+  "装备与敌人": "Equipment and enemies",
+  "按游戏图鉴组织空幕、驱动、怪物和玩法环境。": "Consoles, Modules, monsters and mode environments, organised as the in-game archive.",
+  "战斗机制": "Combat mechanics",
+  "查看公共战斗规则和伤害公式。": "The shared combat rules and damage formulas."
 }
