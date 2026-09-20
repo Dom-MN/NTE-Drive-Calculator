@@ -261,6 +261,20 @@ All new or modified UI copy goes through `src/i18n`, distinguishing two kinds of
 - Fields for which nte-core already supplies `names`/`suit_names` (`en`/`ja`/`zh_cn`) use
   `display_localized()` instead of a glossary entry.
 
+A game term's English is never invented. Look it up in the game's own string tables — the UEExtractor
+CSV of `pakchunk0-Windows` plus its patch, where the `source` column is the English — and reverse-look
+it up by the internal id from `game_static.sqlite3` rather than by meaning. A coinage that reads well is
+still wrong: 蚀心 is `Heartwrench`, not "Mindrot"; 争锋赏宴 is `Hunter's Crucible`, not "Contest Feast".
+A term joined to a locres key is recorded in `glossary.en.json` under `_meta.official_terms`; one that
+cannot be found goes in `_meta.unverified_terms` and never sits with the verified ones. The procedure
+and the namespaces worth searching are in `docs/reference/localization.md`.
+
+Two values must stay Chinese even though they reach a widget. A short source string is an ambiguous
+catalogue key — `"中"` is already `"of"` from another fragment — so a one-character value is translated
+at the render site under a disambiguated key, never as a bare key. And a value the code compares with
+`==` or `in` is a key, not copy: the confidence levels `高`/`中`/`低`/`未解析`, `err == "任务已取消"`,
+and match specs such as `PASSIVE_ANY_HIT|...,覆纹,weave`.
+
 Logging text stays Chinese: `logger.*`, `log_event` and `operation_scope(message=)` never go through
 `tr()`. Exception messages in Services and Integrations that **are shown to a user** go through `tr()`;
 pure argument contracts (the `timeout 必须大于 0` kind) stay Chinese.
@@ -340,8 +354,22 @@ python tools/quality/i18n_coverage.py --scope ui
 
 The test suite fails when a `tr()` key is missing from the catalogue, but it cannot fail on Chinese that
 upstream added and nobody wrapped — that just renders untranslated. `i18n_coverage.py` is what finds it.
-Its blind spot is text assembled through a helper before reaching a widget, which no static analysis
-sees, so a clean report is not proof of full coverage.
+
+A clean report is not proof of coverage. The scan follows a Chinese literal only while it is a direct
+argument of a known sink, and three shapes escape that, all of them found in shipped code rather than
+by the gate:
+
+- **Display metadata.** The copy is a field of a frozen dataclass — `NavItem`, `CatalogSection`,
+  `CatalogField` — and only reaches a widget pages later. The sidebar labels sat untranslated this way
+  for two releases. Either register the constructor in `UI_SINKS`, or translate at the render site,
+  which also works for a value that came out of the static database.
+- **An unregistered sink.** `QProgressDialog`'s first two arguments are its label and cancel button;
+  it was simply not in `UI_SINKS`. When a widget renders text, check it is listed.
+- **A string assembled into a variable** by an f-string or concatenation before `setToolTip` or
+  `setText` sees it. Roughly 310 fragments remain in this shape, mostly the battle-report detail
+  tooltips in `src/features/battle_report` and their supporting services. No static analysis sees them.
+
+So after the coverage run, read the diff for Chinese that upstream added, rather than trusting a zero.
 
 Two follow-on costs arrive with every sync and are tracked separately from the merge itself:
 

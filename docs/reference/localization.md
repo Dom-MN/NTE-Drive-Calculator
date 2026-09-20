@@ -121,6 +121,51 @@ locres 导出本身不入库。`fork_star_level` 没有键列，按 `upgradestar
 `locales/` 属于发行只读资源，由 `src.integrations.bundled_resources.bundled_locales_dir`
 定位，并在 `build_exe.py` 中随包分发。
 
+## 校对游戏术语
+
+游戏术语的英文**必须**来自游戏自带字符串表，不得按中文含义自拟。语义正确的自拟译名
+同样是错的：蚀心 曾被自拟为 Mindrot，正式名是 Heartwrench；鸩火 曾被自拟为 Venomfire，
+正式名是 Vile Ash。两者当时都在字符串表里，只是没有去查。
+
+字符串表由 UEExtractor 从 `pakchunk0-Windows` 及其补丁导出为 CSV，列为
+`key,source,Translation`，其中 **`source` 就是英文**（`Translation` 为空）。导出文件
+不入库；本地路径记在个人环境里，不写进仓库。
+
+查法有两条，优先第一条：
+
+1. **按 ID 反查**。先在 `game_static.sqlite3` 用中文找到内部 ID（如 `equipment_attribute
+   .display_name_zh` → `attribute_id`，`feast_*` 表 → `DiyBoss`），再用该 ID 在 CSV 的
+   `key` 里搜。玩法名尤其要这样查：争锋赏宴 的静态表是 `feast_*`，对应玩法 ID 是
+   `DiyBoss`，`ST_UI_N::DiyBoss_Mainform_Name` 才给出 Hunter's Crucible。
+2. **按英文正查后回证**。搜到候选英文后，必须用 ID 或上下文回证它确实是该对象的名称，
+   而不是别处的同形词。轨外之境 曾据 `ST_AbyssBattle` 的 `Off-Rail Resonance - Cosmos`
+   误判为 Off-Rail——那只是卡片里的定语；玩法名在
+   `ST_Common::ui_abyss_enter_clone_failed`，是 Beyond the Rails。
+
+常用命名空间：`ST_Attribute`（属性名）、`<角色>_SkillDes`（技能、DOT、状态、层数，
+如 `ZankouDot_name`、`ShinkuRage_name`、`EdgarKey_name`）、`CharacterTeachGuide::
+ReactionName_*`（环合反应）、`ST_UI_N` 与 `ST_GameplayDec`（玩法名与规则）、
+`ST_AbyssBattle`、`ST_AdventureManual`。
+
+核对结果要留痕：查到 locres 键的词进 `glossary.en.json` 的 `_meta.official_terms`；
+查不到的进 `_meta.unverified_terms`——内部计算字段（各元素穿透、基础/额外/总攻防血等）
+本来就没有面向玩家的正式名，属于本项目自拟，需优先复核。不要把自拟词混进
+`official_terms`。
+
+## 短键有歧义
+
+`en.json` 以源串作键，单字或双字键因此会跨语境撞车：`"中"` 已被某处片段占用为
+`"of"`，若再把置信度的 `中` 按裸键翻译，就会渲染成 High / of / Low。此类值改在渲染点
+用可消歧的键翻译，不要为它新增裸键。
+
+## 被当作键比较的值
+
+服务层有些中文值会被 `==` 或 `in` 比较，翻译会改变行为，必须保持中文：置信度
+`高`/`中`/`低`/`未解析`（十余处形如 `confidence == "低"`）、`_on_exec_error` 里的
+`err == "任务已取消"`、`"已取消更新下载安装包" in message`，以及
+`PASSIVE_ANY_HIT|...,覆纹,weave` 这类匹配规格串。它们与游戏术语同理：数据留中文，
+只在渲染点换显示名。
+
 ## 相关测试
 
 `tests/test_i18n.py` 固定回落行为、术语映射、目录完整性，以及主题与语言共用一个

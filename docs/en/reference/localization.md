@@ -142,6 +142,56 @@ English's one/other split only; it is not full CLDR plural handling.
 `src.integrations.bundled_resources.bundled_locales_dir` and shipped with the package by
 `build_exe.py`.
 
+## Verifying a game term
+
+The English for a game term **must** come from the game's own string tables; it is never coined from
+the Chinese. A semantically reasonable coinage is still wrong: 蚀心 was coined as "Mindrot" when the
+official name is **Heartwrench**, and 鸩火 as "Venomfire" when it is **Vile Ash**. Both were in the
+string tables at the time — nobody looked.
+
+The string tables are exported by UEExtractor from `pakchunk0-Windows` and its patch as CSV with
+columns `key,source,Translation`, where **`source` is the English** (`Translation` is empty). The
+export is never committed; its local path belongs in a personal environment, not in the repository.
+
+There are two ways to look a term up. Prefer the first:
+
+1. **Reverse-lookup by ID.** Find the internal ID from the Chinese in `game_static.sqlite3` (for
+   example `equipment_attribute.display_name_zh` → `attribute_id`, or the `feast_*` tables →
+   `DiyBoss`), then search the CSV's `key` column for that ID. Mode names especially need this:
+   争锋赏宴 lives in the `feast_*` tables, whose mode ID is `DiyBoss`, and only
+   `ST_UI_N::DiyBoss_Mainform_Name` gives **Hunter's Crucible**.
+2. **Search the English, then corroborate.** Having found a candidate, confirm by ID or context that
+   it really names that object and is not the same word used elsewhere. 轨外之境 was misread as
+   "Off-Rail" from `ST_AbyssBattle`'s `Off-Rail Resonance - Cosmos` — that is the card's adjective.
+   The mode name is in `ST_Common::ui_abyss_enter_clone_failed`: **Beyond the Rails**.
+
+Useful namespaces: `ST_Attribute` (attribute names), `<Character>_SkillDes` (skills, DOTs, states and
+stacks — `ZankouDot_name`, `ShinkuRage_name`, `EdgarKey_name`), `CharacterTeachGuide::ReactionName_*`
+(Cycle reactions), `ST_UI_N` and `ST_GameplayDec` (mode names and rules), `ST_AbyssBattle`,
+`ST_AdventureManual`.
+
+Record the outcome. A term joined to a locres key goes in `glossary.en.json` under
+`_meta.official_terms`; one that cannot be found goes in `_meta.unverified_terms` — internal computed
+fields (the per-element penetrations, base/extra/total ATK/HP/DEF and so on) have no player-facing
+official name at all, so they are the project's own wording and are the first to review. Never let a
+coinage sit in `official_terms`.
+
+## Short keys are ambiguous
+
+`en.json` is keyed by the source string, so a one- or two-character key collides across contexts:
+`"中"` is already taken by another fragment meaning `"of"`, so translating the confidence value `中`
+as a bare key would render High / of / Low. Values like these are translated at the render site under
+a disambiguated key instead; never add a bare key for them.
+
+## Values that are compared as keys
+
+Some Chinese values in the service layer are compared with `==` or `in`, so translating them changes
+behaviour and they must stay Chinese: the confidence levels `高`/`中`/`低`/`未解析` (a dozen sites of
+the `confidence == "低"` shape), `err == "任务已取消"` in `_on_exec_error`,
+`"已取消更新下载安装包" in message`, and match specs such as
+`PASSIVE_ANY_HIT|...,覆纹,weave`. The rule is the same as for game terms: the data stays Chinese and
+only the render site substitutes a display name.
+
 ## Related tests
 
 `tests/test_i18n.py` pins the fallback behaviour, term mapping and catalogue completeness, and checks
