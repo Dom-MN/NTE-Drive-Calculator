@@ -389,7 +389,7 @@ def test_rewind_custom_percentage_persists_and_is_passed_to_analysis(monkeypatch
     assert service.request["target_custom_percent"] == 90.0
 
 
-def test_rewind_execution_dialog_marks_experimental_prerequisite_and_disables_custom_for_blue_only() -> None:
+def test_rewind_execution_dialog_shows_stop_key_and_disables_custom_for_blue_only() -> None:
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
     from src.features.toolbox.rewind_execution_dialog import (
@@ -407,8 +407,7 @@ def test_rewind_execution_dialog_marks_experimental_prerequisite_and_disables_cu
         for button in dialog.findChildren(QPushButton, "rewindCustomizationTile")
     }
 
-    assert any("提前打开游戏内的倒带页面" in text for text in descriptions)
-    assert any("实验性开发" in text and "不保证可以使用" in text for text in descriptions)
+    assert "执行期间可按设置中的全局停止键F12停止。" in descriptions
     assert dialog.options().drive_customization == "none"
     assert custom_buttons["none"].isChecked()
     assert not custom_buttons["enabled"].isEnabled()

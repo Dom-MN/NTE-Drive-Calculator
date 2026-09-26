@@ -224,7 +224,7 @@ class NTEPipelineOrchestrator:
                             priority_groups: List[List[str]] = None, crit_rate_caps: Dict[str, float] = None,
                             crit_rate_baselines: Dict[str, float] = None,
                             custom_weapons: Dict[str, str] = None,
-                            blueprint_combo_limit: int = 500,
+                            blueprint_combo_limit: int = 2000,
                             cancel_check=None, *, allocation_executor):
         locked_uids = locked_uids or set()
         tape_main_filters = tape_main_filters or {}

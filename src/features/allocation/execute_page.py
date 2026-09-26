@@ -8,6 +8,7 @@ builder only wires UI widgets to existing callbacks.
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -22,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.app.theme import themed_style
+from src.app.theme import theme_color, theme_rgba, themed_style
 
 def _build_scan_mode_card(window, layout, scan_help, drone_help, offline_help, show_help):
     scan_card = window._card("第一步 · 扫描模式")
@@ -316,10 +317,50 @@ def _build_result_card(window, layout):
     )
     result_layout = QVBoxLayout(window.result_card)
     result_header = QHBoxLayout()
-    result_header.addWidget(QLabel("计算结果"))
+    badge_width, badge_height = 112, 34
+    result_title = QLabel("计算结果")
+    result_title.setObjectName("allocationResultTitle")
+    result_title.setAlignment(Qt.AlignCenter)
+    result_title.setFixedSize(badge_width, badge_height)
+    result_title.setStyleSheet(
+        f"color:{theme_color('#4dd0e1')};border:1px solid {theme_color('#4dd0e1')};"
+        f"border-radius:7px;background:{theme_rgba('#4dd0e1', 0.10)};"
+        "font-size:15px;font-weight:800;padding:0 14px;"
+    )
+    result_header.addWidget(result_title)
     result_header.addStretch()
-    window.btn_save = QPushButton("保存装备锁定")
-    window.btn_save.setObjectName("btnAction")
+    window.btn_clear_result = QPushButton("清空计算")
+    window.btn_clear_result.setObjectName("allocationClearResultButton")
+    window.btn_clear_result.setFixedSize(badge_width, badge_height)
+    window.btn_clear_result.setToolTip("仅清除本次计算结果，不影响已保存的配装")
+    window.btn_clear_result.setStyleSheet(
+        f"QPushButton#allocationClearResultButton{{color:{theme_color('#f85149')};"
+        f"border:1px solid {theme_color('#f85149')};border-radius:7px;"
+        f"background:{theme_rgba('#f85149', 0.10)};"
+        "font-size:15px;font-weight:800;padding:0 14px;}"
+        "QPushButton#allocationClearResultButton:hover{"
+        f"background:{theme_rgba('#f85149', 0.20)};}}"
+        "QPushButton#allocationClearResultButton:disabled{"
+        f"color:{theme_color('#8b949e')};border-color:{theme_color('#30363d')};"
+        "background:transparent;}"
+    )
+    window.btn_clear_result.clicked.connect(window.clear_calculation)
+    result_header.addWidget(window.btn_clear_result)
+    window.btn_save = QPushButton("保存配装")
+    window.btn_save.setObjectName("allocationSaveButton")
+    window.btn_save.setFixedSize(badge_width, badge_height)
+    window.btn_save.setToolTip("将本次计算结果保存为配装方案")
+    window.btn_save.setStyleSheet(
+        f"QPushButton#allocationSaveButton{{color:{theme_color('#3fb950')};"
+        f"border:1px solid {theme_color('#3fb950')};border-radius:7px;"
+        f"background:{theme_rgba('#3fb950', 0.10)};"
+        "font-size:15px;font-weight:800;padding:0 14px;}"
+        "QPushButton#allocationSaveButton:hover{"
+        f"background:{theme_rgba('#3fb950', 0.20)};}}"
+        "QPushButton#allocationSaveButton:disabled{"
+        f"color:{theme_color('#8b949e')};border-color:{theme_color('#30363d')};"
+        "background:transparent;}"
+    )
     window.btn_save.clicked.connect(lambda _checked=False: window._save_alloc())
     result_header.addWidget(window.btn_save)
     result_layout.addLayout(result_header)

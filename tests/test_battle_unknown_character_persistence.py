@@ -29,14 +29,24 @@ class UnknownCharacterPersistenceTests(unittest.TestCase):
                 operation_context=OperationContext.create('battle_report', account_id='fixture'),
             )
             module = 'src.services.battle_report_persistence_service'
-            with patch(module + '.StaticGameDataDao') as static, \
-                    patch.object(service, '_load_effective_profiles', return_value={1072: _profile(1072, 'fork_Test')}), \
-                    patch.object(service, '_resolve_character_stat_snapshots', return_value={}) as stats:
-                static.return_value.__enter__.return_value.summary.return_value = {
-                    'dataset': {'dataset_id': 'fixture'}, 'schema_version': 32}
-                service.begin_capture(capture_operation_id='fixture-capture',
-                                      captured_at_utc='2026-09-08T00:00:00+00:00')
-            self.assertEqual((1072,), stats.call_args.kwargs['character_ids'])
+            static_patcher = patch(module + '.StaticGameDataDao')
+            profiles_patcher = patch.object(
+                service, '_load_effective_profiles',
+                return_value={1072: _profile(1072, 'fork_Test')},
+            )
+            stats_patcher = patch.object(service, '_resolve_character_stat_snapshots', return_value={})
+            static = static_patcher.start()
+            profiles_patcher.start()
+            stats = stats_patcher.start()
+            self.addCleanup(static_patcher.stop)
+            self.addCleanup(profiles_patcher.stop)
+            self.addCleanup(stats_patcher.stop)
+            static.return_value.__enter__.return_value.summary.return_value = {
+                'dataset': {'dataset_id': 'fixture'}, 'schema_version': 32}
+            static.return_value.__enter__.return_value.get_character_graduation_template.return_value = {}
+            service.begin_capture(capture_operation_id='fixture-capture',
+                                  captured_at_utc='2026-09-08T00:00:00+00:00')
+            stats.assert_not_called()
             ids = [0, 1072] if known else [0]
             rows = [{
                 'sequence': str(index), 'character_id': character_id,
@@ -67,8 +77,9 @@ class UnknownCharacterPersistenceTests(unittest.TestCase):
                 capture_operation_id='fixture-capture', captured_at_utc='2026-09-08T00:00:00+00:00',
                 finalized_at_utc='2026-09-08T00:00:10+00:00',
                 raw_record_payload={'battle_record_id': 'fixture-record', 'axis_complete': True,
-                                    'time_stop_intervals': [], 'native_capture': payload['native_capture']})
+                                    'time_stop_intervals': []})
             expected = (1072,) if known else ()
+            self.assertEqual(expected, stats.call_args.kwargs['character_ids'])
             self.assertEqual('saved', outcome.status)
             with UserDataDao(path) as dao:
                 record = dao.load_battle_record(outcome.battle_record_id)

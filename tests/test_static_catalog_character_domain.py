@@ -41,7 +41,7 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
         for page in (by_ga, by_ge, by_buff, by_path):
             self.assertIn(1036, {item.character_id for item in page.items})
             self.assertTrue(page.dataset.dataset_id)
-            self.assertEqual(36, page.dataset.schema_version)
+            self.assertEqual(38, page.dataset.schema_version)
 
     def test_character_search_treats_sql_wildcards_as_literal_text(self) -> None:
         page = self.service.list_characters(query="%_", limit=200)
@@ -210,7 +210,7 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
             for item in melee.damage_items
         ))
 
-    def test_v30_character_value_coverage_counts_are_preserved(self) -> None:
+    def test_release_character_value_coverage_counts_are_preserved(self) -> None:
         characters = tuple(
             item for item in self.service.list_characters(limit=200).items
             if item.classification != "combat_transformation"
@@ -220,8 +220,8 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
             for item in characters
         )
 
-        self.assertEqual(23, len(details))
-        self.assertEqual(23, sum(
+        self.assertEqual(25, len(details))
+        self.assertEqual(25, sum(
             detail is not None and detail.equipment_plan is not None
             for detail in details
         ))
@@ -235,19 +235,19 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
             ) == 20
             for detail in details
         ))
-        self.assertEqual(23, sum(
+        self.assertEqual(25, sum(
             detail is not None and detail.shape_bonus is not None
             for detail in details
         ))
-        self.assertEqual(23, sum(
+        self.assertEqual(25, sum(
             detail is not None and detail.recommended_weights is not None
             for detail in details
         ))
-        self.assertEqual(23, sum(
+        self.assertEqual(25, sum(
             detail is not None and detail.cultivation is not None
             for detail in details
         ))
-        self.assertEqual(22, sum(
+        self.assertEqual(24, sum(
             detail is not None and detail.graduation is not None
             for detail in details
         ))
@@ -256,9 +256,9 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
             for detail in details if detail is not None
             for skill in detail.skills
         )
-        self.assertEqual(92, len(skills))
-        self.assertEqual(645, sum(len(skill.damage_items) for skill in skills))
-        self.assertEqual(626, sum(len(skill.level_hints) for skill in skills))
+        self.assertEqual(100, len(skills))
+        self.assertEqual(670, sum(len(skill.damage_items) for skill in skills))
+        self.assertEqual(697, sum(len(skill.level_hints) for skill in skills))
 
     def test_growth_and_combat_relationships_are_independently_paginated(self) -> None:
         first_growth = self.service.list_growth(1036, limit=10, offset=0)

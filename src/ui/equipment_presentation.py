@@ -549,6 +549,12 @@ class EquipmentPresentation(EquipmentLoadoutComparisonPresentationMixin):
     def clear(self) -> None:
         self.final_plan = {}
         self.allocation_plan_diff = {}
+        self._pending_allocation_snapshot_id = None
         self._locked_role_names = frozenset()
         if self.result_card is not None:
             self.result_card.setVisible(False)
+        if self.result_content_layout is not None:
+            while self.result_content_layout.count():
+                item = self.result_content_layout.takeAt(0)
+                if item is not None and item.widget() is not None:
+                    item.widget().deleteLater()

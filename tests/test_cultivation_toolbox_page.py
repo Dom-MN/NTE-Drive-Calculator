@@ -388,7 +388,7 @@ def test_owned_material_result_reuses_editor_on_first_and_changed_materials() ->
 
 
 def test_native_material_import_updates_both_drafts_without_overwriting_manual_values() -> None:
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
     from src.features.toolbox.cultivation_page import CultivationCalculatorPage
     from src.services.cultivation_owned_material_import import ImportedOwnedMaterials
@@ -411,6 +411,9 @@ def test_native_material_import_updates_both_drafts_without_overwriting_manual_v
     )
     single = page.calculator._owned_materials
     batch = page.batch_calculator._owned_materials
+    for owned in (single, batch):
+        assert owned.findChild(QLabel, "cultivationOwnedImportStatus") is None
+        assert owned.findChild(QLabel, "cultivationOwnedMaterialsPlaceholder") is None
     single.set_materials((CultivationMaterial("a", "材料 A", 10),))
     batch.set_materials((CultivationMaterial("a", "材料 A", 10),))
     assert single.select_material("a")
@@ -423,7 +426,7 @@ def test_native_material_import_updates_both_drafts_without_overwriting_manual_v
     assert single.quantities()["b"] == 4
     assert batch.quantities()["a"] == 7
     assert batch.quantities()["b"] == 4
-    assert "未观测项" in single._import_status.text()
+    assert "未观测项" in single._import_button.toolTip()
 
     identity["value"] = ("b", 2, "dataset")
     button.click()

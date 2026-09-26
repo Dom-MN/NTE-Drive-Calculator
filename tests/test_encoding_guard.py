@@ -35,11 +35,7 @@ LEGACY_SHIM_PATHS = [
     "src/scanner/screenshot_parser.py",
 ]
 FEATURE_STATIC_ALLOWLIST = {
-    "src/services/character_shape_bonus_service.py": {"__file__"},
     "src/features/configuration/page.py": {"NoWheelComboBox", "NoWheelDoubleSpinBox"},
-    "src/integrations/nte_core.py": {"__file__"},
-    "src/storage/sqlite/static_game_data_dao.py": {"__file__"},
-    "src/utils/path_helper.py": {"__file__"},
 }
 
 
@@ -242,7 +238,7 @@ def _missing_names_for_path(path: Path) -> list[str]:
     table = symtable.symtable(text, str(path), "exec")
     module_names = {symbol.get_name() for symbol in table.get_symbols() if symbol.is_assigned() or symbol.is_imported()}
     allowlist = FEATURE_STATIC_ALLOWLIST.get(path.as_posix(), set())
-    return sorted(_missing_global_names(table, module_names, set(dir(builtins)) | allowlist))
+    return sorted(_missing_global_names(table, module_names, set(dir(builtins)) | {"__file__"} | allowlist))
 
 
 def _module_defined_names(tree: ast.AST) -> set[str]:

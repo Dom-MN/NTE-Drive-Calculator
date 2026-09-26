@@ -57,9 +57,9 @@ class ForkReleaseOrderingTests(unittest.TestCase):
         )
 
         limited_ids = tuple(item.featured_fork_id for item in campaigns)
-        self.assertEqual(8, len(limited_ids))
-        self.assertEqual(limited_ids, tuple(item.fork_id for item in ordered[:8]))
-        regular = ordered[8:]
+        self.assertEqual(10, len(limited_ids))
+        self.assertEqual(limited_ids, tuple(item.fork_id for item in ordered[:10]))
+        regular = ordered[10:]
         expected = sorted(
             regular,
             key=lambda item: (
@@ -207,7 +207,7 @@ class ForkCatalogPageTests(unittest.TestCase):
         self.app.processEvents()
 
         self.assertIsInstance(page, ForkCatalogPage)
-        self.assertEqual(49, len(page.visible_summaries()))
+        self.assertEqual(51, len(page.visible_summaries()))
         fork_type = page.fork_types()[0]
         page.set_type_filter(fork_type.fork_type_id)
         self.app.processEvents()
@@ -258,7 +258,7 @@ class ForkCatalogPageTests(unittest.TestCase):
         )
         self.addCleanup(page.dispose)
 
-        self.assertEqual((49, 49), page.image_coverage())
+        self.assertEqual((51, 51), page.image_coverage())
 
     def test_detail_keeps_cap_states_and_shows_owner_and_compatible_roles(self) -> None:
         page = build_fork_catalog_page(

@@ -328,15 +328,6 @@ class CultivationOwnedMaterials(QFrame):
         clear.clicked.connect(lambda _checked=False: self.clear_quantities())
         header.addWidget(clear)
         root.addLayout(header)
-        self._import_status = QLabel("原生材料需先完成原生背包同步；未观测材料保持手填值。", self)
-        self._import_status.setObjectName("cultivationOwnedImportStatus")
-        self._import_status.setWordWrap(True)
-        self._import_status.setStyleSheet(themed_style("color:#8b949e"))
-        root.addWidget(self._import_status)
-        self._placeholder = QLabel("先计算一次目标，随后可填写本次所需材料的已有数量。", self)
-        self._placeholder.setObjectName("cultivationOwnedMaterialsPlaceholder")
-        self._placeholder.setStyleSheet(themed_style("color:#8b949e"))
-        root.addWidget(self._placeholder)
         self._canvas = _OwnedMaterialCanvas(icon_lookup, self)
         self._owned_cache: dict[str, int] = {}
         self._manual_overrides: set[str] = set()
@@ -351,8 +342,7 @@ class CultivationOwnedMaterials(QFrame):
         self._import_button.setEnabled(available)
 
     def set_import_status(self, message: str) -> None:
-        self._import_status.setText(message)
-        self.layout_changed.emit()
+        self._import_button.setToolTip(message)
 
     def apply_import(self, quantities: Mapping[str, int]) -> int:
         """Overlay observed entries only; manual edits and absent IDs remain unchanged."""
@@ -400,14 +390,12 @@ class CultivationOwnedMaterials(QFrame):
         self._owned_cache.update(self._canvas.quantities())
         self._canvas.set_materials(materials, self._owned_cache)
         self._owned_cache.update(self._canvas.quantities())
-        self._placeholder.setVisible(not materials)
         self.layout_changed.emit()
 
     def clear_materials(self) -> None:
         self._owned_cache.clear()
         self._manual_overrides.clear()
         self._canvas.set_materials(())
-        self._placeholder.setVisible(True)
         self.set_import_status("原生材料需先完成原生背包同步；未观测材料保持手填值。")
         self.layout_changed.emit()
 

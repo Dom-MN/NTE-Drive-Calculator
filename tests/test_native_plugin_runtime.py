@@ -130,6 +130,7 @@ def test_manual_deployment_ui_ignores_config_saves_and_cleans_old_pending_record
         policy.set_auto_sync_enabled(False)
         return True
     monkeypatch.setattr(ui, '_confirm_d3d_deployment', confirm)
+    monkeypatch.setattr(ui, '_run_deployment_worker', lambda _window, target: target())
     information = Mock()
     monkeypatch.setattr(ui.QMessageBox, 'information', information)
     monkeypatch.setattr(ui, 'deploy_native_plugin',

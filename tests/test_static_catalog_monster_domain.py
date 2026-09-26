@@ -94,11 +94,11 @@ class StaticCatalogMonsterDomainTests(unittest.TestCase):
         return self.service.list_entries(filters)
 
     def test_release_schema_coverage_is_exposed_without_mutating_static_data(self):
-        self.assertEqual(35, self._page("official_illustrated").total)
-        self.assertEqual(4311, self._page("template_profile").total)
+        self.assertEqual(36, self._page("official_illustrated").total)
+        self.assertEqual(10139, self._page("template_profile").total)
         self.assertEqual(7, self._page("world_boss").total)
         self.assertEqual(32, self._page("feast").total)
-        self.assertEqual(218, self._page("clone").total)
+        self.assertEqual(221, self._page("clone").total)
         self.assertEqual(78, self._page("high_risk").total)
 
         with StaticCatalogMonsterQueries(STATIC_DATABASE) as queries:
@@ -132,7 +132,7 @@ class StaticCatalogMonsterDomainTests(unittest.TestCase):
             {entry.primary_id for entry in entries},
         )
         self.assertEqual(
-            {"Abyss_1", "Abyss_4", "Abyss_7", "Abyss_10", "Abyss_11", "Abyss_12"},
+            {"Abyss_1", "Abyss_4", "Abyss_7"},
             {
                 entry.primary_id for entry in entries
                 if entry.release_state == "unscheduled"
@@ -467,7 +467,7 @@ class StaticCatalogMonsterDomainTests(unittest.TestCase):
 
     def test_every_clone_difficulty_has_an_honest_drop_projection_status(self):
         self.assertEqual(
-            {"complete": 122, "partial": 36, "unavailable": 60},
+            {"complete": 122, "partial": 36, "unavailable": 63},
             self.service.clone_drop_status_counts(),
         )
         entries = []

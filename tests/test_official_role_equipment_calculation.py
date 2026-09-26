@@ -288,8 +288,8 @@ class OfficialRoleEquipmentCalculationTests(unittest.TestCase):
             **detail,
             "profile": {**profile, "fork_id": None},
         }
-        self.assertLess(graduation_rate(without_likeability, "current"), 100.0)
-        self.assertLess(graduation_rate(without_fork, "current"), 100.0)
+        self.assertAlmostEqual(100.0, graduation_rate(without_likeability, "current"))
+        self.assertAlmostEqual(100.0, graduation_rate(without_fork, "current"))
 
     def test_damage_breakdown_names_likeability_as_its_own_source(self) -> None:
         detail = {

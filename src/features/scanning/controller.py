@@ -392,3 +392,19 @@ class ScanningController(QObject):
 
     def _save_alloc(self, show_message: bool = True) -> bool:
         return self._allocation_controller.save(show_message=show_message)
+
+    def clear_calculation(self) -> None:
+        """Discard only the current allocation preview, not saved plans or inputs."""
+
+        if self.is_running():
+            QMessageBox.information(self.dialog_parent, "暂不能清空", "请等待当前任务结束后再清空计算结果。")
+            return
+        answer = QMessageBox.question(
+            self.dialog_parent,
+            "清空计算结果",
+            "清空当前计算结果？\n已保存的配装、角色选择和分配设置不会改变。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer == QMessageBox.Yes:
+            self._allocation_controller.clear_preview()

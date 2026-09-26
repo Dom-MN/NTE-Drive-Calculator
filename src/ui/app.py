@@ -406,6 +406,7 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
         self.onboarding_guide = OnboardingGuide(
             app_context=self.app_context,
             parent=self,
+            on_help=self._show_group_chat_notice,
         )
         self._update_config = self._load_update_config()
         self._ui_preferences = self._load_ui_preferences()

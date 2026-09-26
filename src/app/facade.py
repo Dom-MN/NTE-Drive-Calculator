@@ -73,7 +73,7 @@ class NTEAppFacade:
         crit_rate_baselines=None,
         custom_weapons=None,
         locked_uids=None,
-        blueprint_combo_limit: int = 500,
+        blueprint_combo_limit: int = 2000,
         cancel_check=None,
     ):
         """使用已经固定的数据集合计算，不要求生成中间库存文件。"""

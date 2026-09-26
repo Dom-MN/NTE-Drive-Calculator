@@ -24,6 +24,7 @@ from src.app.constants import APP_VERSION
 from src.app.theme import themed_style
 from src.app.window_geometry import fit_dialog_to_available_screen
 from src.services.game_ui_asset_catalog import GameUiAssetCatalog
+from src.features.home.feature_guide import add_feature_guides
 from src.ui.dashboard_widgets import metric_card, set_status_badge
 from src.ui.image_scaling import asset_pixmap
 
@@ -349,21 +350,9 @@ def build_home_page(window) -> QScrollArea:
     window.home_last_sync_label.hide()
     root.addWidget(sync_card)
 
-    actions_card, actions_layout = _section("快捷操作")
-    actions = QHBoxLayout()
-    for label, page_key in (
-        ("计算配装", "execute"),
-        ("查看方案", "equipment"),
-        ("角色边际", "my_role"),
-        ("仓库管理", "warehouse"),
-        ("空幕鉴定", "identify"),
-    ):
-        button = QPushButton(label)
-        button.clicked.connect(lambda _checked=False, key=page_key: window._go(key))
-        actions.addWidget(button)
-    actions.addStretch()
-    actions_layout.addLayout(actions)
-    root.addWidget(actions_card)
+    guides_card, guides_layout = _section("功能说明")
+    add_feature_guides(guides_layout, window, window._go)
+    root.addWidget(guides_card)
 
     root.addStretch()
     return scroll

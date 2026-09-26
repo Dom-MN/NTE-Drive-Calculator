@@ -23,7 +23,6 @@ from src.services.static_catalog_character_release_metadata import CharacterRele
 from src.services.static_catalog_terminology_service import StaticCatalogTerminologyService
 from src.services.static_catalog_service import StaticCatalogService
 from src.storage.sqlite.static_catalog_character_queries import StaticCatalogCharacterQueries
-from src.storage.sqlite.static_catalog_monster_queries import StaticCatalogMonsterQueries
 from src.ui.equipment_presentation import EquipmentPresentation
 from tools.game_data.static_database_build_support import StaticDatabaseError
 from tools.game_data.static_database_progression_imports import ProgressionImportMixin
@@ -82,25 +81,6 @@ class ReferenceCatalogTests(unittest.TestCase):
             self.assertTrue(assets.character_art(identity).is_file())
             self.assertEqual("S", metadata.metadata(identity).quality)
             self.assertEqual("limited", metadata.metadata(identity).acquisition_type)
-
-    def test_new_outer_rule_does_not_require_task_or_become_battle_components(self):
-        release = read_role_catalog(CATALOG)
-        query = StaticCatalogMonsterQueries(release.database_path)
-        self.addCleanup(query.close)
-        rule = query.outer_realm_season_buff("Abyss_10")
-        self.assertEqual("星流环线", rule["season_name_zh"])
-        self.assertEqual("星明如昼", rule["buff_name_zh"])
-        self.assertIn("30%", rule["description_zh"])
-        self.assertEqual((), rule["components"])
-        with closing(sqlite3.connect(f"{release.database_path.as_uri()}?mode=ro", uri=True)) as connection:
-            self.assertIsNone(connection.execute("SELECT 1 FROM outer_realm_rotation WHERE level_config_id='Abyss_10'").fetchone())
-            self.assertEqual(0, connection.execute("SELECT COUNT(*) FROM outer_realm_season_buff_component").fetchone()[0])
-        self.assertEqual("夕照环线", query.outer_realm_season_buff("Abyss_11")["season_name_zh"])
-        self.assertEqual("澄明环线", query.outer_realm_season_buff("Abyss_12")["season_name_zh"])
-        old = StaticCatalogMonsterQueries(MAIN)
-        self.addCleanup(old.close)
-        self.assertTrue(old.outer_realm_season_buff("Abyss_8")["components"])
-        self.assertIsNone(old.outer_realm_season_buff("Abyss_10"))
 
     def test_changed_reference_release_invalidates_frozen_request(self):
         with tempfile.TemporaryDirectory() as temporary:

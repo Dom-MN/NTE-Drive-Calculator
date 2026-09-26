@@ -1,15 +1,33 @@
 # 验证新版组件设置入口保留 Loader 选择且不将其送入 D3D 部署。
 import os
 from types import SimpleNamespace
+from threading import Event, get_ident
 from unittest.mock import Mock
 import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QLabel, QPushButton, QWidget
 
 from src.ui.controllers.native_plugin_deployment_ui import refresh_native_plugin_status
 from src.ui.controllers.mod_loader_controller import activate_equipment_plugin_loading_method
 from src.services.work_mode_service import WorkModeService
 from tests.test_native_plugin_bundle import make_bundle
+
+
+def test_deployment_worker_keeps_gui_event_loop_responsive():
+    from src.ui.controllers.native_plugin_deployment_ui import _run_deployment_worker
+
+    app = QApplication.instance() or QApplication([])
+    parent = QWidget()
+    ready = Event()
+    gui_thread = get_ident()
+    QTimer.singleShot(20, ready.set)
+    try:
+        gui_pumped, worker_thread = _run_deployment_worker(parent, lambda: (ready.wait(2), get_ident()))
+        assert gui_pumped and worker_thread != gui_thread
+    finally:
+        parent.close()
+        app.processEvents()
 
 
 @pytest.mark.parametrize('action, accepted', [

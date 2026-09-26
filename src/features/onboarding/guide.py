@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
@@ -13,7 +14,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QDialog,
-    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -33,9 +33,11 @@ __all__ = ["OnboardingGuide"]
 class OnboardingGuide:
     """Own the tutorial dialog without installing methods on MainWindow."""
 
-    def __init__(self, *, app_context: AppContext, parent: QWidget) -> None:
+    def __init__(self, *, app_context: AppContext, parent: QWidget,
+                 on_help: Callable[[], None]) -> None:
         self._app_context = app_context
         self._parent = parent
+        self._on_help = on_help
 
     def image_files(self) -> list[Path]:
         guide_dir = self._app_context.paths.template_dir / "guide"
@@ -129,9 +131,23 @@ class OnboardingGuide:
         dont_show = QCheckBox("不再自动显示")
         dont_show.setChecked(auto)
         layout.addWidget(dont_show)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok)
-        buttons.accepted.connect(dialog.accept)
-        layout.addWidget(buttons)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        help_button = QPushButton("遇到问题", dialog)
+        help_button.setObjectName("onboardingHelpButton")
+
+        def open_help() -> None:
+            dialog.accept()
+            QTimer.singleShot(0, self._on_help)
+
+        help_button.clicked.connect(open_help)
+        actions.addWidget(help_button)
+        confirm = QPushButton("确定", dialog)
+        confirm.setObjectName("onboardingConfirmButton")
+        confirm.setDefault(True)
+        confirm.clicked.connect(dialog.accept)
+        actions.addWidget(confirm)
+        layout.addLayout(actions)
         render()
         dialog.exec()
         if dont_show.isChecked():

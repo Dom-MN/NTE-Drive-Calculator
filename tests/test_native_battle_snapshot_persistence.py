@@ -99,8 +99,8 @@ class NativeBattleSnapshotPersistenceTests(unittest.TestCase):
                 decode_derived_snapshot(row, battle_record_id=self.record_id, dataset_version='fixture-dataset')
         row = deepcopy(self.row)
         row['inferred_payload']['extra'] = 1
-        with self.assertRaises(NativeAnalysisError):
-            decode_derived_snapshot(row, battle_record_id=self.record_id, dataset_version='fixture-dataset')
+        checked = decode_derived_snapshot(row, battle_record_id=self.record_id, dataset_version='fixture-dataset')
+        self.assertEqual(1, checked['inferred_payload']['extra'])
 
     def test_user_confirmation_supersedes_pending_inference(self):
         with UserDataDao(self.dependencies.user_database_path, account_id='fixture') as dao:

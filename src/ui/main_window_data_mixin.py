@@ -1,6 +1,7 @@
 # 管理主窗口日志会话、数据加载、首页、设置页和截图清理状态。
 """MainWindow data, logging and account-scoped page helpers."""
 from __future__ import annotations
+from pathlib import Path
 from PySide6.QtGui import QColor, QTextCursor
 from PySide6.QtWidgets import QFrame, QLabel, QMessageBox, QVBoxLayout
 from src.app.constants import APP_VERSION, NETDISK_DOWNLOAD_LINKS
@@ -110,7 +111,29 @@ class MainWindowDataMixin:
         self._refresh_log_session_status()
 
     # ── Data
+    def _allocation_catalog_source_key(self):
+        """Cheap identity check before rebuilding SQLite projections and role cards."""
+        paths = self.app_context.paths
+        user_db = self.app_context.account.user_database_path
+        static_db = paths.equipment_allocation_database_path
+        files = (
+            paths.config_dir / "stats.json",
+            paths.workshop_weight_template_file,
+            user_db, Path(str(user_db) + "-wal"),
+            static_db, Path(str(static_db) + "-wal"),
+        )
+
+        def stamp(path):
+            try:
+                info = path.stat()
+            except OSError:
+                return str(path), None
+            return str(path), (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+
+        return self.app_context.generation, tuple(stamp(path) for path in files)
+
     def _load_data(self, reload_priority=True):
+        self._allocation_catalog_loaded_key = None
         try:
             config_dir = self.app_context.paths.config_dir
             user_database_path = self.app_context.account.user_database_path
@@ -179,13 +202,15 @@ class MainWindowDataMixin:
                 set_names=self.all_set_names,
                 scoring_engine=self.scoring_engine,
             )
+            self._allocation_catalog_loaded_key = self._allocation_catalog_source_key()
         except Exception as e:
             logger.error(f"加载失败: {e}")
 
     def _refresh_execute(self):
-        """Reload the legacy calculation role catalog when entering step two."""
+        """Rebuild role cards only when their persisted sources have changed."""
 
-        self._load_data(reload_priority=False)
+        if getattr(self, "_allocation_catalog_loaded_key", None) != self._allocation_catalog_source_key():
+            self._load_data(reload_priority=False)
 
 
     def _update_inventory_status(self):

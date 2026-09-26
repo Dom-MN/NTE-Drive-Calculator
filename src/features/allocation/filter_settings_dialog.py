@@ -97,7 +97,7 @@ class AllocationFilterSettingsDialog(QDialog):
         other_layout.setSpacing(6)
         other_layout.addWidget(QLabel("组合数上限"))
         self.combo_limit_edit = QLineEdit(str(current.blueprint_combo_limit))
-        self.combo_limit_edit.setPlaceholderText("默认 500")
+        self.combo_limit_edit.setPlaceholderText("默认 2000")
         self.combo_limit_edit.setFixedHeight(36)
         other_layout.addWidget(self.combo_limit_edit, 1)
         other_help = QPushButton("?", other_module)
@@ -108,7 +108,7 @@ class AllocationFilterSettingsDialog(QDialog):
             lambda _checked=False, parent=other_help: show_help(
                 parent,
                 "组合数上限说明",
-                "每个优先级组最多评估的图纸组合数。数值越大，计算越充分但耗时越长；默认 500。",
+                "每个优先级组最多评估的图纸组合数。数值越大，计算越充分但耗时越长；默认 2000。",
             )
         )
         other_layout.addWidget(other_help)

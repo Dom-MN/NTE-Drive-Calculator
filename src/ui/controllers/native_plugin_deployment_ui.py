@@ -1,6 +1,6 @@
 # 在现有设置部署入口展示原生插件配套状态并提交游戏退出后的整套部署。
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
+from PySide6.QtCore import QEventLoop, QSize, Qt, QThread, QTimer
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMessageBox, QProgressBar, QPushButton, QVBoxLayout
 
 from src.app.theme import theme_color
 from src.app.window_geometry import fit_dialog_to_available_screen
@@ -10,6 +10,69 @@ from src.services.equipment_plugin_deployment import EquipmentPluginDeploymentEr
 from src.services.native_plugin_deployment import PluginDeploymentPendingCleanup
 from src.services.native_plugin_deployment import deploy_native_plugin
 from src.services.mod_plugin_loading_service import ModPluginLoadingError, ModPluginLoadingWaiting
+
+
+class _DeploymentWorker(QThread):
+    def __init__(self, target, parent):
+        super().__init__(parent)
+        self._target = target
+        self.result = None
+        self.error = None
+
+    def run(self):
+        try:
+            self.result = self._target()
+        except Exception as error:
+            self.error = error
+
+
+class _DeploymentProgress(QDialog):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.running = True
+
+    def reject(self):
+        if not self.running:
+            super().reject()
+
+    def closeEvent(self, event):
+        if self.running:
+            event.ignore()
+        else:
+            super().closeEvent(event)
+
+
+def _run_deployment_worker(window, target):
+    """Keep disk hashing and replacement off the GUI thread without losing typed errors."""
+
+    dialog = _DeploymentProgress(window)
+    dialog.setWindowTitle("正在部署原生组件")
+    dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+    dialog.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+    layout = QVBoxLayout(dialog)
+    label = QLabel("正在核对并写入游戏组件，请保持游戏关闭…", dialog)
+    label.setWordWrap(True)
+    layout.addWidget(label)
+    progress = QProgressBar(dialog)
+    progress.setRange(0, 0)
+    layout.addWidget(progress)
+    fit_dialog_to_available_screen(dialog, QSize(420, 120))
+
+    loop = QEventLoop(dialog)
+    worker = _DeploymentWorker(target, dialog)
+    worker.finished.connect(loop.quit)
+    try:
+        dialog.show()
+        QTimer.singleShot(0, worker.start)
+        loop.exec()
+        worker.wait()
+        if worker.error is not None:
+            raise worker.error
+        return worker.result
+    finally:
+        dialog.running = False
+        dialog.close()
+        dialog.deleteLater()
 
 
 def _refresh_work_mode_detection(window) -> None:
@@ -125,36 +188,58 @@ def deploy_native_plugin_from_settings(window) -> None:
     if not _confirm_d3d_deployment(window):
         return
 
+    policy = window.work_mode_service
+    context = window.app_context
+    session = window.native_game_session
+    runtime = window.work_mode_runtime
+    root = context.paths.root
+
     def guard(capability):
-        window.work_mode_service.require(capability)
-        if (window.operation_generation() != generation
-                or window.work_mode_service.settings.game_executable != executable
-                or window.native_game_session.battle_active):
+        policy.require(capability)
+        if ((policy.operation_revision, context.generation) != generation
+                or policy.settings.game_executable != executable
+                or session.battle_active):
             raise PermissionError("原生组件部署上下文已改变，已停止操作。")
 
     try:
         guard("native_load")
-        window._stop_inventory_sync()
+        invalidate = getattr(window, "invalidate_inventory_sync_notifications", None)
+        if invalidate is not None:
+            invalidate()
+        sync_service = getattr(window, "_inventory_sync_service", None)
+        if sync_service is not None:
+            sync_service.request_stop()
         window.character_profile_sync_controller.request_stop()
-        window.native_game_session.close()
-        revision = window.work_mode_runtime.prepare_manual_native_deployment(expected_operation_revision=generation[0])
-        generation = (revision, generation[1])
-        guard("native_load")
-        deployed = deploy_native_plugin(
-            application_root=window.app_context.paths.root,
-            game_executable_path=executable,
-            operation_guard=guard,
-            cleanup_legacy_proxy=True,
-        )
-        window.work_mode_runtime.save_deployment(deployed)
+
+        def deploy_after_stop():
+            nonlocal generation
+            if sync_service is not None and sync_service.is_running:
+                sync_service.stop()
+            session.close()
+            revision = runtime.prepare_manual_native_deployment(expected_operation_revision=generation[0])
+            generation = (revision, generation[1])
+            guard("native_load")
+            return deploy_native_plugin(
+                application_root=root,
+                game_executable_path=executable,
+                operation_guard=guard,
+                cleanup_legacy_proxy=True,
+            )
+
+        try:
+            deployed = _run_deployment_worker(window, deploy_after_stop)
+        finally:
+            if sync_service is None or not sync_service.is_running:
+                window._stop_inventory_sync()
+        runtime.save_deployment(deployed)
         window._refresh_equipment_plugin_status()
         _refresh_work_mode_detection(window)
         QMessageBox.information(window, "原生组件已部署", "请启动游戏，然后重新检测连接和各项业务能力。")
     except PluginDeploymentPendingCleanup as error:
-        window.work_mode_runtime.save_pending_deployment(error)
+        runtime.save_pending_deployment(error)
         _refresh_work_mode_detection(window)
         QMessageBox.warning(window, "组件部署待清理", str(error))
-    except (EquipmentPluginDeploymentError, PermissionError) as error:
+    except (EquipmentPluginDeploymentError, PermissionError, TimeoutError) as error:
         if window.work_mode_service.allowed("native_load"):
             window.operation_unavailable("部署原生组件", str(error), target="deployment")
 

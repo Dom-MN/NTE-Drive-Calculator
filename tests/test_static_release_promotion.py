@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import lzma
 import os
 import sqlite3
 import tempfile
@@ -158,7 +159,20 @@ class StaticReleasePromotionTests(unittest.TestCase):
                     payload_json TEXT,
                     content_sha256 TEXT NOT NULL
                 );
+                CREATE TABLE battle_analysis_catalog (
+                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                    format_version INTEGER NOT NULL CHECK (format_version = 1),
+                    codec TEXT NOT NULL CHECK (codec = 'xz-json'),
+                    decoded_bytes INTEGER NOT NULL CHECK (decoded_bytes > 0 AND decoded_bytes <= 67108864),
+                    decoded_sha256 TEXT NOT NULL CHECK (length(decoded_sha256) = 64),
+                    payload BLOB NOT NULL
+                );
                 """
+            )
+            analysis_raw = json.dumps({"target": {}, "axis": {}, "rules": {}}, separators=(",", ":")).encode("utf-8")
+            connection.execute(
+                "INSERT INTO battle_analysis_catalog VALUES (1, 1, 'xz-json', ?, ?, ?)",
+                (len(analysis_raw), hashlib.sha256(analysis_raw).hexdigest(), lzma.compress(analysis_raw)),
             )
             connection.execute(
                 "INSERT INTO dataset VALUES (?, ?, ?)",

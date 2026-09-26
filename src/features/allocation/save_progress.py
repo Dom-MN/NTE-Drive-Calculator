@@ -14,7 +14,7 @@ from src.app.workers import WorkerThread
 class AllocationSaveProgress(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("保存装备锁定")
+        self.setWindowTitle("保存配装")
         self.setStyleSheet(current_style_sheet())
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)

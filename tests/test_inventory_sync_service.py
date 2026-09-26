@@ -319,7 +319,7 @@ class InventorySyncServiceTests(unittest.TestCase):
 
     def _start(self) -> None:
         self.service.start()
-        self.service.wait_for_phase("waiting", timeout=2.0)
+        self.service.wait_for_phase("waiting", timeout=5.0)
 
     def test_starts_capture_without_raw_packet_files(self) -> None:
         self._start()

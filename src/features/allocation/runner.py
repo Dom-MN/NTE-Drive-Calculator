@@ -133,7 +133,7 @@ def _run_allocation(
     crit_rate_baselines: dict[str, Any] | None = None,
     custom_weapons: dict[str, Any] | None = None,
     filter_settings: AllocationFilterSettings | None = None,
-    blueprint_combo_limit: int = 500,
+    blueprint_combo_limit: int = 2000,
     cancel_check=None,
 ) -> Any:
     try:
@@ -242,7 +242,7 @@ def _start_allocation_worker(self: Any) -> None:
             getattr(self, "_pending_crit_rate_baselines", {}),
             getattr(self, "_pending_custom_weapons", {}),
             getattr(self, "_pending_filter_settings", AllocationFilterSettings()),
-            getattr(self, "_pending_blueprint_combo_limit", 500),
+            getattr(self, "_pending_blueprint_combo_limit", 2000),
             self._cancel_event.is_set,
         ),
         parent=self,
@@ -590,7 +590,7 @@ class AllocationController(QObject):
         self._pending_crit_rate_baselines: dict[str, Any] = {}
         self._pending_custom_weapons: dict[str, Any] = {}
         self._pending_filter_settings = AllocationFilterSettings()
-        self._pending_blueprint_combo_limit = 500
+        self._pending_blueprint_combo_limit = 2000
         self._allocation_custom_weapons: dict[str, Any] = {}
         self._ui_preferences: dict[str, Any] = {}
 
@@ -619,7 +619,7 @@ class AllocationController(QObject):
         crit_rate_baselines: dict[str, Any],
         custom_weapons: dict[str, Any],
         filter_settings: AllocationFilterSettings,
-        blueprint_combo_limit: int = 500,
+        blueprint_combo_limit: int = 2000,
     ) -> None:
         if self.btn_run is None:
             raise RuntimeError("allocation run button has not been bound")
@@ -656,6 +656,19 @@ class AllocationController(QObject):
 
     def is_running(self) -> bool:
         return self._saving or bool(self._worker is not None and self._worker.isRunning())
+
+    def clear_preview(self) -> None:
+        """Discard a displayed calculation without changing persisted plans or inputs."""
+
+        self.final_plan = {}
+        self.allocation_plan_diff = {}
+        self._allocation_dirty = False
+        self._pending_allocation_snapshot_id = None
+        self._pending_allocation_static_identity = None
+        self._allocation_lock_snapshot = None
+        self._selected_locked_role_names = frozenset()
+        self._allocation_custom_weapons = {}
+        self._equipment_presentation.clear()
 
     def reset_account_state(self) -> None:
         self.final_plan = {}

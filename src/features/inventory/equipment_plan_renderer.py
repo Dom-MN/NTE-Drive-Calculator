@@ -446,7 +446,7 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
     graduation_layout = QHBoxLayout(graduation_frame)
     graduation_layout.setSpacing(6)
     graduation_layout.setContentsMargins(4, 0, 4, 0)
-    graduation_label = QLabel("毕业率")
+    graduation_label = QLabel("空幕毕业率")
     graduation_label.setObjectName("equipmentGraduationLabel")
     graduation_layout.addWidget(graduation_label)
     graduation_value = QLabel("--")

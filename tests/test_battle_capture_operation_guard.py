@@ -29,7 +29,7 @@ class BattleCaptureOperationGuardTests(TestCase):
                 service.start()
             factory.assert_not_called()
 
-    def test_revocation_during_staging_denies_factory(self):
+    def test_revocation_during_staging_denies_client_start(self):
         allowed = [True]
 
         def guard(_):
@@ -42,7 +42,8 @@ class BattleCaptureOperationGuardTests(TestCase):
         service = self.service(factory, guard=guard, writer=writer)
         service.start()
         self.assertTrue(_wait_until(lambda: not service.is_running))
-        factory.assert_not_called()
+        factory.assert_called_once_with()
+        factory.return_value.start.assert_not_called()
         self.assertEqual("error", service.state.phase)
         self.assertTrue(writer.discarded)
 

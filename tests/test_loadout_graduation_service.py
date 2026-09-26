@@ -19,19 +19,37 @@ from src.services import official_role_graduation_service as graduation_service
 def test_graduation_rate_uses_role_page_damage_contract(monkeypatch) -> None:
     monkeypatch.setattr(
         graduation_service,
-        "graduation_benchmark_damage",
-        lambda _detail: 200.0,
+        "graduation_template_with_weight_substats",
+        lambda _detail: {"profile": {"character_level": 80}, "equipment": ()},
     )
+    received = []
+
+    def margins(detail, context_key):
+        received.append((detail["profile"], detail["world_bonus"]))
+        return {"damage": {"graduation": 200.0, "saved": 150.0, "current": 100.0}[context_key]}
+
     monkeypatch.setattr(
         graduation_service,
         "calculate_official_role_margins",
-        lambda _detail, context_key: {
-            "damage": 150.0 if context_key == "saved" else 100.0
-        },
+        margins,
     )
 
-    assert graduation_service.graduation_rate({}, "saved") == 75.0
-    assert graduation_service.graduation_rate({}, "current") == 50.0
+    assert graduation_service.graduation_rate({
+        "profile": {"character_level": 1},
+        "world_bonus": {"yaodao_attack_add": 0, "quantao_crit_damage": 0},
+    }, "saved") == 75.0
+    assert graduation_service.graduation_rate({
+        "profile": {"character_level": 20},
+        "world_bonus": {"yaodao_attack_add": 20, "quantao_crit_damage": 0.04},
+    }, "saved") == 75.0
+    assert graduation_service.graduation_rate({"profile": {"character_level": 20}}, "current") == 50.0
+    assert all(profile == {"character_level": 80} for profile, _world in received)
+    assert all(world == {"yaodao_attack_add": 20.0, "quantao_crit_damage": 0.04} for _profile, world in received)
+
+
+def test_missing_graduation_template_has_no_misleading_hover_description() -> None:
+    assert graduation_service.graduation_rate({}, "current") is None
+    assert graduation_service.graduation_tooltip({}) == "空幕直伤毕业基准尚未生成。"
 
 
 def test_loadout_graduation_loader_uses_requested_context(monkeypatch) -> None:
@@ -167,7 +185,7 @@ def test_cached_loadout_graduation_does_not_start_worker() -> None:
 def test_graduation_tooltip_is_applied_to_title_value_and_container() -> None:
     app = QApplication.instance() or QApplication([])
     value_label = QLabel()
-    title_label = QLabel("毕业率")
+    title_label = QLabel("空幕毕业率")
     container = QWidget()
     state = {
         "_graduation_rate_loaded": True,

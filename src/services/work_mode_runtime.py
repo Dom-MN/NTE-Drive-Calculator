@@ -19,7 +19,9 @@ from src.integrations.mod_loader import ModLoaderRuntimeError, game_launcher_can
 from src.integrations.nte_core import resolve_nte_core_executable
 from src.services.deployed_plugin_inspection import inspect_deployed_native_plugin
 from src.services.native_plugin_deployment import PluginDeploymentPendingCleanup
-from src.services.native_plugin_deployment import deploy_native_plugin, cleanup_native_plugin, NativePluginCleanupResult
+from src.services.native_plugin_deployment import (
+    deploy_native_plugin, cleanup_native_plugin, cleanup_manual_native_plugin, NativePluginCleanupResult,
+)
 from src.services.equipment_plugin_deployment import (
     find_game_executables, game_process_running, game_executable,
     mod_workspace_registry_snapshot, npcap_installation_present,
@@ -256,10 +258,17 @@ class WorkModeRuntime:
         if record.get("deployment_layout") == "native-capture-v1":
             self._restore_native_workspace(record)
             self.loader.stop_loader()
-            result = cleanup_native_plugin(
-                game_executable_path=path, managed_files=record.get("managed_files", {}),
-                game_running=self._game_running,
-            ) if record.get("managed_files") else NativePluginCleanupResult("cleaned", "没有待清理的游戏目录组件。")
+            managed_files = record.get("managed_files", {})
+            if allow_unrecorded_legacy_workspace and path:
+                result = cleanup_manual_native_plugin(
+                    application_root=self.root, game_executable_path=path,
+                    managed_files=managed_files, game_running=self._game_running,
+                )
+            else:
+                result = cleanup_native_plugin(
+                    game_executable_path=path, managed_files=managed_files,
+                    game_running=self._game_running,
+                ) if managed_files else NativePluginCleanupResult("cleaned", "没有待清理的游戏目录组件。")
             self.cleanup_detail = result.detail
             if (result.status == "cleaned" and allow_unrecorded_legacy_workspace and path
                     and (legacy_game_proxy_present(Path(path).parent) or record.get("workspace_path"))):
@@ -303,6 +312,17 @@ class WorkModeRuntime:
                 notify=bool(has_deployment or workspace),
             )
             return
+        if allow_unrecorded_legacy_workspace:
+            native_result = cleanup_manual_native_plugin(
+                application_root=self.root, game_executable_path=path,
+                managed_files=record.get("managed_files", {}), game_running=self._game_running,
+            )
+            if native_result.status != "cleaned":
+                self._record_cleanup(
+                    CheckState.FAULT if native_result.status == "conflict" else CheckState.CLEANUP_PENDING,
+                    native_result.detail, notify=True,
+                )
+                return
         if allow_unrecorded_legacy_workspace and workspace:
             registered, current = mod_workspace_registry_snapshot()
             if registered and current:
@@ -341,7 +361,7 @@ class WorkModeRuntime:
         method = self.policy.deployment_record.get("loading_method", "native-capture")
         self.policy.update_deployment({"loading_method": method})
         self.policy.set_cleanup_pending(False)
-        self.cleanup_detail = "本程序管理的加载入口已清理；未恢复历史 DLL 或加载配置。"
+        self.cleanup_detail = "已清理本程序组件及旧加载入口；未恢复历史 DLL 或加载配置。"
         self.invalidate()
 
     def _automatic_deploy(self, running: bool) -> None:
