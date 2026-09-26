@@ -228,7 +228,8 @@ class ModeReportDialog(QDialog):
         footer = QHBoxLayout()
         footer.addStretch()
         self.settings_button = QPushButton("前往环境设置")
-        self.settings_button.clicked.connect(self._open_environment_settings)
+        self._primary_action = self._open_environment_settings
+        self.settings_button.clicked.connect(lambda: self._primary_action())
         footer.addWidget(self.settings_button)
         self.close_button = QPushButton("关闭")
         self.close_button.setFixedWidth(72)
@@ -285,7 +286,9 @@ class ModeReportDialog(QDialog):
             label.setWordWrap(True)
             label.setStyleSheet(f"color:{color};font-weight:700")
             body.addWidget(label)
-            explanation = QLabel(detail, row)
+            # Keep typed evidence in the copyable folded report, not in the
+            # user-facing issue card.
+            explanation = QLabel(str(detail).split("\n诊断：", 1)[0], row)
             explanation.setWordWrap(True)
             body.addWidget(explanation)
             self.results_layout.addWidget(row)
@@ -317,6 +320,11 @@ class ModeReportDialog(QDialog):
         self.accept()
         QTimer.singleShot(0, lambda: controller.open_settings(target))
 
+    def _set_primary_action(self, title, callback):
+        self.settings_button.setText(title)
+        self._primary_action = callback
+        self.settings_button.show()
+
     def _retry(self):
         if self._preview:
             self._controller.check(show=True, preview=True)
@@ -345,7 +353,7 @@ class ModeReportDialog(QDialog):
         self.preflight_summary.setVisible(preview)
         if preview:
             self.preflight_summary.setText("状态：正在核对\n下一步：核对完成后确认处理或前往环境设置。")
-        self.settings_button.setText("前往环境设置")
+        self._set_primary_action("前往环境设置", self._open_environment_settings)
         self._clear_actions()
         self.retry_button.setEnabled(False)
         self.copy_button.setEnabled(False)
@@ -376,46 +384,67 @@ class ModeReportDialog(QDialog):
     def set_report(self, report):
         self.progress.hide()
         self._clear_actions()
+        self._set_primary_action("前往环境设置", self._open_environment_settings)
         self.retry_button.setEnabled(True)
         self._set_result(report_text(report))
         self._render_report(report)
         available = {action for item in report.features for action in item.actions}
-        for key, title, callback in (
-            ("download_npcap", "下载 Npcap", lambda: self.parentWidget()._open_npcap_download()),
-            ("detect_game_path", "重新检测路径", self._controller.detect_path),
-            ("manual_deploy", "前往部署组件", self._open_environment_settings),
-        ):
-            if key in available and not (self._preview and key == "manual_deploy"):
-                self._add_action(title, callback, close=key != "manual_deploy")
+        if "manual_deploy" in available and not self._preview:
+            self._settings_target = "deployment"
+            self._add_action("前往部署组件", self._open_environment_settings)
+            self.settings_button.hide()
+        elif "download_npcap" in available:
+            def download():
+                self.parentWidget()._open_npcap_download()
+            self._add_action("下载 Npcap", download, close=True)
+            self.settings_button.hide()
+        elif "detect_game_path" in available:
+            def detect():
+                self._controller.detect_path()
+            self._add_action("重新检测路径", detect, close=True)
+            self.settings_button.hide()
 
     def set_error(self, detail):
         self.progress.hide()
         self._clear_actions()
+        self._set_primary_action("前往环境设置", self._open_environment_settings)
         self.retry_button.setEnabled(True)
         self._set_result(detail)
         self._clear_results()
         self.overview.setText("检测未完成 · 请重新检测")
-        self._add_result_section("需处理", [(('fault', '故障', detail), ['环境检测'])], "#f85149")
+        self._add_result_section(
+            "需处理", [(('fault', '故障', '环境检测中断，请查看排查信息。'), ['环境检测'])],
+            "#f85149",
+        )
         if self._preview:
-            self.preflight_summary.setText("状态：检测未完成\n原因：" + detail + "\n下一步：重新检测或前往环境设置。")
+            self.preflight_summary.setText(
+                "状态：检测未完成\n原因：环境检测中断。\n下一步：重新检测；仍失败请复制检测结果反馈。"
+            )
 
     def set_sync_preflight(self, decision):
         self._settings_target = decision.target
+        self._clear_actions()
         self.preflight_summary.setText(
             ("状态：可开启同步" if decision.ready else "状态：等待处理") +
             "\n原因：" + decision.detail +
             ("\n下一步：自动开启同步。" if decision.ready else
              "\n下一步：" + (decision.action_label or "处理后重新检测。"))
         )
-        if decision.target == "mode":
-            self.settings_button.setText("前往工作模式设置")
-        self._copy_text += "\n\n开启同步：" + decision.detail
-        self.label.setText(self._copy_text)
         if decision.action_label:
             self._add_action(decision.action_label, self._open_environment_settings)
+            self.settings_button.hide()
+        elif decision.target == "mode":
+            self._set_primary_action("前往工作模式设置", self._open_environment_settings)
+        else:
+            self._set_primary_action("前往环境设置", self._open_environment_settings)
+        self._copy_text += "\n\n开启同步：" + decision.detail
+        self.label.setText(self._copy_text)
+        if decision.ready:
+            self.settings_button.hide()
 
     def set_activation_result(self, ready, detail):
         self.progress.hide()
+        self._clear_actions()
         self.retry_button.setEnabled(True)
         self.preflight_summary.show()
         self.preflight_summary.setText(
@@ -427,6 +456,7 @@ class ModeReportDialog(QDialog):
         self._clear_results()
         self._set_result(self.preflight_summary.text())
         self.overview.setText("同步已开启" if ready else "同步仍关闭")
+        self.settings_button.setVisible(not ready)
 
     def _set_result(self, detail):
         header = (f"NTE Drive Calc {__version__} · {self.windowTitle()}\n"

@@ -164,6 +164,9 @@ def test_report_can_be_copied_and_clears_stale_result_on_recheck():
         assert dialog.overview.text().startswith('需处理')
         rows = dialog.results.findChildren(QFrame, 'modeReportFeatureRow')
         assert '原生连接与业务检测' in rows[0].findChild(QLabel).text()
+        assert 'core.hello' not in ' '.join(
+            label.text() for row in rows for label in row.findChildren(QLabel)
+        )
         assert any('DLL 战报' in row.findChild(QLabel).text() and
                    'DLL 装配' in row.findChild(QLabel).text() for row in rows)
         assert dialog.label.isHidden()
@@ -213,5 +216,50 @@ def test_guided_actions_stay_below_secondary_buttons_and_fill_dialog_width():
         assert footer_bottom < first_top < second_top
         assert first.width() >= dialog.width() * 0.8
         assert second.width() >= dialog.width() * 0.8
+    finally:
+        dispose(parent)
+
+
+def test_sync_preflight_has_one_strong_action_without_duplicate_footer():
+    from auto_sync_ui_fixture import application, dispose
+    from PySide6.QtWidgets import QWidget
+    from src.features.settings.work_mode_card import ModeReportDialog
+    from src.services.sync_enable_preflight import SyncEnableDecision
+
+    application()
+    parent = QWidget()
+    controller = SimpleNamespace(check=Mock(), detect_path=Mock(), open_settings=Mock())
+    dialog = ModeReportDialog(parent, controller)
+    try:
+        dialog.begin("medium", preview=True)
+        dialog.set_report(failed_report())
+        dialog.set_sync_preflight(SyncEnableDecision(
+            False, "组件尚未部署。", "deployment", "前往部署组件",
+        ))
+        assert dialog.settings_button.isHidden()
+        assert dialog.actions.count() == 1
+        assert dialog.actions.itemAt(0).widget().text() == "前往部署组件"
+        assert dialog.preflight_summary.text().count("下一步：") == 1
+    finally:
+        dispose(parent)
+
+
+def test_detection_exception_is_only_in_folded_diagnostics():
+    from auto_sync_ui_fixture import application, dispose
+    from PySide6.QtWidgets import QLabel, QWidget
+    from src.features.settings.work_mode_card import ModeReportDialog
+
+    application()
+    parent = QWidget()
+    dialog = ModeReportDialog(parent, SimpleNamespace(check=Mock()))
+    try:
+        dialog.begin("low", preview=True)
+        dialog.set_error("Traceback at private_path")
+        assert "Traceback" not in dialog.preflight_summary.text()
+        assert "Traceback" not in " ".join(
+            label.text() for label in dialog.results.findChildren(QLabel)
+        )
+        assert "Traceback" in dialog.label.text()
+        assert dialog.label.isHidden()
     finally:
         dispose(parent)

@@ -251,14 +251,21 @@ def _on_inventory_sync_state(self, notification):
         "saving":"保存中","listening":"后台监听","error":"同步异常","stopped":"已停止",
     }.get(state.phase,state.phase)
     set_status_badge(self.home_sync_badge,label,tone)
-    detail=("DLL 同步 · " if state.capture_source == "native" else "抓包同步 · ")+state.message
+    source_label = "DLL 同步" if state.capture_source == "native" else "抓包同步"
+    detail = source_label + " · " + ("同步未完成" if state.error else state.message)
     if state.character_sync_error and not hasattr(self, "home_character_sync_detail"):
         detail += "\n" + state.character_sync_error
-    if state.pending_item_count is not None:
+    if state.pending_item_count is not None and not state.error:
         detail+=f" · 当前 {state.pending_item_count} 件"
     if state.error:
-        detail+=f"\n\n{inventory_sync_error_guidance(state.error_code, state.error, capture_source=state.capture_source)}"
-        detail+=f"\n\n技术详情：{state.error}"
+        detail += "\n" + inventory_sync_error_guidance(
+            state.error_code, state.error, capture_source=state.capture_source,
+        ).replace("处理：", "下一步：")
+        self.home_sync_detail.setToolTip(
+            f"错误码：{state.error_code or '未分类'}；详细排查请打开“检测详情”或查看账号日志。"
+        )
+    else:
+        self.home_sync_detail.setToolTip("")
     self.home_sync_detail.setText(detail)
     self.auto_sync_controller.inventory_state_changed(state)
     if role_changed or (state.phase=="listening" and state.last_snapshot_id is not None):

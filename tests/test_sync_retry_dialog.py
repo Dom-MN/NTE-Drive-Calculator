@@ -104,6 +104,20 @@ def test_battle_started_after_opening_guide_prevents_restart(dialog):
     assert not c.starts and "先结束战报" in view.detail.text()
 
 
+def test_retry_error_shows_source_specific_next_step_without_raw_exception(dialog):
+    view, controller, _app = dialog
+    view.begin.click()
+    controller.state_changed.emit(InventorySyncState(
+        phase="error", capture_source="packet", error_code="INVENTORY_NOT_READY",
+        error="Traceback: private machine path",
+    ))
+    assert "状态：" in view.detail.text()
+    assert "登录页" in view.detail.text()
+    assert "下一步：" in view.detail.text()
+    assert "Traceback" not in view.detail.text()
+    assert "INVENTORY_NOT_READY" in view.detail.toolTip()
+
+
 def test_native_retry_separates_deployment_from_login_guidance(dialog):
     _view, c, _app = dialog
     native = SyncRetryDialog(c.window, controller=c, native=True)

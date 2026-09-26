@@ -53,6 +53,7 @@ from src.services.saved_state_loadout_bridge import (
 )
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 from src.storage.sqlite.user_data_dao import UserDataDao
+from src.observability.redaction import format_local_exception
 from src.utils.logger import logger
 
 __all__ = [
@@ -221,9 +222,7 @@ def _run_allocation(
             static_file_identity=static_file_identity,
         )
     except Exception as e:
-        import traceback as tb
-
-        logger.error(f"_run_allocation 内部异常: {e}\n{tb.format_exc()}")
+        logger.error(f"allocation.run_failed | {format_local_exception(e)}")
         raise
 
 
@@ -432,9 +431,7 @@ def _on_done(self: Any, r: Any) -> None:
         self._render_results(self.final_plan)
         logger.info("_render_results 完成")
     except Exception as e:
-        import traceback as tb
-
-        logger.error(f"_on_done 异常: {e}\n{tb.format_exc()}")
+        logger.error(f"allocation.render_failed | {format_local_exception(e)}")
         QMessageBox.critical(self.dialog_parent, "渲染失败", f"{e}")
 
 

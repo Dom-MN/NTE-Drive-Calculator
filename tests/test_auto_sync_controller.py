@@ -46,7 +46,10 @@ def owner(tmp_path):
     window.app_context = SimpleNamespace(generation=1, account=SimpleNamespace(active_account_id="test"))
     window._inventory_sync_service = None
     window.battle_report_controller = SimpleNamespace(is_running=lambda: False)
-    window.work_mode_controller = SimpleNamespace(is_transitioning=False, refresh_controls=lambda: None)
+    window.work_mode_controller = SimpleNamespace(
+        is_transitioning=False, refresh_controls=lambda: None,
+        show_upgrade_guide=lambda: None,
+    )
     window.invalidate_inventory_sync_notifications = lambda: None
     window.operation_entry = lambda *_: False
     window.operation_unavailable = lambda *_args, **_kw: None
@@ -401,7 +404,9 @@ def test_home_only_has_auto_and_restart_and_uses_metric_for_last_saved(owner, tm
     from PySide6.QtWidgets import QPushButton
     from src.features.home.page import build_home_page, refresh_home_page
     c, window, policy, _starts, _jobs, _watchers, app = owner
-    window.app_context.paths = SimpleNamespace(asset_dir=tmp_path)
+    window.app_context.paths = SimpleNamespace(
+        asset_dir=tmp_path, cultivation_asset_root=tmp_path,
+    )
     window.work_mode_service = policy
     window.auto_sync_controller = c
     window.work_mode_controller.check = lambda **_kwargs: None
@@ -440,7 +445,9 @@ def test_native_home_hides_redundant_rows_but_surfaces_role_failure(owner, tmp_p
     from src.features.home.page import build_home_page, refresh_home_page
     c, window, policy, _starts, _jobs, _watchers, _app = owner
     policy.select_mode(mode, risk_confirmed=True)
-    window.app_context.paths = SimpleNamespace(asset_dir=tmp_path)
+    window.app_context.paths = SimpleNamespace(
+        asset_dir=tmp_path, cultivation_asset_root=tmp_path,
+    )
     window.work_mode_service = policy
     window.auto_sync_controller = c
     window.work_mode_controller.check = lambda **_kwargs: None

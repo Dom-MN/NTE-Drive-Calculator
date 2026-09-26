@@ -92,7 +92,8 @@ def controller(tmp_path, monkeypatch, qt_app):
     probe = WorkModeProbe(game_running=True, npcap_available=True, core_available=True)
     runtime = SimpleNamespace(
         path_detail="", cleanup_detail="", cleanup_exit_detail="",
-        native_session=native, invalidate=lambda: events.append("invalidate"),
+        native_session=native, loader=None,
+        invalidate=lambda: events.append("invalidate"),
         tick=lambda **kwargs: probe, discover=lambda: (),
         request_close=lambda: events.append("runtime_request"),
         close=lambda: events.append("runtime_close"),
@@ -340,7 +341,7 @@ def test_one_manual_check_one_popup_background_cannot_consume_it(controller):
     c.check(show=True)
     dialog = c._report_dialog
     assert dialog.isVisible() and dialog.progress.isVisible()
-    assert "正在" in dialog.label.text()
+    assert "正在" in dialog.overview.text()
     request_id = c._show_request_id
     c._apply((policy.settings.revision, 1, probe, 0))
     assert popups == []
@@ -370,7 +371,8 @@ def test_manual_failure_popup_is_consumed_once(controller):
     c._apply(result)
     assert popups == ["warning"]
     assert not c._report_dialog.progress.isVisible()
-    assert c._report_dialog.label.text() == "failed"
+    assert "failed" in c._report_dialog.label.text()
+    assert "failed" not in c._report_dialog.overview.text()
 
 
 def test_closed_loading_dialog_does_not_reopen_when_check_finishes(controller):
@@ -584,7 +586,11 @@ def test_persistence_failure_still_requests_stop_after_memory_revocation(control
     assert "native_request" in events
     assert "native_close" not in events
     assert c._teardown_pending == 1
-    assert popups == ["warning"]
+    if action == "mode":
+        assert popups == ["warning"]
+    else:
+        assert c._cleanup_dialog is not None
+        assert "清理未完成" in c._cleanup_dialog.message.text()
     if action == "mode":
         assert policy.settings.mode.value == "offline"
         assert not policy.allowed("native_sync")

@@ -628,7 +628,7 @@ def _optimize_saved_equipment(
                 QMessageBox.warning(dialog, "替换失败", str(exc))
                 return
             dialog.accept()
-            self._saved_equipment_cache_valid = False
+            self.invalidate_saved_equipment_cache()
             self._refresh_equip(restore_role_name=role_name)
             if callable(after_replace):
                 after_replace(selected, selected_score, current_score)

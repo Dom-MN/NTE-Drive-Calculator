@@ -53,7 +53,8 @@ def test_existing_proxy_preference_refreshes_actual_native_controls(settings_car
     window, _worker = settings_card
     assert window._equipment_plugin_loading_method_combo.currentData() == "native-capture"
     assert window._equipment_plugin_primary_button.text() == "部署原生组件"
-    assert window._equipment_plugin_status_label.text() == "组件已准备好，启动游戏后会自动检查连接和可用功能。"
+    assert "组件未准备好" in window._equipment_plugin_status_label.text()
+    assert "游戏主程序位置" in window._equipment_plugin_status_label.text()
     assert not hasattr(window, "_equipment_plugin_bundle_label")
     labels = {label.text() for label in window.findChildren(QLabel)}
     assert {

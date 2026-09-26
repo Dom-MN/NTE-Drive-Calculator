@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
@@ -24,6 +25,7 @@ from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 from src.storage.sqlite.user_data_dao import UserDataDao
 from src.ui.widgets import match_pinyin as _match_pinyin
 from src.utils.logger import logger
+from src.utils.perf import log_perf
 from src.features.inventory.equipment_lazy_view import (
     capture_equipment_restore_anchor as _capture_equipment_restore_anchor,
     restore_equipment_anchor as _restore_equipment_anchor,
@@ -249,6 +251,29 @@ def _set_equipment_mode(self: Any, mode: str) -> None:
 
 def _clear_equip_content(self):
     clear_equipment_master_detail(self)
+    self._equip_rendered_mode = None
+    self._equip_rendered_states = None
+
+
+def _publish_equipment_states(self, states):
+    """Keep the existing Qt tree when a fresh read proves it unchanged."""
+    started = perf_counter()
+    mode = getattr(self, "_equipment_mode", "saved")
+    for widget_name in ("equip_role_strip", "equip_content"):
+        widget = getattr(self, widget_name, None)
+        if widget is not None:
+            widget.setEnabled(True)
+    if (getattr(self, "_equip_rendered_mode", None) == mode
+            and getattr(self, "_equip_rendered_states", None) == states):
+        log_perf(logger, "equipment.render", elapsed_ms=(perf_counter() - started) * 1000,
+                 mode=mode, skipped=True)
+        return
+    _clear_equip_content(self)
+    _queue_equipment_render(self, states)
+    self._equip_rendered_mode = mode
+    self._equip_rendered_states = dict(states)
+    log_perf(logger, "equipment.render", elapsed_ms=(perf_counter() - started) * 1000,
+             mode=mode, skipped=False)
 
 
 def _request_equipment_graduation_rate(
@@ -330,8 +355,7 @@ def _on_sqlite_equipment_display_loaded(self, token, eq):
     self.equip_mode_status.setText("")
     self._saved_equipment_states = dict(states)
     self._saved_equipment_cache_valid = True
-    _clear_equip_content(self)
-    _queue_equipment_render(self, states)
+    _publish_equipment_states(self, states)
 
 
 def _on_sqlite_equipment_display_error(self, token, error):
@@ -341,15 +365,14 @@ def _on_sqlite_equipment_display_error(self, token, error):
     self.equip_mode_status.setText("读取已保存配装失败")
     QMessageBox.warning(
         self,
-        "已保存方案兼容性错误",
-        "无法按当前官方静态数据解释部分已保存方案。"
-        "方案未被修改；请查看日志中的形状、套装或属性 ID 后再决定是否重新计算。\n\n"
-        f"详细原因：{error}",
+        "读取配装失败",
+        "状态：配装暂未更新，原方案保持不变。\n"
+        "原因：部分方案未通过当前资料库核对。\n"
+        "下一步：查看账号日志中的错误码，再决定是否重新计算。",
     )
-    _clear_equip_content(self)
     self._saved_equipment_states = {}
     self._saved_equipment_cache_valid = False
-    _queue_equipment_render(self, {})
+    _publish_equipment_states(self, {})
 
 
 def _on_game_equipment_display_loaded(self, token, result):
@@ -404,8 +427,7 @@ def _on_game_equipment_display_loaded(self, token, result):
     self._game_loadout_states = scored_states
     self._saved_equipment_states = dict(saved_states)
     self._saved_equipment_cache_valid = True
-    _clear_equip_content(self)
-    _queue_equipment_render(self, scored_states)
+    _publish_equipment_states(self, scored_states)
 
 
 def _on_game_equipment_display_error(self, token, error):
@@ -414,9 +436,8 @@ def _on_game_equipment_display_error(self, token, error):
     logger.error(f"刷新游戏内配装展示失败: {error}")
     self.equip_mode_status.setText("读取游戏内装备失败")
     self.equip_import_all_btn.setEnabled(False)
-    self._game_loadout_message = f"读取游戏内装备失败：{error}"
-    _clear_equip_content(self)
-    _queue_equipment_render(self, {})
+    self._game_loadout_message = "游戏配装读取中断；请重新检测连接后再试。原方案保持不变。"
+    _publish_equipment_states(self, {})
 
 
 def _refresh_equip(self, *, restore_role_name=None):
@@ -433,7 +454,22 @@ def _refresh_equip(self, *, restore_role_name=None):
     self._equip_render_token = object()
     self._equip_lazy_entries = []
     self._equip_render_queue = []
-    _clear_equip_content(self)
+    # Retain a verified projection during a same-mode read. Mutations and mode
+    # switches invalidate it; no old buttons remain interactive in that case.
+    retain_view = (
+        getattr(self, "_equip_rendered_mode", None)
+        == getattr(self, "_equipment_mode", "saved")
+        and getattr(self, "_saved_equipment_cache_valid", False)
+    )
+    if not retain_view:
+        _clear_equip_content(self)
+    elif isinstance(self, QWidget):
+        # Old controls stay visible, but cannot write against an unverified
+        # read of a newer database revision.
+        for widget_name in ("equip_role_strip", "equip_content"):
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                widget.setEnabled(False)
     # The production page may contain many plans and each requires snapshot
     # projection.  Keep database work off the Qt event loop; plain test hosts
     # retain the direct path below.
@@ -441,12 +477,13 @@ def _refresh_equip(self, *, restore_role_name=None):
         token = object()
         self._equip_load_token = token
         game_mode = getattr(self, "_equipment_mode", "saved") == "game"
-        loading = QLabel(
-            "正在读取游戏内装备…" if game_mode else "正在读取已保存的配装…"
-        )
-        loading.setStyleSheet(themed_style("color:#8b949e;padding:24px"))
-        loading.setAlignment(Qt.AlignCenter)
-        self.equip_content_layout.addWidget(loading)
+        if not retain_view:
+            loading = QLabel(
+                "正在读取游戏内装备…" if game_mode else "正在读取已保存的配装…"
+            )
+            loading.setStyleSheet(themed_style("color:#8b949e;padding:24px"))
+            loading.setAlignment(Qt.AlignCenter)
+            self.equip_content_layout.addWidget(loading)
         if game_mode:
             cached_saved_states = (
                 dict(getattr(self, "_saved_equipment_states", {}) or {})
@@ -479,6 +516,7 @@ def _refresh_equip(self, *, restore_role_name=None):
         else:
             worker.result_ready.connect(lambda eq, current=token: _on_sqlite_equipment_display_loaded(self, current, eq))
             worker.error.connect(lambda error, current=token: _on_sqlite_equipment_display_error(self, current, error))
+        worker.finished.connect(worker.deleteLater)
         worker.start()
         return
     if getattr(self, "_equipment_mode", "saved") == "game":

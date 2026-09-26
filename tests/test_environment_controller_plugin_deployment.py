@@ -10,6 +10,15 @@ from src.ui.controllers.environment_controller import (
     _deploy_equipment_plugin, _diagnose_nte_core,
     _refresh_equipment_plugin_status,
 )
+from src.ui.controllers.native_plugin_deployment_ui import _deployment_error_hint
+
+
+def test_deployment_error_hint_does_not_echo_machine_path():
+    message = _deployment_error_hint(
+        PermissionError("C:/private/game/HTGame.exe access denied")
+    )
+    assert "C:/private" not in message
+    assert "权限" in message and "游戏" in message
 
 
 def _window(tmp_path):

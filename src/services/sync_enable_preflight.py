@@ -38,7 +38,7 @@ def decide_sync_enable(
                                   "deployment", "前往环境设置" if probe.core_available is False or
                                   probe.component_update_state == CheckState.MISSING else None)
     if probe.component_update_state == CheckState.FAULT:
-        return SyncEnableDecision(False, probe.component_update_detail or "组件检测出现故障，请查看详情。",
+        return SyncEnableDecision(False, "组件核对中断；请查看检测详情中的原因。",
                                   "deployment", "前往环境设置")
     if settings.pending_cleanup:
         detail = ("请先完全退出游戏，再清理旧组件。" if probe.game_running else
@@ -52,7 +52,7 @@ def decide_sync_enable(
             return SyncEnableDecision(False, detail, "deployment", "前往部署组件")
         if record.get("loading_method") == "loader":
             if probe.launcher_probe_error:
-                return SyncEnableDecision(False, probe.launcher_probe_error,
+                return SyncEnableDecision(False, "启动器状态核对中断；请关闭启动器和游戏后重新检测。",
                                           "deployment", "前往部署组件")
             if probe.launcher_running is None:
                 return SyncEnableDecision(False, "启动器进程状态尚未核对，请重新检测。")
@@ -78,9 +78,9 @@ def decide_sync_activation(settings: WorkModeSettings, probe: WorkModeProbe) -> 
             return SyncEnableDecision(True, "抓包条件已就绪；开启后等待游戏和登录数据。")
         return SyncEnableDecision(False, "抓包条件尚未就绪，请重新检测。", "npcap")
     if settings.pending_cleanup:
-        return SyncEnableDecision(False, probe.cleanup_detail or "组件清理尚未完成，请查看检测详情。")
+        return SyncEnableDecision(False, "组件清理尚未完成；请查看检测详情。")
     if probe.component_update_state == CheckState.FAULT:
-        return SyncEnableDecision(False, probe.component_update_detail or "组件处理出现故障，请查看检测详情。")
+        return SyncEnableDecision(False, "组件核对中断；请查看检测详情。")
     if probe.native_load.files is not True:
-        return SyncEnableDecision(False, probe.component_update_detail or "组件尚未部署完成，请重新检测。")
+        return SyncEnableDecision(False, "组件尚未部署完成；请重新检测。")
     return SyncEnableDecision(True, "组件文件已核对；开启后仍需等待游戏连接及完整业务数据。")

@@ -3,6 +3,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from src.app.window_geometry import fit_dialog_to_available_screen
+from src.features.home.page import inventory_sync_error_guidance
 
 
 class SyncRetryDialog(QDialog):
@@ -98,7 +99,14 @@ class SyncRetryDialog(QDialog):
             self.update_preparation(preparation)
             return
         if state.phase == "error":
-            self.detail.setText("重启同步未完成，请检查首页状态或检测详情后重试。已保存背包保持可用。")
+            guidance = inventory_sync_error_guidance(
+                state.error_code, state.error,
+                capture_source="native" if self.native else "packet",
+            ).replace("处理：", "下一步：")
+            self.detail.setText("状态：重启同步未完成，已保存背包仍可用。\n" + guidance)
+            self.detail.setToolTip(
+                f"错误码：{state.error_code or '未分类'}；详细原因见检测详情或账号日志。"
+            )
             self._begun = False
             self.begin.setEnabled(True)
             self.begin.setText("再次尝试")

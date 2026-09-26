@@ -13,6 +13,7 @@ from src.features.inventory import equipment_display_loaders
 from src.features.inventory import equipment_display_view
 from src.features.inventory import equipment_plan_optimizer
 from src.features.inventory.equipment_display_controller import _slot_suit_names
+from src.features.inventory.equipment_display_controller import invalidate_saved_equipment_cache
 from src.features.inventory.equipment_master_detail_view import (
     sorted_equipment_role_states,
 )
@@ -32,6 +33,36 @@ def test_loadout_roles_sort_by_score_descending_then_name() -> None:
     )
 
     assert [name for name, _state in roles] == ["乙", "甲", "低分", "无效"]
+
+
+def test_unchanged_saved_equipment_read_keeps_existing_widgets(monkeypatch) -> None:
+    events = []
+    window = SimpleNamespace(_equipment_mode="saved", _equip_rendered_mode="saved",
+                             _equip_rendered_states={"slot:1": {"score": 10}})
+    def clear(_window):
+        events.append("clear")
+        _window._equip_rendered_mode = None
+        _window._equip_rendered_states = None
+    monkeypatch.setattr(equipment_display_view, "_clear_equip_content", clear)
+    monkeypatch.setattr(equipment_display_view, "_queue_equipment_render",
+                        lambda _window, _states: events.append("render"))
+
+    equipment_display_view._publish_equipment_states(window, {"slot:1": {"score": 10}})
+    assert events == []
+    equipment_display_view._publish_equipment_states(window, {"slot:1": {"score": 11}})
+    assert events == ["clear", "render"]
+
+
+def test_mutation_invalidates_inflight_equipment_read() -> None:
+    prior = object()
+    window = SimpleNamespace(_saved_equipment_cache_valid=True, _equip_load_token=prior)
+    invalidate_saved_equipment_cache(window)
+    assert not window._saved_equipment_cache_valid
+    assert window._equip_load_token is not prior
+    equipment_display_view._on_sqlite_equipment_display_loaded(
+        window, prior, {"obsolete": {"score": 99}},
+    )
+    assert not hasattr(window, "_saved_equipment_states")
 
 
 def test_game_loadout_state_is_not_misread_as_a_saved_slot_group() -> None:

@@ -205,11 +205,9 @@ def _detect_equipment_plugin_game_executable(self):
         QMessageBox.warning(
             self,
             "检测游戏位置",
-            f"自动检测失败：{error}\n\n"
-            "你可以手动填写或选择文件：\n"
-            "1. 右键点击桌面游戏图标，选择“打开文件所在位置”。\n"
-            "2. 进入 Client\\WindowsNoEditor\\HT\\Binaries\\Win64，找到 HTGame.exe。\n"
-            "3. 右键点击 HTGame.exe，选择“复制文件地址”，再粘贴到游戏主程序方框。",
+            "状态：自动定位游戏失败。\n"
+            "原因：未核对到唯一可用的游戏主程序。\n"
+            "下一步：在当前环境设置中手动选择 HTGame.exe，然后重新检测。",
         )
 
     worker.result_ready.connect(finish)
@@ -323,7 +321,10 @@ def _diagnose_nte_core(self):
             operation,
             error=error,
         )
-        self.operation_unavailable("诊断 nte-core", str(error), target="detection")
+        self.operation_unavailable(
+            "诊断 nte-core", "诊断未完成；请重新检测。持续失败时查看账号日志。",
+            target="detection",
+        )
 
     worker.result_ready.connect(finish)
     worker.error.connect(failed)

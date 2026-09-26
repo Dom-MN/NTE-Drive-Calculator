@@ -10,6 +10,17 @@ from src.services.equipment_plugin_deployment import EquipmentPluginDeploymentEr
 from src.services.native_plugin_deployment import PluginDeploymentPendingCleanup
 from src.services.native_plugin_deployment import deploy_native_plugin
 from src.services.mod_plugin_loading_service import ModPluginLoadingError, ModPluginLoadingWaiting
+from src.utils.logger import logger
+
+
+def _deployment_error_hint(error: Exception) -> str:
+    """Keep implementation errors out of the short user-facing dialog."""
+    logger.warning(f"组件部署未完成 kind={type(error).__name__}")
+    if isinstance(error, PermissionError):
+        return "组件处理未完成；请核对工作模式、游戏目录权限，并确认游戏已退出。"
+    if isinstance(error, TimeoutError):
+        return "等待组件或同步任务结束超时；请退出游戏后重新检测再试。"
+    return "组件处理未完成；请确认游戏和启动器已退出，再到环境设置查看检测详情。"
 
 
 class _DeploymentWorker(QThread):
@@ -112,8 +123,8 @@ def refresh_native_plugin_status(window) -> None:
                 workspace = service.inspect_native_workspace()
                 label.setText("组件已准备好，启动游戏后会自动检查连接和可用功能。"
                               if workspace.files_compatible else "组件未准备好：" + "；".join(workspace.issues))
-            except (EquipmentPluginDeploymentError, ModPluginLoadingError) as error:
-                label.setText(str(error))
+            except (EquipmentPluginDeploymentError, ModPluginLoadingError):
+                label.setText("Loader 工作区核对未完成；请查看检测详情。")
         else:
             result = inspect_deployed_native_plugin(
                 application_root=window.app_context.paths.root,
@@ -181,7 +192,7 @@ def deploy_native_plugin_from_settings(window) -> None:
             QMessageBox.information(window, "部署原生组件", "请先停止 Loader，再部署 D3D 原生组件。")
             return
     except (EquipmentPluginDeploymentError, ModPluginLoadingError) as error:
-        window.operation_unavailable("部署原生组件", str(error), target="deployment")
+        window.operation_unavailable("部署原生组件", _deployment_error_hint(error), target="deployment")
         return
     executable = window.work_mode_service.settings.game_executable
     generation = window.operation_generation()
@@ -238,10 +249,15 @@ def deploy_native_plugin_from_settings(window) -> None:
     except PluginDeploymentPendingCleanup as error:
         runtime.save_pending_deployment(error)
         _refresh_work_mode_detection(window)
-        QMessageBox.warning(window, "组件部署待清理", str(error))
+        QMessageBox.warning(
+            window, "组件部署待清理",
+            "状态：部署尚未完成。\n"
+            "原因：旧组件清理未通过核对。\n"
+            "下一步：在环境设置查看清理结果，处理后重新部署。",
+        )
     except (EquipmentPluginDeploymentError, PermissionError, TimeoutError) as error:
         if window.work_mode_service.allowed("native_load"):
-            window.operation_unavailable("部署原生组件", str(error), target="deployment")
+            window.operation_unavailable("部署原生组件", _deployment_error_hint(error), target="deployment")
 
 
 def start_native_loader_from_settings(window) -> None:
@@ -262,4 +278,4 @@ def start_native_loader_from_settings(window) -> None:
         )
     except (EquipmentPluginDeploymentError, ModPluginLoadingError, PermissionError) as error:
         window._refresh_equipment_plugin_status()
-        window.operation_unavailable("启动原生 Loader", str(error), target="deployment")
+        window.operation_unavailable("启动原生 Loader", _deployment_error_hint(error), target="deployment")

@@ -185,7 +185,7 @@ def _clear_all_equipment(self):
                 skipped_locked.append(f"{role_name} · {slot_name}")
                 continue
             dao.deactivate_loadout_plan(plan["plan_id"])
-    self._saved_equipment_cache_valid = False
+    self.invalidate_saved_equipment_cache()
     self._refresh_equip()
     if skipped_locked:
         QMessageBox.information(
@@ -200,6 +200,8 @@ def invalidate_saved_equipment_cache(self: Any) -> None:
     """Public cross-feature hook after a persisted loadout mutation."""
 
     self._saved_equipment_cache_valid = False
+    # A read started before the mutation must not publish an obsolete cache.
+    self._equip_load_token = object()
 
 
 def reset_equipment_account_state(self: Any) -> None:
@@ -280,7 +282,7 @@ def _delete_role_equipment(
     except Exception as exc:
         QMessageBox.warning(self, "删除角色配装", str(exc))
         return
-    self._saved_equipment_cache_valid = False
+    self.invalidate_saved_equipment_cache()
     self._refresh_equip()
     logger.success(f"已删除角色配装: {role_name}")
 
@@ -596,7 +598,7 @@ def _import_game_loadout(self: Any, role_name: str) -> None:
         return
     logger.info(f"已导入游戏内配装 role={role_name}, plan_id={plan_id}")
     QMessageBox.information(self, "导入游戏内方案", f"[{role_name}] 已导入为计算器配装方案。")
-    self._saved_equipment_cache_valid = False
+    self.invalidate_saved_equipment_cache()
     self._refresh_equip(restore_role_name=role_name)
 
 
@@ -662,7 +664,7 @@ def _import_all_game_loadouts(self: Any) -> None:
     if locked_count:
         message += f"\n{locked_count} 名角色因方案已锁定而跳过。"
     QMessageBox.information(self, "一键导入", message)
-    self._saved_equipment_cache_valid = False
+    self.invalidate_saved_equipment_cache()
     self._refresh_equip()
 
 
