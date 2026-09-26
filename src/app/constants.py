@@ -14,11 +14,9 @@ MIRROR_PROJECT_URL = "https://mirrorchyan.com/zh/projects?rid=NTE-Drive-Calc&cha
 BILIBILI_HOME_URL = "https://b23.tv/nXJGdh3"
 SUPPORT_US_URL = "https://afdian.com/a/hxwd94666"
 DISCORD_GROUP_URL = "https://discord.gg/P3ZvMN7Hwj"
-GROUP_CHAT_NOTICE = (
-    "QQ交流群：1029030672\n"
-    "开发交流群请入群私聊群主。\n"
-    "Discord群组中会更新开发动态。"
-)
+QQ_GROUP_NUMBER = "1029030672"
+GROUP_CHAT_DEVELOPER_HINT = "若想加入开发群，请先入本群私聊群主"
+GROUP_CHAT_DISCORD_HINT = "获取开发动态，也可在这里交流。"
 WORKSHOP_WEIGHT_CONFIGS_API = "https://yh.zzzmap.com/api/open/game-character/weight-configs"
 QUARK_NETDISK_URL = "https://pan.quark.cn/s/82f16b845aec"
 BAIDU_NETDISK_URL = "https://pan.baidu.com/s/1sPVqCpzmkQwKYCGstcZuIQ?pwd=ygke"

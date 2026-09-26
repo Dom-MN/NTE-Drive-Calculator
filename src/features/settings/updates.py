@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from html import escape
 import os
 import re
 import tempfile
@@ -12,8 +13,8 @@ import urllib.request
 from urllib.parse import urlencode
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtWidgets import QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QVBoxLayout
 
 from src.app.constants import NETDISK_DOWNLOAD_LINKS
 from src.app.theme import themed_style
@@ -212,46 +213,90 @@ def show_update_dialog(parent, style_sheet: str, info: dict, app_version: str) -
     latest = str(info.get("latest") or "未知")
     dialog = QDialog(parent)
     dialog.setWindowTitle("发现更新")
-    dialog.setMinimumSize(560, 420)
+    dialog.setMinimumSize(620, 480)
     dialog.setStyleSheet(style_sheet)
 
     layout = QVBoxLayout(dialog)
-    layout.setContentsMargins(16, 16, 16, 16)
-    layout.setSpacing(10)
+    layout.setContentsMargins(24, 22, 24, 20)
+    layout.setSpacing(16)
+    header = QHBoxLayout()
+    header.setSpacing(12)
+    heading = QVBoxLayout()
+    heading.setSpacing(6)
     title = QLabel(f"发现新版本 {latest}")
-    title.setStyleSheet("font-size:18px;font-weight:700;color:#58a6ff")
-    layout.addWidget(title)
-    subtitle = QLabel(f"当前版本: {app_version}")
+    title.setStyleSheet(themed_style("font-size:21px;font-weight:600;color:#f0f6fc"))
+    heading.addWidget(title)
+    subtitle = QLabel(f"当前版本 {app_version}  →  最新版本 {latest}")
     subtitle.setStyleSheet(themed_style("color:#8b949e"))
-    layout.addWidget(subtitle)
+    heading.addWidget(subtitle)
+    header.addLayout(heading)
+    header.addStretch()
+    release_url = str(info.get("release_url") or "").strip()
+    if release_url.lower().startswith(("https://", "http://")):
+        link = QLabel(
+            f'<a href="{escape(release_url, quote=True)}">查看 GitHub 发布页 ↗</a>'
+        )
+        link.setOpenExternalLinks(True)
+        link.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        link.setStyleSheet(themed_style("color:#58a6ff"))
+        header.addWidget(link, 0, Qt.AlignTop)
+    layout.addLayout(header)
+
+    notes_card = QFrame()
+    notes_card.setObjectName("updateNotesCard")
+    notes_card.setStyleSheet(themed_style(
+        "QFrame#updateNotesCard{background:#161b22;border:1px solid #30363d;border-radius:8px}"
+    ))
+    notes_layout = QVBoxLayout(notes_card)
+    notes_layout.setContentsMargins(18, 14, 18, 14)
+    notes_layout.setSpacing(8)
+    notes_heading = QLabel("更新内容")
+    notes_heading.setStyleSheet(themed_style("font-size:15px;font-weight:600;color:#f0f6fc"))
+    notes_layout.addWidget(notes_heading)
     notes = QTextBrowser()
+    notes.setObjectName("updateReleaseNotes")
     notes.setReadOnly(True)
-    notes.setMinimumHeight(220)
+    notes.setMinimumHeight(180)
+    notes.setFrameShape(QFrame.NoFrame)
+    notes.setStyleSheet(themed_style("background:#161b22;border:none;color:#c9d1d9"))
+    notes.document().setDocumentMargin(2)
     notes.setOpenExternalLinks(True)
     notes.setTextInteractionFlags(Qt.TextBrowserInteraction)
     notes.setMarkdown(update_notes_markdown(info.get("message")))
-    layout.addWidget(notes, 1)
-    release_url = str(info.get("release_url") or "").strip()
-    if release_url:
-        link = QLabel(f'GitHub Release: <a href="{release_url}">{release_url}</a>')
-        link.setTextFormat(Qt.RichText)
-        link.setOpenExternalLinks(True)
-        link.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        link.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
-        layout.addWidget(link)
-    never_cb = QCheckBox("永不提醒")
-    ignore_cb = QCheckBox("当前版本不再提醒")
-    layout.addWidget(never_cb)
-    layout.addWidget(ignore_cb)
+    notes_layout.addWidget(notes, 1)
+    layout.addWidget(notes_card, 1)
+
+    preferences = QHBoxLayout()
+    preferences.setSpacing(24)
+    ignore_cb = QCheckBox("此版本不再提醒")
+    never_cb = QCheckBox("关闭自动更新提醒")
+    preferences.addWidget(ignore_cb)
+    preferences.addWidget(never_cb)
+    preferences.addStretch()
+    layout.addLayout(preferences)
+
+    separator = QFrame()
+    separator.setFrameShape(QFrame.HLine)
+    separator.setStyleSheet(themed_style("color:#30363d"))
+    layout.addWidget(separator)
     footer = QHBoxLayout()
-    discord_button = QPushButton("加入Discord群组")
-    discord_button.clicked.connect(getattr(parent, "_open_discord_group"))
-    footer.addWidget(discord_button)
+    footer.setSpacing(10)
+    group_button = QPushButton("加入群聊")
+    group_button.setObjectName("updateGroupChatButton")
+    group_button.setStyleSheet(themed_style(
+        "QPushButton#updateGroupChatButton{background:transparent;border:none;color:#8b949e;padding:0 4px}"
+        "QPushButton#updateGroupChatButton:hover{color:#58a6ff}"
+    ))
+    group_button.clicked.connect(getattr(parent, "_show_group_chat_notice"))
+    footer.addWidget(group_button)
     footer.addStretch()
+    later_button = QPushButton("暂不更新")
+    later_button.clicked.connect(dialog.accept)
+    later_button.setDefault(True)
     netdisk_button = QPushButton("网盘下载")
+    netdisk_button.setObjectName("btnNew")
     mirror_button = QPushButton("Mirror 下载")
-    buttons = QDialogButtonBox(QDialogButtonBox.Ok)
-    buttons.accepted.connect(dialog.accept)
+
     def open_netdisk_download():
         dialog.accept()
         getattr(parent, "_show_netdisk_download_dialog")(NETDISK_DOWNLOAD_LINKS)
@@ -262,11 +307,12 @@ def show_update_dialog(parent, style_sheet: str, info: dict, app_version: str) -
 
     netdisk_button.clicked.connect(open_netdisk_download)
     mirror_button.clicked.connect(start_mirror_download)
-    footer.addWidget(netdisk_button)
+    footer.addWidget(later_button)
     footer.addWidget(mirror_button)
-    footer.addWidget(buttons)
+    footer.addWidget(netdisk_button)
     layout.addLayout(footer)
-    fit_dialog_to_available_screen(dialog)
+    fitted = fit_dialog_to_available_screen(dialog, QSize(780, 600))
+    notes.setMinimumHeight(min(300, max(140, fitted.height() - 285)))
     dialog.exec()
     result = {"changed": False}
     if never_cb.isChecked():

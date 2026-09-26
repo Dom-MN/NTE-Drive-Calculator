@@ -8,12 +8,14 @@ import subprocess
 import threading
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -26,14 +28,17 @@ from src.app.constants import (
     APP_VERSION,
     BILIBILI_HOME_URL,
     DISCORD_GROUP_URL,
-    GROUP_CHAT_NOTICE,
+    GROUP_CHAT_DEVELOPER_HINT,
+    GROUP_CHAT_DISCORD_HINT,
     GITHUB_HOME_URL,
     GITHUB_LATEST_RELEASE_URL,
     GITHUB_RELEASES_URL,
     MIRROR_PROJECT_URL,
     MIRROR_UPDATE_API,
+    QQ_GROUP_NUMBER,
     SUPPORT_US_URL,
 )
+from src.app.theme import themed_style
 from src.app.window_geometry import fit_dialog_to_available_screen
 from src.app.workers import WorkerThread
 from src.observability.context import OperationContext
@@ -538,31 +543,63 @@ def _open_discord_group(self):
 def _show_group_chat_notice(self):
     dialog = QDialog(self)
     dialog.setWindowTitle("加入群聊")
-    dialog.setMinimumWidth(280)
+    dialog.setMinimumSize(410, 245)
     if hasattr(self, "_current_style_sheet"):
         dialog.setStyleSheet(self._current_style_sheet())
     layout = QVBoxLayout(dialog)
-    layout.setContentsMargins(18, 16, 18, 16)
-    layout.setSpacing(14)
-    message = QLabel(GROUP_CHAT_NOTICE)
-    message.setWordWrap(False)
-    layout.addWidget(message)
-    footer = QHBoxLayout()
-    discord_button = QPushButton("加入Discord群组")
-    close_button = QPushButton("关闭")
-    close_button.clicked.connect(dialog.reject)
+    layout.setContentsMargins(24, 22, 24, 22)
+    layout.setSpacing(11)
+    intro = QLabel("遇到问题，或想交流计算器的使用体验？")
+    intro.setWordWrap(True)
+    intro.setStyleSheet(themed_style("color:#8b949e"))
+    layout.addWidget(intro)
+
+    def add_option(title: str, detail: str, action: QPushButton, number: str = ""):
+        card = QFrame()
+        card.setObjectName("groupChatOption")
+        card.setStyleSheet(themed_style(
+            "QFrame#groupChatOption{background:#161b22;border:1px solid #30363d;border-radius:8px}"
+        ))
+        row = QHBoxLayout(card)
+        row.setContentsMargins(15, 12, 15, 12)
+        row.setSpacing(12)
+        text = QVBoxLayout()
+        text.setSpacing(5)
+        title_label = QLabel(title)
+        title_label.setStyleSheet(themed_style("font-size:14px;font-weight:600;color:#f0f6fc"))
+        text.addWidget(title_label)
+        if number:
+            number_label = QLabel(number)
+            number_label.setObjectName("groupChatNumber")
+            number_label.setStyleSheet(themed_style("font-size:18px;font-weight:600;color:#58a6ff"))
+            text.addWidget(number_label)
+        detail_label = QLabel(detail)
+        detail_label.setWordWrap(True)
+        detail_label.setStyleSheet(themed_style("color:#8b949e"))
+        text.addWidget(detail_label)
+        row.addLayout(text, 1)
+        row.addWidget(action, 0, Qt.AlignVCenter)
+        layout.addWidget(card)
+
+    copy_button = QPushButton("复制群号")
+
+    def copy_group_number():
+        QApplication.clipboard().setText(QQ_GROUP_NUMBER)
+        copy_button.setText("已复制")
+
+    copy_button.clicked.connect(copy_group_number)
+    add_option("QQ 交流群", GROUP_CHAT_DEVELOPER_HINT, copy_button, QQ_GROUP_NUMBER)
+
+    discord_button = QPushButton("加入 Discord")
+    discord_button.setObjectName("btnNew")
 
     def open_discord_group():
         self._open_discord_group()
         dialog.accept()
 
     discord_button.clicked.connect(open_discord_group)
-    footer.addWidget(discord_button)
-    footer.addWidget(close_button)
-    footer.addStretch()
-    layout.addLayout(footer)
-    dialog.adjustSize()
-    fit_dialog_to_available_screen(dialog)
+    add_option("Discord 群组", GROUP_CHAT_DISCORD_HINT, discord_button)
+    fit_dialog_to_available_screen(dialog, QSize(490, 285))
     dialog.exec()
     return dialog
 
@@ -571,19 +608,52 @@ def _show_netdisk_download_dialog(self, links):
     links = tuple((str(name), str(url)) for name, url in links if name and url)
     if not links:
         return
-    box = QMessageBox(self)
-    box.setWindowTitle("网盘下载")
-    box.setText("请选择下载网盘")
-    box.setInformativeText("\n\n".join(f"{name}：\n{url}" for name, url in links))
-    box.setMinimumSize(620, 300)
-    box.setStyleSheet(box.styleSheet() + "\nQLabel{min-width:560px;}")
-    buttons = [(box.addButton(f"打开{name}", QMessageBox.AcceptRole), url) for name, url in links]
-    box.addButton("取消", QMessageBox.RejectRole)
-    box.exec()
-    for button, url in buttons:
-        if box.clickedButton() is button:
-            self._open_url(url)
-            break
+    dialog = QDialog(self)
+    dialog.setWindowTitle("网盘下载")
+    dialog.setMinimumSize(500, 315)
+    if hasattr(self, "_current_style_sheet"):
+        dialog.setStyleSheet(self._current_style_sheet())
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(24, 20, 24, 20)
+    layout.setSpacing(10)
+
+    for name, url in links:
+        card = QFrame()
+        card.setObjectName("netdiskOption")
+        card.setStyleSheet(themed_style(
+            "QFrame#netdiskOption{background:#161b22;border:1px solid #30363d;border-radius:8px}"
+        ))
+        row = QHBoxLayout(card)
+        row.setContentsMargins(15, 11, 15, 11)
+        row.setSpacing(12)
+        description = QVBoxLayout()
+        description.setSpacing(4)
+        title = QLabel(name)
+        title.setStyleSheet(themed_style("font-size:15px;font-weight:600;color:#f0f6fc"))
+        description.addWidget(title)
+        domain = QLabel(urlsplit(url).netloc)
+        domain.setStyleSheet(themed_style("color:#8b949e"))
+        description.addWidget(domain)
+        row.addLayout(description, 1)
+        open_button = QPushButton("打开网盘")
+        open_button.setAccessibleName(f"打开{name}")
+        open_button.setStyleSheet(themed_style(
+            "QPushButton{background:#161b22;border:1px solid #58a6ff;color:#58a6ff;"
+            "border-radius:6px;padding:7px 14px}"
+            "QPushButton:hover{background:#30363d}"
+        ))
+
+        def open_netdisk(_checked=False, *, target_url=url):
+            dialog.accept()
+            self._open_url(target_url)
+
+        open_button.clicked.connect(open_netdisk)
+        row.addWidget(open_button, 0, Qt.AlignVCenter)
+        layout.addWidget(card)
+
+    fit_dialog_to_available_screen(dialog, QSize(650, 390))
+    dialog.exec()
+    return dialog
 
 
 def _open_url(self, url):

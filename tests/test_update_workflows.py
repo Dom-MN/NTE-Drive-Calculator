@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QTextBrowser, QWidget
 
 
 
@@ -25,8 +25,10 @@ class UpdateWorkflowTests(unittest.TestCase):
             DISCORD_GROUP_URL,
             GITHUB_HOME_URL,
             GITHUB_LATEST_RELEASE_URL,
-            GROUP_CHAT_NOTICE,
+            GROUP_CHAT_DEVELOPER_HINT,
+            GROUP_CHAT_DISCORD_HINT,
             MIRROR_PROJECT_URL,
+            QQ_GROUP_NUMBER,
             SUPPORT_US_URL,
         )
         from src.ui.controllers import update_controller
@@ -58,15 +60,12 @@ class UpdateWorkflowTests(unittest.TestCase):
             "https://mirrorchyan.com/zh/projects?rid=NTE-Drive-Calc&channel=stable",
             MIRROR_PROJECT_URL,
         )
-        self.assertEqual(
-            "QQ交流群：1029030672\n"
-            "开发交流群请入群私聊群主。\n"
-            "Discord群组中会更新开发动态。",
-            GROUP_CHAT_NOTICE,
-        )
+        self.assertEqual("1029030672", QQ_GROUP_NUMBER)
+        self.assertEqual("若想加入开发群，请先入本群私聊群主", GROUP_CHAT_DEVELOPER_HINT)
+        self.assertEqual("获取开发动态，也可在这里交流。", GROUP_CHAT_DISCORD_HINT)
         self.assertEqual("https://discord.gg/P3ZvMN7Hwj", DISCORD_GROUP_URL)
 
-    def test_group_notice_and_update_dialog_offer_discord_button(self):
+    def test_update_dialog_reuses_about_page_group_notice(self):
         from src.features.settings import updates
         from src.ui.controllers import update_controller
 
@@ -75,6 +74,9 @@ class UpdateWorkflowTests(unittest.TestCase):
         class Window(QWidget):
             def _open_discord_group(self):
                 opened.append("discord")
+
+            def _show_group_chat_notice(self):
+                return update_controller._show_group_chat_notice(self)
 
             @staticmethod
             def _current_style_sheet():
@@ -104,26 +106,78 @@ class UpdateWorkflowTests(unittest.TestCase):
                 "2.3.0",
             )
 
-        self.assertIn("Discord群组中会更新开发动态。", group_dialog.findChild(QLabel).text())
         self.assertEqual(2, len(captured))
-        self.assertEqual(280, group_dialog.minimumWidth())
-        self.assertFalse(group_dialog.findChild(QLabel).wordWrap())
-        group_footer = group_dialog.layout().itemAt(1).layout()
-        group_discord = group_footer.itemAt(0).widget()
-        group_close = group_footer.itemAt(1).widget()
-        self.assertEqual("加入Discord群组", group_discord.text())
-        self.assertEqual("关闭", group_close.text())
-        self.assertEqual(group_close.styleSheet(), group_discord.styleSheet())
-        self.assertNotEqual("btnPrimary", group_discord.objectName())
-        self.assertTrue(group_footer.itemAt(2).spacerItem())
-        for dialog in captured:
+        group_text = [label.text() for label in group_dialog.findChildren(QLabel)]
+        self.assertNotIn("加入群聊", group_text)
+        self.assertIn("1029030672", group_text)
+        self.assertIn("若想加入开发群，请先入本群私聊群主", group_text)
+        self.assertIn("获取开发动态，也可在这里交流。", group_text)
+        self.assertNotIn("关闭", [button.text() for button in group_dialog.findChildren(QPushButton)])
+        copy_button = next(
+            button for button in group_dialog.findChildren(QPushButton)
+            if button.text() == "复制群号"
+        )
+        copy_button.click()
+        self.assertEqual("1029030672", QApplication.clipboard().text())
+        self.assertEqual("已复制", copy_button.text())
+        update_dialog = captured[1]
+        update_group = next(
+            button for button in update_dialog.findChildren(QPushButton)
+            if button.text() == "加入群聊"
+        )
+        with patch.object(QDialog, "exec", capture_dialog):
+            update_group.click()
+        self.assertEqual(3, len(captured))
+        self.assertEqual("加入群聊", captured[2].windowTitle())
+        notes = update_dialog.findChild(QTextBrowser, "updateReleaseNotes")
+        self.assertGreaterEqual(notes.minimumHeight(), 140)
+        self.assertLessEqual(notes.minimumHeight(), 300)
+        for dialog in (group_dialog, captured[2]):
             discord = next(
                 button
                 for button in dialog.findChildren(QPushButton)
-                if button.text() == "加入Discord群组"
+                if button.text() == "加入 Discord"
             )
             discord.click()
         self.assertEqual(["discord", "discord"], opened)
+
+    def test_netdisk_dialog_uses_channel_cards_without_footer(self):
+        from src.ui.controllers import update_controller
+
+        opened = []
+
+        class Window(QWidget):
+            def _open_url(self, url):
+                opened.append(url)
+
+            @staticmethod
+            def _current_style_sheet():
+                return ""
+
+        links = (
+            ("夸克网盘", "https://pan.quark.cn/s/item"),
+            ("百度网盘", "https://pan.baidu.com/s/item"),
+            ("迅雷网盘", "https://pan.xunlei.com/s/item"),
+        )
+        window = Window()
+        with patch.object(QDialog, "exec", return_value=0):
+            dialog = update_controller._show_netdisk_download_dialog(window, links)
+
+        texts = [label.text() for label in dialog.findChildren(QLabel)]
+        self.assertNotIn("选择下载网盘", texts)
+        self.assertNotIn("选择一个渠道，随后在浏览器中完成下载。", texts)
+        for name, url in links:
+            self.assertIn(name, texts)
+            self.assertNotIn(url, texts)
+        self.assertNotIn("下载地址不再铺满弹窗，按钮与渠道一一对应。", texts)
+        buttons = dialog.findChildren(QPushButton)
+        self.assertNotIn("取消", [button.text() for button in buttons])
+        self.assertEqual(3, len(buttons))
+        for name, _url in links:
+            button = next(button for button in buttons if button.accessibleName() == f"打开{name}")
+            self.assertEqual("打开网盘", button.text())
+            button.click()
+        self.assertEqual([url for _name, url in links], opened)
 
     def test_mirror_download_failure_link_opens_the_project_page(self):
         from src.app.constants import MIRROR_PROJECT_URL
