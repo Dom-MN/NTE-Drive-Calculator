@@ -9,7 +9,7 @@
   },
   "input_digests": {
     "capture": "635f01ece55a3bb96fabcfe68ab1e9773fd9278808b3c415e7eb399720f1e1e6",
-    "core": "258174e329130b933b6ec4210a0847a9fda579a1eca8c165e6497cd69a466a6b"
+    "core": "7fc554c54d007c290b06b639f8572bbac33067d0e758b9a67deabd6f2e56e3e7"
   },
   "capabilities": [
     "hud.configure.v1",
@@ -156,8 +156,8 @@
     "third_party/native-capture/core/licenses/zmij-1.0.21/LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
     "third_party/native-capture/core/LICENSING.md": "7e83c455171b2136f989916e0ad51c9dcb5362903b174a54b70859cf6f1654b8",
     "third_party/native-capture/core/NOTICE.md": "ff43855bc4c61098c737b38e6b22d5b53f4461984ac96daccfd4883e0eb049e4",
-    "third_party/native-capture/core/nte-core.exe": "609188d0581bcbf1537279fe3c7802bafa279f8c4988818dfa1eaf10af6c6f33",
-    "third_party/native-capture/core/SOURCE.md": "42e15f3de5d4bce56fb60c211d7a19642275a396e678ebd59dc28494b845de21",
+    "third_party/native-capture/core/nte-core.exe": "d9ce3ffced7677f8c2a079caf40488398c801973db07774dea219972f2536282",
+    "third_party/native-capture/core/SOURCE.md": "e24010eaee2113b598c0016260899a8edae70ef5695943ea5c9265e0541e71ec",
     "third_party/native-capture/core/THIRD_PARTY_LICENSES.md": "8252a00678a0991dd08e5e7249f3248740879598de595950f69363835d22b345",
     "third_party/mod-loader/bin/nte-mod-loader.exe": "cd7254b3f4ecc168dccbf113a950011309dbf4d902008b45c58a24ab0f16d536",
     "third_party/mod-loader/LICENSE": "e0eedba615d5cd1b986afb6c5b3a4b1ae33713e7e9dc74d19daec5e3221f9d2e",
@@ -276,7 +276,7 @@
     "third_party/native-capture/core/LICENSING.md": 3650,
     "third_party/native-capture/core/NOTICE.md": 1733,
     "third_party/native-capture/core/nte-core.exe": 1657856,
-    "third_party/native-capture/core/SOURCE.md": 1065,
+    "third_party/native-capture/core/SOURCE.md": 1238,
     "third_party/native-capture/core/THIRD_PARTY_LICENSES.md": 2840,
     "third_party/mod-loader/bin/nte-mod-loader.exe": 426496,
     "third_party/mod-loader/LICENSE": 35184,
