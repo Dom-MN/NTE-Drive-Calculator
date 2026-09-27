@@ -201,7 +201,7 @@ class ForkCatalogProvider:
             ) or "无面板修改"
             fields.append(official(
                 f"阶段 {row.stage} · 上限 Lv.{row.max_fork_level}",
-                f"材料：{item_costs}；方斯：{gold_costs}；面板：{modifiers}",
+                f"材料：{item_costs}；货币消耗：{gold_costs}；面板：{modifiers}",
             ))
         for state in detail.critical_level_states:
             fields.append(derived(
@@ -226,7 +226,7 @@ class ForkCatalogProvider:
                             f"{parameter.name_id}={parameter.display_value}"
                             for parameter in row.parameters
                         ) or "无"),
-                        "方斯字段：" + (row.need_gold_raw or "空"),
+                        "原始 need_gold 字段：" + (row.need_gold_raw or "空"),
                         "Buff：" + (", ".join(row.buff_asset_paths) or "无"),
                     ]),
                 )

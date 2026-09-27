@@ -29,7 +29,8 @@ try:
         PROVENANCE_FILENAME as STORAGE_REPACK_PROVENANCE_FILENAME,
         validate_repack_provenance,
     )
-    from .repair_published_gold_catalog import validate_gold_fix_provenance
+    from .repair_reference_gold_catalog import validate_gold_fix_provenance
+    from .reference_progression_currency import validate_reference_progression_currency
 except ImportError:  # 支持直接运行
     from static_database_build_support import (
         IMPORTER_VERSION,
@@ -44,7 +45,8 @@ except ImportError:  # 支持直接运行
         PROVENANCE_FILENAME as STORAGE_REPACK_PROVENANCE_FILENAME,
         validate_repack_provenance,
     )
-    from repair_published_gold_catalog import validate_gold_fix_provenance
+    from repair_reference_gold_catalog import validate_gold_fix_provenance
+    from reference_progression_currency import validate_reference_progression_currency
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -435,6 +437,12 @@ def _validate_candidate_database(
             "候选 importer 与当前代码不一致："
             f"候选={summary['importer_version']}，代码={IMPORTER_VERSION}"
         )
+    if summary.get("catalog_scope") == "reference":
+        with closing(_readonly_connection(database_path)) as connection:
+            try:
+                validate_reference_progression_currency(connection)
+            except ValueError as exc:
+                raise StaticReleasePromotionError(f"独立图鉴养成货币校验失败：{exc}") from exc
     if summary.get("catalog_scope") not in {"role_page", "reference"}:
         from tools.game_data.build_analysis_catalogs import validate_catalog_inputs
 

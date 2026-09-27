@@ -82,6 +82,50 @@ class ReferenceCatalogTests(unittest.TestCase):
             self.assertEqual("S", metadata.metadata(identity).quality)
             self.assertEqual("limited", metadata.metadata(identity).acquisition_type)
 
+    def test_reference_progression_currency_is_gold_not_fons(self):
+        release = read_role_catalog(CATALOG)
+        with closing(sqlite3.connect(
+            f"{release.database_path.resolve().as_uri()}?mode=ro", uri=True
+        )) as connection:
+            self.assertEqual(
+                [("gold", "progression_cost", "Gold")],
+                connection.execute(
+                    "SELECT token, context, item_id FROM progression_item_alias "
+                    "WHERE token='gold' AND context='progression_cost'"
+                ).fetchall(),
+            )
+            for table, column in (
+                ("character_breakthrough_cost", "item_id"),
+                ("character_exp_material_cost", "cost_item_id"),
+                ("fork_exp_material_cost", "cost_item_id"),
+            ):
+                with self.subTest(table=table):
+                    counts = dict(connection.execute(
+                        f"SELECT {column}, COUNT(*) FROM {table} "
+                        f"WHERE {column} IN ('Gold', 'Fons') GROUP BY {column}"
+                    ))
+                    self.assertGreater(counts.get("Gold", 0), 0)
+                    self.assertEqual(0, counts.get("Fons", 0))
+            self.assertEqual(
+                [("drop_fons1", "Fons")],
+                connection.execute(
+                    "SELECT drop_id, item_id FROM clone_drop_projection_item "
+                    "WHERE item_id='Fons'"
+                ).fetchall(),
+            )
+
+        queries = StaticCatalogCharacterQueries(release.database_path)
+        self.addCleanup(queries.close)
+        terminology = StaticCatalogTerminologyService(queries)
+        self.assertEqual(
+            "甲硬币",
+            terminology.resolve("item", "gold", context="progression_cost").display_name,
+        )
+        self.assertEqual(
+            "方斯",
+            terminology.resolve("item", "Fons", context="progression_cost").display_name,
+        )
+
     def test_changed_reference_release_invalidates_frozen_request(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -119,6 +163,18 @@ class ReferenceCatalogTests(unittest.TestCase):
                     page.open_fork(identity)
                 self.app.processEvents()
                 self.assertTrue(any(name in label.text() for label in page.findChildren(QLabel)), name)
+                if key == "character":
+                    growth = page.detail_view.growth_view
+                    growth.start_level.setCurrentIndex(0)
+                    growth.end_level.setCurrentIndex(79)
+                    growth.include_breakthroughs.setChecked(True)
+                    self.app.processEvents()
+                    self.assertIn("甲硬币", growth.progression_result.text())
+                    self.assertNotIn("方斯", growth.progression_result.text())
+                else:
+                    material_labels = tuple(label.text() for label in page.findChildren(QLabel))
+                    self.assertTrue(any("甲硬币" in text for text in material_labels))
+                    self.assertFalse(any("方斯" in text for text in material_labels))
             monster = next(spec for spec in specs if spec.domain_key == "monsters").build(owner)
             self.assertTrue(monster.open_record("outer_buff|Abyss_10"))
             self.assertTrue(any("星明如昼" in label.text() for label in monster.findChildren(QLabel)))

@@ -17,6 +17,7 @@ from tools.game_data.static_database_build_support import (
     TABLE_PATHS, asset_path, bool_int, text_parts,
 )
 from tools.game_data.static_database_progression_imports import ProgressionImportMixin
+from tools.game_data.reference_progression_currency import validate_reference_progression_currency
 
 
 class ReferenceCatalogBuilder(RoleCatalogBuilder):
@@ -51,6 +52,7 @@ class ReferenceCatalogBuilder(RoleCatalogBuilder):
             self._import_progression_catalog,
         ):
             operation()
+        validate_reference_progression_currency(self.connection)
 
     def _import_outer_realm_buffs(self):
         # 图鉴只投影正式赛季表，不消费战报的已审计组件表或任务推断序号。

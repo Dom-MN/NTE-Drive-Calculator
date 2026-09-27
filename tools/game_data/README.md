@@ -107,9 +107,16 @@ JSON/Markdown 报告与 manifest；`--finalize-only` 只更新候选证据，`--
 旧发行数据集的甲硬币误映射是一次受基线哈希约束的定点数据修复：
 `repair_published_gold_catalog.py` 只在已知旧库与官方掉落组/序列共同证明的范围内制作候选，
 将养成成本和 145 条 `droplist_gold` 付费产出修为 `Gold`，保留玛门 `drop_fons1` 的 `Fons`。
-它不编辑账号库，也不改写 `source_file/source_row` 原始来源事实；候选包含原库备份、SQL 差异、
+独立 `reference` 图鉴旧包另由 `repair_reference_gold_catalog.py` 在已核对基线哈希及同一正式掉落闭包下
+定点修复，补齐当前静态 schema，并以整包图片清单和专用 provenance 进入相同晋升入口。
+两者均不编辑账号库，也不改写 `source_file/source_row` 原始来源事实；候选包含原库备份、SQL 差异、
 逐表核验记录及回滚脚本。`promote_static_release.py` 对其专用 provenance 复核所有其他表不变后，
 才按常规候选流程最终化、只读预检和成对晋升；此例外不替代后续完整来源更新。
+
+后续正常更新独立 `reference` 图鉴时，`build_reference_catalog.py` 和 `promote_static_release.py`
+均会执行 `reference_progression_currency.py` 的正式身份门禁；候选需同时保留甲硬币、方斯的
+不同本地化名称、`gold → Gold` 成本别名、角色/弧盘养成成本和甲硬币副本产出。
+门禁不固定旧数据集的 145 条行数，来源身份变化应先核对正式证据并更新长期行为测试。
 
 角色额外形状不从上一发行库继承。构建器直接关联官方
 `DT_Character.ElementData.EquipmentSlotID`、`DT_CharacterEquipmentSlotsData.ModifyPropID` 与

@@ -421,6 +421,10 @@ DataTable、本地化与 Blueprint 来源闭包；仅需验证解析器或更新
 逐弧盘审计，不能修改输入库或已发布 `data/`。
 来源缺少战斗 Blueprint 时，可用 `build_role_catalog.py` 构建独立 `role_page` 目录，或用
 `build_reference_catalog.py` 构建包含角色、弧盘、装备、怪物和玩法的 `reference` 图鉴。
+每次 `reference` 候选构建完成前和正式晋升预检时，均须核对 `gold` 养成别名精确指向 `Gold`、
+角色突破及人物/弧盘经验材料成本不误归并为 `Fons`、正式甲硬币副本档位有 `Gold` 产出，
+并保留 `drop_fons1` 的真实方斯。检查按正式身份而非历史行数；身份或来源变化时先补证据和行为测试，
+不得靠更换显示名称、复用旧包或跳过晋升检查放行。
 准备来源时固定优先版本的提交与文件哈希，仅缺失的文件使用本机正式服定向导出，另存逐文件来源清单；
 不得以本机旧表覆盖优先版本已存在的表。两个构建器均不继承旧版战斗 Blueprint、可计算 Buff 组件或毕业模板。
 `reference` 的 `catalog_outer_realm_season` 按赛季和关卡正式绑定收录名称与 Buff 说明，独立于任务排期及
