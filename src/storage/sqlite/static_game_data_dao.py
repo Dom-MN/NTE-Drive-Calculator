@@ -11,8 +11,6 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, Iterable, NoReturn
 
-import tempfile
-import threading
 from src.domain.recommended_weights import workshop_weight_source_ids
 from .static_game_data_metadata import (
     MINIMUM_SUPPORTED_SCHEMA_VERSION,
@@ -27,40 +25,6 @@ _ROLE_TEMPLATE_CLASSIFICATIONS = {
     "scheduled_character",
     "playable",
 }
-
-_SHARED_STATIC_CONNECTIONS: dict[str, sqlite3.Connection] = {}
-_SHARED_STATIC_LOCK = threading.Lock()
-
-
-def _is_temp_path(path: Path) -> bool:
-    """Check if the given path resides within temporary directories."""
-    try:
-        resolved = path.resolve()
-        temp_dir = Path(tempfile.gettempdir()).resolve()
-        if temp_dir in resolved.parents:
-            return True
-        parts = {p.lower() for p in resolved.parts}
-        if parts & {"tmp", "temp", ".tmp", "pytest"}:
-            return True
-        return False
-    except Exception:
-        return False
-
-
-def _configure_static_connection(connection: sqlite3.Connection) -> None:
-    """Apply standard PRAGMAs for high-performance read-only static access."""
-    connection.row_factory = sqlite3.Row
-    for pragma in (
-        "PRAGMA journal_mode=WAL",
-        "PRAGMA cache_size=-32000",
-        "PRAGMA mmap_size=268435456",
-        "PRAGMA temp_store=MEMORY",
-    ):
-        try:
-            connection.execute(pragma)
-        except sqlite3.Error:
-            pass
-
 
 class StaticGameDataError(RuntimeError):
     """静态数据库缺失或版本不兼容。"""
@@ -146,7 +110,7 @@ class StaticGameDataDao(
 ):
     """面向当前发行静态数据库 schema 的轻量查询边界。
 
-    连接始终使用 SQLite 只读模式，并在多次查询间复用连接以消除系统调用开销。
+    连接始终使用 SQLite 只读模式，避免界面或计算代码意外修改开发者生成的数据包。
     """
 
     def __init__(
@@ -154,7 +118,6 @@ class StaticGameDataDao(
         database_path: str | Path | None = None,
         *,
         expected_schema_version: int | None = None,
-        reuse_connection: bool | None = None,
     ) -> None:
         expected_version = (
             int(expected_schema_version)
@@ -165,63 +128,35 @@ class StaticGameDataDao(
             raise ValueError("expected_schema_version 必须为正整数")
         self._schema_version = SCHEMA_VERSION
         self.database_path = resolve_static_database(database_path)
-        norm_key = os.path.normcase(str(self.database_path))
-
-        if reuse_connection is None:
-            self._reuse_connection = not _is_temp_path(self.database_path)
-        else:
-            self._reuse_connection = bool(reuse_connection)
-
-        self._connection: sqlite3.Connection | None = None
-        if self._reuse_connection:
-            with _SHARED_STATIC_LOCK:
-                existing = _SHARED_STATIC_CONNECTIONS.get(norm_key)
-                if existing is not None:
-                    try:
-                        existing.execute("SELECT 1")
-                        self._connection = existing
-                    except sqlite3.Error:
-                        _SHARED_STATIC_CONNECTIONS.pop(norm_key, None)
-                        existing = None
-                if self._connection is None:
-                    uri = f"{self.database_path.as_uri()}?mode=ro"
-                    try:
-                        conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
-                    except sqlite3.Error as exc:
-                        raise StaticGameDataError(
-                            f"无法打开静态数据库：{self.database_path}"
-                        ) from exc
-                    _configure_static_connection(conn)
-                    _SHARED_STATIC_CONNECTIONS[norm_key] = conn
-                    self._connection = conn
-        else:
-            uri = f"{self.database_path.as_uri()}?mode=ro"
-            try:
-                self._connection = sqlite3.connect(uri, uri=True)
-            except sqlite3.Error as exc:
-                raise StaticGameDataError(
-                    f"无法打开静态数据库：{self.database_path}"
-                ) from exc
-            _configure_static_connection(self._connection)
-
+        uri = f"{self.database_path.as_uri()}?mode=ro"
+        try:
+            self._connection: sqlite3.Connection | None = sqlite3.connect(
+                uri,
+                uri=True,
+            )
+        except sqlite3.Error as exc:
+            raise StaticGameDataError(
+                f"无法打开静态数据库：{self.database_path}"
+            ) from exc
+        self._connection.row_factory = sqlite3.Row
         try:
             version_row = self._connection.execute(
                 "SELECT MAX(version) AS version FROM schema_migration"
             ).fetchone()
         except sqlite3.Error as exc:
-            self.close(force=True)
+            self.close()
             raise StaticGameDataError("文件不是 NTE 静态游戏数据库") from exc
         version = version_row["version"] if version_row is not None else None
         resolved_version = int(version or 0)
         if expected_version is not None and resolved_version != expected_version:
-            self.close(force=True)
+            self.close()
             raise StaticGameDataError(
                 f"不支持的静态数据库结构版本：{version!r}；需要 {expected_version}"
             )
         if expected_version is None and resolved_version not in range(
             MINIMUM_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION + 1,
         ):
-            self.close(force=True)
+            self.close()
             raise StaticGameDataError(
                 f"不支持的静态数据库结构版本：{version!r}；支持 "
                 f"{MINIMUM_SUPPORTED_SCHEMA_VERSION} 至 {SCHEMA_VERSION}"
@@ -239,41 +174,11 @@ class StaticGameDataDao(
     ) -> None:
         self.close()
 
-    def close(self, *, force: bool = False) -> None:
+    def close(self) -> None:
         connection = getattr(self, "_connection", None)
-        if connection is None:
-            return
-        if self._reuse_connection and not force:
-            self._connection = None
-            return
-        norm_key = os.path.normcase(str(self.database_path))
-        with _SHARED_STATIC_LOCK:
-            _SHARED_STATIC_CONNECTIONS.pop(norm_key, None)
-        try:
+        if connection is not None:
             connection.close()
-        except sqlite3.Error:
-            pass
-        self._connection = None
-
-    @classmethod
-    def close_shared_connections(cls, database_path: str | Path | None = None) -> None:
-        """Close shared static database connections across the process."""
-        with _SHARED_STATIC_LOCK:
-            if database_path is not None:
-                norm_key = os.path.normcase(str(Path(database_path).expanduser().resolve()))
-                conn = _SHARED_STATIC_CONNECTIONS.pop(norm_key, None)
-                if conn is not None:
-                    try:
-                        conn.close()
-                    except sqlite3.Error:
-                        pass
-            else:
-                for conn in _SHARED_STATIC_CONNECTIONS.values():
-                    try:
-                        conn.close()
-                    except sqlite3.Error:
-                        pass
-                _SHARED_STATIC_CONNECTIONS.clear()
+            self._connection = None
 
     def _rows(self, sql: str, parameters: Iterable[Any] = ()) -> list[dict[str, Any]]:
         if self._connection is None:
