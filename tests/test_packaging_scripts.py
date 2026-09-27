@@ -73,6 +73,12 @@ class PackagingScriptTests(unittest.TestCase):
         self.assertIn("game_static.previous.sqlite3", text)
         self.assertIn("FileCopy(OldStaticDatabase, MigrationBackup, False)", text)
 
+    def test_installer_overwrites_core_even_when_version_text_is_unchanged(self):
+        build_installer._write_iss(APP_VERSION, build_installer.VIGEM_BUNDLE_EXE, True)
+        text = build_installer.ISS_PATH.read_text(encoding="utf-8-sig")
+        self.assertIn('DestDir: "{app}\\_internal"; Flags: ignoreversion recursesubdirs', text)
+        self.assertIn('CloseApplicationsFilter=NTE_Drive_Calc.exe,nte-mod-loader.exe,nte-core.exe', text)
+
     def test_installer_rejects_bundle_missing_runtime_data_files(self):
         from contextlib import ExitStack
         from tests.test_native_component_bundle_build import native_source, prepare

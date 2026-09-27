@@ -412,6 +412,8 @@ def test_home_only_has_auto_and_restart_and_uses_metric_for_last_saved(owner, tm
     window.work_mode_controller.check = lambda **_kwargs: None
     window._go = lambda _key: None
     page = build_home_page(window)
+    assert any(button.objectName() == "btnNew" for button in page.findChildren(QPushButton)
+               if button.text() == "检测详情")
     titles = [button.text() for button in page.findChildren(QPushButton)]
     assert "重启同步" in titles and "如何使用" in titles
     assert "停止同步" not in titles and "背包同步" not in titles

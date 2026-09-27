@@ -108,9 +108,35 @@ def test_installer_and_release_accept_native_layout_without_legacy_mods(tmp_path
         path = tmp_path / field
         path.write_bytes(b"unrelated app fixture")
         monkeypatch.setattr(installer, field, path)
+    # This fixture covers the native bundle, not the separately tested OCR model package.
+    monkeypatch.setattr(installer, "validate_packaged_ocr_models", lambda _root: None)
     installer._validate_app_bundle()
     monkeypatch.setattr(release, "ROOT", root)
+    standalone = root / "third_party" / "nte-core" / "bin" / "nte-core.exe"
+    standalone.parent.mkdir(parents=True, exist_ok=True)
+    standalone.write_bytes((root / _payload["roles"]["core"]).read_bytes())
+    monkeypatch.setattr(release, "validate_core_capabilities", lambda _core: None)
     release.validate_components()
+
+
+def test_release_rejects_core_that_drops_wait_or_buff_capability(monkeypatch, tmp_path):
+    from tools.release import prepare_release as release
+
+    class Client:
+        hello_result = {"capabilities": ["capture", "inventory", "capture_wait_v1"]}
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+    monkeypatch.setattr(release, "NteCoreClient", Client)
+    with pytest.raises(RuntimeError, match="buff_snapshot_v1"):
+        release.validate_core_capabilities(tmp_path / "nte-core.exe")
 
 
 def test_optional_loader_rejects_missing_license_roles(tmp_path):

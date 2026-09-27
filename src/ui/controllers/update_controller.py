@@ -265,26 +265,34 @@ def _on_mirror_download_ready(self, info):
         _new_update_operation(self, feature="update_download"),
     )
     url = str(info.get("url") or "").strip()
+    latest = str(info.get("latest") or "").strip()
+    if url and not latest:
+        url = ""
     if url:
-        latest = str(info.get("latest") or "").strip()
         if not _mirror_download_version_is_available(latest, APP_VERSION):
             log_event(
                 "WARNING",
-                "update.download_historical_version_blocked",
-                "Mirror 返回的版本低于当前版本",
+                "update.download_historical_version_confirmation_required",
+                "Mirror 下载版本低于当前版本，等待用户确认",
                 operation,
                 current_version=APP_VERSION,
                 latest_version=latest,
             )
-            if hasattr(self, "_mirror_download_btn"):
-                self._mirror_download_btn.setEnabled(True)
-            self._update_status.setText("当前已是最新版本，无法下载历史旧版本。")
-            QMessageBox.information(
-                self,
-                "Mirror 下载",
-                "当前版本高于 Mirror 可下载版本，已是最新版本，无法下载历史旧版本。",
+            if not _confirm_mirror_older_version_download(self, APP_VERSION, latest):
+                log_event(
+                    "INFO", "update.download_historical_version_cancelled",
+                    "用户取消下载较旧版本", operation,
+                    current_version=APP_VERSION, latest_version=latest,
+                )
+                if hasattr(self, "_mirror_download_btn"):
+                    self._mirror_download_btn.setEnabled(True)
+                self._update_status.setText("已取消较旧版本下载。")
+                return
+            log_event(
+                "WARNING", "update.download_historical_version_confirmed",
+                "用户确认下载较旧版本", operation,
+                current_version=APP_VERSION, latest_version=latest,
             )
-            return
         log_event(
             "INFO",
             "update.download_url_received",
@@ -467,8 +475,29 @@ def _mirror_project_link_text(action: str) -> str:
 
 
 def _mirror_download_version_is_available(latest: str, current: str) -> bool:
-    """Allow the current release or a newer release, never a historical one."""
+    """Whether the remote release is current or newer; older ones need confirmation."""
     return bool(latest) and not is_newer_version(current, latest)
+
+
+def _confirm_mirror_older_version_download(self: Any, current: str, latest: str) -> bool:
+    dialog = QMessageBox(self)
+    dialog.setIcon(QMessageBox.Icon.Warning)
+    dialog.setWindowTitle("Mirror 下载较旧版本")
+    dialog.setText("Mirror 提供的版本低于当前安装版本。")
+    dialog.setInformativeText(
+        f"当前版本：{current}\nMirror 版本：{latest}\n"
+        "下载完成后会自动启动安装程序，可能覆盖当前版本。是否继续下载？"
+    )
+    download = dialog.addButton("下载", QMessageBox.ButtonRole.AcceptRole)
+    cancel = dialog.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+    dialog.setDefaultButton(cancel)
+    dialog.setEscapeButton(cancel)
+    if hasattr(self, "_current_style_sheet"):
+        dialog.setStyleSheet(self._current_style_sheet())
+    fit_dialog_to_available_screen(dialog, QSize(490, 210))
+    QApplication.beep()
+    dialog.exec()
+    return dialog.clickedButton() is download
 
 
 def _show_mirror_project_download_dialog(self: Any, summary: str) -> None:

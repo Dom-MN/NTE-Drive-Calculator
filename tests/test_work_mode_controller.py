@@ -139,8 +139,12 @@ def test_ready_sync_preflight_activates_without_guidance_click(controller):
     c.runtime.tick = lambda **kwargs: (calls.append(kwargs), original_tick(**kwargs))[1]
     confirmed = []
     c.begin_sync_enable(lambda: (confirmed.append(True), True)[1])
+    dialog = c._report_dialog
+    pending = dialog.results_layout.itemAt(0).widget()
     _key, preflight = c._observer.jobs.pop(0)
     c.observed.emit(preflight())
+    assert pending.parentWidget() is dialog.results and pending.isHidden()
+    assert pending not in QApplication.topLevelWidgets()
     assert calls and calls[0]["preview"] is True
     assert calls[0]["allow_connect"] is False
     buttons = {button.text(): button for button in c._report_dialog.findChildren(QPushButton)}

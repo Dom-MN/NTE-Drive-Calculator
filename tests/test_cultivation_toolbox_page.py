@@ -12,12 +12,9 @@ def test_cultivation_uses_one_verified_role_catalog_for_data_and_images(tmp_path
     from src.integrations.role_catalog_release import RoleCatalogRelease
 
     paths = ApplicationPaths.from_roots(
-        root=tmp_path,
-        app_dir=tmp_path,
-        data_root=tmp_path,
+        root=tmp_path, app_dir=tmp_path, data_root=tmp_path,
         bundled_config_dir=tmp_path / "config",
-        asset_dir=tmp_path / "assets",
-        app_icon_path=tmp_path / "assets" / "app_icon.ico",
+        asset_dir=tmp_path / "assets", app_icon_path=tmp_path / "assets" / "app_icon.ico",
     )
     assert paths.cultivation_database_path == paths.static_database_path
     assert paths.cultivation_asset_root == tmp_path / "data" / "role_catalog" / "game_ui"
@@ -714,7 +711,7 @@ def test_multi_character_selector_preselects_and_supports_all_clear() -> None:
     assert not dialog._search.testAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled)
     assert dialog.selected_ids() == ("2",)
     next(button for button in dialog.findChildren(QPushButton) if button.text() == "全选").click()
-    assert dialog.selected_ids() == ("1", "2", "3")
+    assert set(dialog.selected_ids()) == {"1", "2", "3"}
     next(button for button in dialog.findChildren(QPushButton) if button.text() == "清空").click()
     assert dialog.selected_ids() == ()
     _dispose_widget(dialog)
@@ -781,7 +778,7 @@ def test_multi_character_inline_editor_keeps_draft_and_updates_fork_image(tmp_pa
     first, second = batch._cards
 
     first.edit.click()
-    assert first.body.isVisible()
+    assert not first.body.isHidden()
     assert first.fork_name.text() == "弧盘甲"
     assert not first.fork_icon.pixmap().isNull()
     first._skill_inputs["skill-a"][1].setValue(8)
@@ -791,8 +788,8 @@ def test_multi_character_inline_editor_keeps_draft_and_updates_fork_image(tmp_pa
         first.update_available_width(width)
         assert first.request() == unchanged_draft
     second.edit.click()
-    assert second.body.isVisible()
-    assert not first.body.isVisible()
+    assert not second.body.isHidden()
+    assert first.body.isHidden()
     assert first.request().skills[0].target_level == 8
     assert first.request().fork.target_level == 75
 

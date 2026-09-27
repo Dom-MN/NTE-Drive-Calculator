@@ -29,6 +29,7 @@ from tools.game_data.promote_static_release import (
 from src.app.version import __version__
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 from src.integrations.game_component_bundle import inspect_game_component_bundle
+from src.integrations.nte_core import NteCoreClient
 from src.integrations.ocr_model_resources import validate_packaged_ocr_models
 from tools.release.game_component_bundle_build import source_component_manifest, validate_packaged_component_bundle
 from tools.release.native_component_bundle_build import native_component_build_inputs
@@ -48,6 +49,7 @@ BUNDLED_STATIC_MANIFEST = APP_INTERNAL / "data" / "manifest.json"
 BUNDLED_GAME_UI_ASSET_ROOT = APP_INTERNAL / "data" / "role_catalog" / "game_ui"
 BUNDLED_GAME_UI_ASSET_MANIFEST = BUNDLED_GAME_UI_ASSET_ROOT / "manifest.json"
 LOCAL_CONFIG_ENV = "NTE_LOCAL_CONFIG"
+REQUIRED_CORE_CAPABILITIES = frozenset({"capture_wait_v1", "buff_snapshot_v1"})
 def run(command: Sequence[str]) -> None:
     """在仓库根目录执行命令，失败时立即终止准备流程。"""
 
@@ -285,6 +287,20 @@ def validate_components() -> None:
     if not (ROOT / "NOTICE").is_file():
         raise RuntimeError("缺少应用第三方声明 NOTICE。")
     native_component_build_inputs(ROOT)
+    core = ROOT / bundle.roles["core"]
+    standalone = ROOT / "third_party" / "nte-core" / "bin" / "nte-core.exe"
+    if not standalone.is_file() or sha256(standalone) != sha256(core):
+        raise RuntimeError("独立 Core 与原生组件整包 Core 字节不一致。")
+    validate_core_capabilities(core)
+
+
+def validate_core_capabilities(core: Path) -> None:
+    """实际握手防止同版本 Core 更新时静默丢失既有能力。"""
+    with NteCoreClient(executable=core, required_source="packet") as client:
+        capabilities = set(client.hello_result["capabilities"])
+    missing = REQUIRED_CORE_CAPABILITIES - capabilities
+    if missing:
+        raise RuntimeError("Core 握手缺少发行所需能力：" + "、".join(sorted(missing)))
 
 
 def write_checksum(path: Path) -> Path:

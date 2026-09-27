@@ -257,7 +257,8 @@ class ModeReportDialog(QDialog):
             item = self.results_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
-                widget.setParent(None)
+                # 延迟销毁前保持父窗口，避免短暂生成无主题的顶层窗口。
+                widget.hide()
                 widget.deleteLater()
 
     def _add_result_section(self, title, groups, tone):

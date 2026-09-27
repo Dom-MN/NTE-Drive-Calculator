@@ -333,6 +333,7 @@ def build_home_page(window) -> QScrollArea:
     window.home_restart_sync_button.setObjectName("btnPrimary")
     window.home_restart_sync_button.clicked.connect(window.auto_sync_controller.open_restart)
     check = QPushButton("检测详情")
+    check.setObjectName("btnNew")
     check.clicked.connect(lambda: window.work_mode_controller.check(show=True))
     window.home_sync_help_button = QPushButton("如何使用")
     window.home_sync_help_button.clicked.connect(lambda: _show_home_sync_help(window))

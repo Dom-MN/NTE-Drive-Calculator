@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QTextBrowser, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QMessageBox, QPushButton, QTextBrowser, QWidget
 
 
 
@@ -201,6 +201,75 @@ class UpdateWorkflowTests(unittest.TestCase):
         self.assertFalse(
             update_controller._mirror_download_version_is_available("v2.0.9", "v2.1.0")
         )
+
+    def test_mirror_older_version_download_requires_explicit_choice(self):
+        from src.ui.controllers import update_controller
+
+        class Window(QWidget):
+            def __init__(self):
+                super().__init__()
+                self._update_status = QLabel()
+                self._mirror_download_btn = QPushButton()
+                self.downloads = []
+
+            def _start_mirror_installer_download(self, url):
+                self.downloads.append(url)
+
+        window = Window()
+        info = {"latest": "2.2.0", "url": "https://example.invalid/setup.exe"}
+        with patch.object(update_controller, "APP_VERSION", "2.3.0"), \
+                patch.object(update_controller, "log_event"), \
+                patch.object(update_controller, "_confirm_mirror_older_version_download", return_value=False) as confirm:
+            window._mirror_download_btn.setEnabled(False)
+            update_controller._on_mirror_download_ready(window, info)
+            confirm.assert_called_once_with(window, "2.3.0", "2.2.0")
+            self.assertEqual([], window.downloads)
+            self.assertTrue(window._mirror_download_btn.isEnabled())
+            self.assertEqual("已取消较旧版本下载。", window._update_status.text())
+
+        with patch.object(update_controller, "APP_VERSION", "2.3.0"), \
+                patch.object(update_controller, "log_event"), \
+                patch.object(update_controller, "_confirm_mirror_older_version_download", return_value=True):
+            window._mirror_download_btn.setEnabled(False)
+            update_controller._on_mirror_download_ready(window, info)
+            self.assertEqual([info["url"]], window.downloads)
+            self.assertFalse(window._mirror_download_btn.isEnabled())
+
+        with patch.object(update_controller, "APP_VERSION", "2.3.0"), \
+                patch.object(update_controller, "log_event"), \
+                patch.object(update_controller, "_confirm_mirror_older_version_download") as confirm:
+            update_controller._on_mirror_download_ready(
+                window, {"latest": "2.3.0", "url": "https://example.invalid/current.exe"},
+            )
+            confirm.assert_not_called()
+            self.assertEqual("https://example.invalid/current.exe", window.downloads[-1])
+        window.deleteLater()
+
+    def test_mirror_older_version_dialog_has_download_and_default_cancel(self):
+        from src.ui.controllers import update_controller
+
+        owner = QWidget()
+        choices = []
+
+        def choose(dialog):
+            buttons = {button.text(): button for button in dialog.buttons()}
+            self.assertEqual({"下载", "取消"}, set(buttons))
+            self.assertEqual(QMessageBox.Icon.Warning, dialog.icon())
+            self.assertIs(dialog.defaultButton(), buttons["取消"])
+            self.assertIs(dialog.escapeButton(), buttons["取消"])
+            self.assertIn("2.3.0", dialog.informativeText())
+            self.assertIn("2.2.0", dialog.informativeText())
+            buttons[choices.pop(0)].click()
+
+        choices.extend(("取消", "下载"))
+        with patch.object(QMessageBox, "exec", choose), patch.object(QApplication, "beep"):
+            self.assertFalse(update_controller._confirm_mirror_older_version_download(
+                owner, "2.3.0", "2.2.0",
+            ))
+            self.assertTrue(update_controller._confirm_mirror_older_version_download(
+                owner, "2.3.0", "2.2.0",
+            ))
+        owner.deleteLater()
 
     def test_update_check_default_timeout_is_short(self):
         from src.features.settings import updates
