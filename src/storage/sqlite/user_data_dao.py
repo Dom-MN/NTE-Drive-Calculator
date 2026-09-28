@@ -20,6 +20,7 @@ from .loadout_plan_lock_dao import LoadoutPlanLockDaoMixin
 from .loadout_plan_dao import LoadoutPlanDaoMixin
 from .loadout_slot_dao import LoadoutSlotDaoMixin
 from .optimization_profile_dao import OptimizationProfileDaoMixin
+from .packet_item_observation_dao import PacketItemObservationDaoMixin
 from .native_character_profile_dao import NativeCharacterProfileDaoMixin
 from .user_data_base import UserDataDaoCore
 from .user_data_support import (
@@ -40,6 +41,7 @@ from .user_data_support import (
 
 
 class UserDataDao(
+    PacketItemObservationDaoMixin,
     AllItemSnapshotDaoMixin,
     NativeCharacterProfileDaoMixin,
     CustomCharacterDaoMixin,

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -30,6 +31,9 @@ from src.features.toolbox.cultivation_owned_materials import (
     visible_owned_inputs,
 )
 from src.features.toolbox.cultivation_selectors import select_cultivation_item
+from src.features.toolbox.cultivation_single_controller import (
+    CultivationSingleController, SingleCalculationRequest, SingleCalculationResult,
+)
 from src.features.toolbox.cultivation_single_editor import CultivationSingleEditor
 from src.features.toolbox.cultivation_stamina_ui import (
     CultivationStaminaControls,
@@ -69,10 +73,19 @@ class CultivationCalculatorContent(QWidget):
         service: CultivationPlannerService,
         parent: QWidget,
         *,
+        context_identity: Callable[[], object] | None = None,
         asset_root: str | Path | None = None,
     ) -> None:
         super().__init__(parent)
         self._service = service
+        self._context_identity = context_identity
+        self._initial_identity = context_identity() if context_identity is not None else None
+        self._controller = CultivationSingleController(
+            service, context_identity=context_identity, parent=self,
+        )
+        self._controller.result_ready.connect(self._receive_plan)
+        self._controller.error.connect(self._calculation_error)
+        self._controller.busy_changed.connect(self._set_busy)
         self._roles: tuple[CultivationRole, ...] = ()
         self._forks: tuple[CultivationFork, ...] = ()
         self._seed: CultivationSeed | None = None
@@ -133,6 +146,17 @@ class CultivationCalculatorContent(QWidget):
         self._target_level.valueChanged.connect(self._refresh_target_stages)
         self._fork_current_level.valueChanged.connect(self._refresh_fork_current_stages)
         self._fork_target_level.valueChanged.connect(self._refresh_fork_target_stages)
+        for control in (
+            self._current_level, self._current_stage, self._target_level, self._target_stage,
+            self._fork_current_level, self._fork_current_stage,
+            self._fork_target_level, self._fork_target_stage,
+        ):
+            if isinstance(control, QSpinBox):
+                control.valueChanged.connect(self._draft_edited)
+            else:
+                control.currentIndexChanged.connect(self._draft_edited)
+        for toggle in (self._character_toggle, self._skills_toggle, self._fork_toggle):
+            toggle.toggled.connect(self._draft_edited)
         self._set_fork_controls_enabled(False)
 
         self._stamina_controls = CultivationStaminaControls(input_body)
@@ -215,6 +239,7 @@ class CultivationCalculatorContent(QWidget):
             self._load_selected_seed(int(selected))
 
     def _load_selected_seed(self, character_id: int) -> None:
+        self._controller.invalidate()
         try:
             seed = self._service.load_seed(int(character_id))
         except Exception as exc:
@@ -270,6 +295,7 @@ class CultivationCalculatorContent(QWidget):
             QMessageBox.warning(self, "养成计算器", f"读取弧盘养成状态失败：{exc}")
 
     def _apply_fork_seed(self, seed: CultivationForkSeed | None) -> None:
+        self._controller.invalidate()
         self._fork_seed = seed
         self._set_fork_controls_enabled(seed is not None)
         if seed is None:
@@ -317,6 +343,9 @@ class CultivationCalculatorContent(QWidget):
     def _rebuild_skills(self, seed: CultivationSeed) -> None:
         self._editor.set_skills(seed)
         self._set_skills_enabled(self._skills_toggle.isChecked())
+        for current, target in self._skill_inputs.values():
+            current.valueChanged.connect(self._draft_edited)
+            target.valueChanged.connect(self._draft_edited)
 
     def _refresh_current_stages(self) -> None:
         self._set_stages(self._current_stage, self._current_level.value(), self._current_stage.currentData())
@@ -353,8 +382,18 @@ class CultivationCalculatorContent(QWidget):
     def _calculate(self) -> None:
         if self._seed is None:
             return
-        request = CultivationRequest(
-            character_id=self._seed.character_id,
+        identity = self._context_identity() if self._context_identity is not None else None
+        if identity != self._initial_identity:
+            return
+        request = self._single_request()
+        self._controller.submit(request, identity)
+
+    def _single_request(self) -> SingleCalculationRequest:
+        seed = self._seed
+        if seed is None:
+            raise ValueError("请先选择角色")
+        target = CultivationRequest(
+            character_id=seed.character_id,
             current_level=self._current_level.value(),
             current_breakthrough_stage=int(self._current_stage.currentData()),
             target_level=self._target_level.value(),
@@ -376,22 +415,43 @@ class CultivationCalculatorContent(QWidget):
                 if self._fork_seed is not None and self._fork_toggle.isChecked() else None
             ),
         )
-        try:
-            plan = self._service.calculate(request)
-        except ValueError as exc:
-            QMessageBox.warning(self, "养成计算器", str(exc))
+        hunter, identification = self._stamina_controls.values()
+        return SingleCalculationRequest(
+            target, tuple(sorted(self._owned_materials.quantities().items())),
+            hunter, identification,
+        )
+
+    def _receive_plan(self, value: object) -> None:
+        if not isinstance(value, SingleCalculationResult) or self._seed is None:
             return
-        except Exception as exc:
-            QMessageBox.warning(self, "养成计算器", f"计算材料失败：{exc}")
+        if value.request != self._single_request():
             return
+        plan = value.plan
         self._last_plan = plan
+        self._last_stamina_plan = value.stamina
         self._materials_dirty = False
         self._calculate_button.setText("计算所需材料与体力")
         self.plan_available.emit(True)
         self._render_plan(plan)
         self.calculation_completed.emit()
 
+    def _calculation_error(self, message: str) -> None:
+        QMessageBox.warning(self, "养成计算器", f"计算材料失败：{message}")
+
+    def _set_busy(self, busy: bool) -> None:
+        self._calculate_button.setEnabled(not busy)
+        self._calculate_button.setText(
+            "正在计算中" if busy else (
+                "重新计算所需材料与体力" if self._materials_dirty
+                else "计算所需材料与体力"
+            )
+        )
+
+    def _draft_edited(self, *_args: object) -> None:
+        self._controller.invalidate()
+
     def _owned_quantities_changed(self) -> None:
+        self._controller.invalidate()
         if self._last_plan is not None and not self._materials_dirty:
             self._materials_dirty = True
             self._calculate_button.setText("重新计算所需材料与体力")
@@ -399,8 +459,9 @@ class CultivationCalculatorContent(QWidget):
             self._set_result_message("已有材料已修改，请点击重新计算更新材料与体力。")
 
     def _stamina_inputs_changed(self) -> None:
+        self._controller.invalidate()
         if self._last_plan is not None and not self._materials_dirty:
-            self._render_plan(self._last_plan)
+            self._calculate()
 
     def set_material_scope(self, scope: str) -> None:
         if scope not in {"all", "stamina"} or scope == self._material_scope:
@@ -411,7 +472,7 @@ class CultivationCalculatorContent(QWidget):
         if self._materials_dirty:
             self._owned_materials.set_materials(self._input_options(self._last_plan))
         else:
-            self._render_plan(self._last_plan, refresh_stamina=False)
+            self._render_plan(self._last_plan)
 
     def _visible(
         self, materials: tuple[CultivationMaterial, ...]
@@ -421,21 +482,6 @@ class CultivationCalculatorContent(QWidget):
             if self._last_stamina_plan is not None else frozenset()
         )
         return visible_materials(materials, self._material_scope, item_ids)
-
-    def _calculate_stamina(self, plan: CultivationPlan) -> CultivationStaminaPlan | None:
-        calculate = getattr(self._service, "calculate_stamina", None)
-        if not callable(calculate):
-            return None
-        hunter_level, identification_level = self._stamina_controls.values()
-        try:
-            return calculate(
-                plan,
-                owned_quantities=self._owned_materials.quantities(),
-                hunter_level=hunter_level,
-                effective_identification_level=identification_level,
-            )
-        except (TypeError, ValueError):
-            return None
 
     def _input_options(self, plan: CultivationPlan) -> tuple[CultivationMaterial, ...]:
         item_ids = (
@@ -447,12 +493,8 @@ class CultivationCalculatorContent(QWidget):
             self._material_scope, item_ids,
         )
 
-    def _render_plan(
-        self, plan: CultivationPlan, *, refresh_stamina: bool = True
-    ) -> None:
+    def _render_plan(self, plan: CultivationPlan) -> None:
         self._clear_result()
-        if refresh_stamina:
-            self._last_stamina_plan = self._calculate_stamina(plan)
         self._owned_materials.set_materials(self._input_options(plan))
         complete = plan.status == MaterialSummaryStatus.COMPLETE
         if not complete:
@@ -667,6 +709,7 @@ class CultivationCalculatorContent(QWidget):
     def reset_draft(self) -> None:
         """Restore the selected role's saved state and clear transient results."""
 
+        self._controller.invalidate()
         self._details_expanded = False
         self._last_plan = None
         self._last_stamina_plan = None
@@ -679,6 +722,9 @@ class CultivationCalculatorContent(QWidget):
             self._load_selected_seed(self._roles[0].character_id)
         else:
             self._set_result_message("正在读取可用于养成计算的角色。")
+
+    def close_controller(self) -> None:
+        self._controller.close()
 
     def _set_result_message(self, text: str, *, error: bool = False) -> None:
         self._clear_result()

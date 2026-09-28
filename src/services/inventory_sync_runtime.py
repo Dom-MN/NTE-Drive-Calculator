@@ -25,6 +25,7 @@ from .inventory_sync_logging import (
 )
 from .inventory_snapshot_stabilizer import InventorySnapshotStabilizer, SnapshotOfferResult
 from .inventory_source_capabilities import has_native_inventory_uids, is_visual_inventory_source
+from .packet_item_observation_sync import PacketItemObservationSync
 
 
 def _utc_now() -> str:
@@ -69,6 +70,7 @@ def _snapshot_waiting_message(summary, has_character_list):
 
 def run_inventory_sync(service: Any) -> None:
     client: InventoryCoreClient | None = None
+    packet_items: PacketItemObservationSync | None = None
     fatal_error: Exception | None = None
     diagnostics = InventorySyncDiagnostics(service._operation_context)
     sync_stage = "loading_settings"
@@ -128,6 +130,9 @@ def run_inventory_sync(service: Any) -> None:
             client.start()
             client.add_event_handler("event.inventory.snapshot", service._on_inventory_event)
             client.add_event_handler("event.capture.status", service._on_capture_status_event)
+            if not native and "inventory_observed_items_v1" in (client.hello_result or {}).get("capabilities", ()):
+                packet_items = PacketItemObservationSync(service, dao, settle_seconds)
+                client.add_event_handler("event.inventory.items_observed", packet_items.on_event)
             log_event(
                 "INFO",
                 "inventory_sync.core_connected",
@@ -245,6 +250,8 @@ def run_inventory_sync(service: Any) -> None:
                     snapshot_id=current_id,
                 )
                 event = service._take_latest_event()
+                if packet_items is not None:
+                    packet_items.receive_latest()
                 if event is not None:
                     sync_stage = "processing_event"
                     for source_snapshot_id, items, observed_at, sequence in (
@@ -350,6 +357,8 @@ def run_inventory_sync(service: Any) -> None:
 
                 sync_stage = "listening"
                 now = time.monotonic()
+                if packet_items is not None:
+                    packet_items.save_if_stable(now)
                 stable = stabilizer.ready(now=now)
                 if stable is None or now < retry_save_at:
                     continue
@@ -413,6 +422,8 @@ def run_inventory_sync(service: Any) -> None:
                 previous_item_count = current_summary.get("stored_item_count") if current_summary else None
                 previous_source = current_summary.get("source") if current_summary else None
                 current_id = snapshot_id
+                if packet_items is not None:
+                    packet_items.on_inventory_snapshot_committed(snapshot_id)
                 current_has_character_instances = dao.snapshot_has_independent_character_instances(snapshot_id)
                 committed_summary = dao.inventory_snapshot_summary(snapshot_id) or {}
                 current_summary = committed_summary
@@ -523,6 +534,11 @@ def run_inventory_sync(service: Any) -> None:
         )
     finally:
         if client is not None:
+            if packet_items is not None:
+                try:
+                    client.remove_event_handler("event.inventory.items_observed", packet_items.on_event)
+                except Exception:
+                    pass
             try:
                 client.remove_event_handler("event.inventory.snapshot", service._on_inventory_event)
             except Exception:

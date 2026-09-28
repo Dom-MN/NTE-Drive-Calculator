@@ -67,7 +67,7 @@ class CultivationCalculatorPage(QWidget):
         self.mode_stack = _CurrentPageStack(self.scroll)
         self.mode_stack.setObjectName("cultivationCalculatorModeStack")
         self.calculator = CultivationCalculatorContent(
-            service, self.mode_stack, asset_root=asset_root
+            service, self.mode_stack, context_identity=context_identity, asset_root=asset_root
         )
         self.batch_calculator = CultivationBatchContent(
             service,
@@ -130,7 +130,7 @@ class CultivationCalculatorPage(QWidget):
         except ValueError as exc:
             message = f"材料导入未完成：{exc}"
         except Exception:
-            message = "材料导入未完成：读取原生归档失败，请检查同步状态后重试。"
+            message = "材料导入未完成：读取同步数据失败，请检查同步状态后重试。"
         else:
             if (self._context_identity is not None
                     and self._context_identity() != self._initial_identity):
@@ -139,8 +139,9 @@ class CultivationCalculatorPage(QWidget):
             applied = 0
             for content in (self.calculator, self.batch_calculator):
                 applied += content.owned_materials.apply_import(observed)
+            origin = ("账号已保存的抓包材料观测于" if imported.source == "packet" else "原生归档保存于")
             message = (
-                f"原生归档保存于 {imported.saved_at_utc}；已识别 {len(observed)} 种材料，"
+                f"{origin} {imported.saved_at_utc}；已识别 {len(observed)} 种材料，"
                 f"本次草稿更新 {applied} 处。未观测项和手工修改保持原值。"
             )
             if imported.skipped_item_count:
@@ -404,6 +405,7 @@ class CultivationCalculatorPage(QWidget):
     def shutdown(self) -> None:
         self._cancel_batch_result_transition()
         self._batch_retired_pending.clear()
+        self.calculator.close_controller()
         self.batch_calculator.close_controller()
 
 

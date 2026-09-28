@@ -162,6 +162,7 @@ identifies the local `nte-mods-plugin` bridge included in this Core build.
 | `capture.start` | capture options | Yes | process-local `operation_id` |
 | `capture.stop` | `{}` or omitted | Yes | stopped `operation_id` |
 | `inventory.get_latest` | `{}` or omitted | Yes | latest complete inventory snapshot |
+| `inventory.get_observed_items` | `{}` or omitted | Yes | packet-observed item quantities, not a complete inventory |
 | `buff.get_snapshot` | `{}`, null or omitted | Yes | private, idle-only observed party effects; see [Buff observer](BUFF_OBSERVER.md) |
 | `equipment.equip_module` | character, equipment, row, column | Yes | plugin dispatch status |
 | `equipment.equip_core` | character, equipment | Yes | plugin dispatch status |
@@ -269,6 +270,17 @@ is retained and emitted before shutdown completes.
 Returns the latest complete inventory snapshot without starting capture or
 writing a business inventory file. Before the first complete snapshot it returns
 `INVENTORY_NOT_READY`.
+
+### `inventory.get_observed_items`
+
+Advertised by `inventory_observed_items_v1` in `core.hello`. Returns the
+current packet-capture session's observed item quantities, or
+`INVENTORY_ITEMS_NOT_READY` before the first observation. Changes emit
+`event.inventory.items_observed` with a global `sequence`. The result contains
+`source="packet"`, `complete=false`, `generation`, `observed_at_unix_ms`,
+`item_count`, and `items` with `uid` (`slot`, `serial`), `item_id`, and `amount`.
+Missing IDs are unknown, not zero. A new capture clears old observations;
+this result is never a formal complete inventory or native all-items archive.
 
 Inventory fragment expiry follows only the supported Bunch packet mode. Other
 packet modes do not seed or advance its sequence clock; independently recognized
@@ -380,6 +392,7 @@ requests beyond the active call and one queued call return
 
 - `event.capture.status`: reliable capture lifecycle state.
 - `event.inventory.snapshot`: reliable complete enriched inventory snapshot.
+- `event.inventory.items_observed`: incomplete current-session packet item quantities.
 - `event.core.warning`: English capture-degradation notice.
 - `event.core.error`: English capture-failure notice.
 

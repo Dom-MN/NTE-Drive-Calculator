@@ -130,6 +130,7 @@ Core 领域错误使用 code `-32000`、message `Core error`，并提供稳定�
 | `capture.start` | 抓包选项 | 是 | 进程内 `operation_id` |
 | `capture.stop` | `{}` 或省略 | 是 | 已停止的 `operation_id` |
 | `inventory.get_latest` | `{}` 或省略 | 是 | 最新完整背包快照 |
+| `inventory.get_observed_items` | `{}` 或省略 | 是 | 抓包已观测物品数量，非完整背包 |
 | `buff.get_snapshot` | `{}`、null 或省略 | 是 | 私有空闲诊断用队伍效果快照，见 [Buff 观察接口](BUFF_OBSERVER.md) |
 | `equipment.equip_module` | 角色、装备、行、列 | 是 | 插件派发状态 |
 | `equipment.equip_core` | 角色、装备 | 是 | 插件派发状态 |
@@ -210,6 +211,11 @@ Core 领域错误使用 code `-32000`、message `Core error`，并提供稳定�
 ### `inventory.get_latest`
 
 返回最新完整背包快照，不会自行开始抓包，也不会写业务背包文件。首次完整快照出现前返回 `INVENTORY_NOT_READY`。
+
+### `inventory.get_observed_items`
+
+`core.hello` 以 `inventory_observed_items_v1` 声明此能力。读取当前抓包会话已观测的物品数量；首次观测前返回 `INVENTORY_ITEMS_NOT_READY`。观测变化时还会发送带全局 `sequence` 的 `event.inventory.items_observed`。
+结果包含 `source="packet"`、`complete=false`、`generation`、`observed_at_unix_ms`、`item_count`，以及含 `uid`（`slot`、`serial`）、`item_id`、`amount` 的 `items`。未出现的物品数量未知，不是零；新抓包会清空旧观测。此结果不进入正式完整库存或原生全部物品归档。
 
 背包分片的过期判断仅使用受支持的 Bunch 包模式；其他模式不初始化或推进其序号时钟，其中可独立识别的原始角色与物品记录仍按原逻辑处理。受支持模式中不含背包分片的包仍推进过期判断。
 

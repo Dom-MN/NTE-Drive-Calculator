@@ -1,7 +1,28 @@
 # Native Core component source
 
-Source base commit: `cfa384983304e8a8e20dc4ad050a2f6ce6f348e7` in the private integration repository. The actual build includes the low-risk inventory packet fix and the restored 1042 character/equipment-plan resources in the linked Core worktree. Combined source diff SHA-256: `7fc554c54d007c290b06b639f8572bbac33067d0e758b9a67deabd6f2e56e3e7`. The base commit alone does not reproduce this executable. Private source and patch are not included in the Calc distribution.
+This local Calc trial candidate was built from private integration commit
+`b7b24d3cba264b1f10e3e6aa98a078e6758b5df7` on `dev/hxwd`, plus uncommitted
+Core/catalog changes. The SHA-256 of `git diff --binary -- Cargo.toml Cargo.lock
+src res` at build time is
+`e1a6307554ff0beb843b40f65c0acd3596c7ee98f691222d06e3790ad23a0e36`.
+The base commit alone does not reproduce this executable. Private source and
+patch are not included in the Calc component package.
 
-Built as the Windows x64 `nte-core` CLI with `--locked --release --no-default-features --features cli` and remapped build paths. Protocol 1 and Core version 0.4.4 are unchanged. The binary keeps `capture_wait_v1` and `buff_snapshot_v1` while retaining the packet fix. It is paired with the declared native capture DLL and Loader.
+Built for Windows x64 with
+`cargo build --locked --release --no-default-features --features cli --bin nte-core`.
+The build process used `--remap-path-prefix` for the workspace and user paths.
+Core version 0.4.4 and JSON-RPC protocol 1 are unchanged. The executable
+SHA-256 is `63b9f7098ed7d35ba030ef422961611984d20503453b4db2c30cbfc14d70ee48`.
 
-The exact binary passed packet-mode handshake and capture-environment detection. In the same live game session, the prior Core returned `NATIVE_MAPPING_UNSUPPORTED` on inventory projection; this Core returned a complete 355/355 inventory projection. Full packet capture, character field synchronization, installation upgrade and release validation remain pending. Existing licenses and protocol apply.
+The packet entry now advertises `inventory_observed_items_v1` and supports
+`inventory.get_observed_items` for current-session, incomplete item quantities.
+These observations are not a complete inventory or the native all-items archive.
+The existing 1057 catalog candidate and native equipment batch support remain
+in this build; the capture DLL and D3D proxy were not rebuilt or changed here.
+
+Release build and a no-game stdio handshake passed: protocol 1 advertised the
+new capability, and the new query returned `INVENTORY_ITEMS_NOT_READY` before
+capture. The executable was checked for absolute developer paths and common
+credential prefixes. Packet capture, material counts, native pipe behavior and
+game acceptance for this exact candidate still need live validation. This is
+a local `main.py` trial candidate, not a promoted release.

@@ -160,6 +160,7 @@ def test_cultivation_owned_materials_deduct_and_keep_five_columns() -> None:
     from types import SimpleNamespace
 
     from PySide6.QtCore import QEvent, QPoint, Qt
+    from PySide6.QtTest import QSignalSpy
     from PySide6.QtWidgets import (
         QApplication,
         QFrame,
@@ -229,10 +230,10 @@ def test_cultivation_owned_materials_deduct_and_keep_five_columns() -> None:
     page.material_scope.setCurrentIndex(0)
     page.resize(1180, 760)
     page.show()
+    completed = QSignalSpy(page.calculator.calculation_completed)
     page.calculator._calculate()
-    QApplication.processEvents()
+    assert completed.wait(3000)
     assert service.stamina_calls == 1
-
     sync = page.findChild(QPushButton, "cultivationOwnedImport")
     assert sync is not None and not sync.isEnabled()
     assert sync.text() == "同步材料"
@@ -287,9 +288,8 @@ def test_cultivation_owned_materials_deduct_and_keep_five_columns() -> None:
     assert owned_materials.findChild(QSpinBox, "cultivationOwnedMaterialQuantity") is owned_inputs[0]
     assert owned_inputs[0].value() == 3
     assert owned_materials.required_quantity("item-1") == 11
-
     page.calculator._calculate_button.click()
-    QApplication.processEvents()
+    assert completed.wait(3000)
     QApplication.processEvents()
     assert service.stamina_calls == 2
     bar = page.scroll.verticalScrollBar()
@@ -423,7 +423,7 @@ def test_native_material_import_updates_both_drafts_without_overwriting_manual_v
     assert single.quantities()["b"] == 4
     assert batch.quantities()["a"] == 7
     assert batch.quantities()["b"] == 4
-    assert "未观测项" in single._import_button.toolTip()
+    assert "未观测项" in single.findChild(QLabel, "cultivationOwnedImportStatus").text()
 
     identity["value"] = ("b", 2, "dataset")
     button.click()

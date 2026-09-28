@@ -485,6 +485,19 @@ class NteCoreClientTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "non-negative"):
             CoalescingEventQueue().get(timeout=-0.1)
 
+    def test_packet_item_events_coalesce_without_dropping_reliable_events(self):
+        events = CoalescingEventQueue()
+        for method, sequence in (
+            ("event.inventory.items_observed", 1),
+            ("event.capture.status", 2),
+            ("event.inventory.items_observed", 3),
+        ):
+            events.put({"method": method, "params": {"sequence": sequence}})
+        self.assertEqual(events.get_nowait()["params"]["sequence"], 2)
+        self.assertEqual(events.get_nowait()["params"]["sequence"], 3)
+        with self.assertRaises(queue.Empty):
+            events.get_nowait()
+
 
 if __name__ == "__main__":
     unittest.main()

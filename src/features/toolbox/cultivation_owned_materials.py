@@ -1,4 +1,4 @@
-# 提供养成计算器已有材料录入、原生归档导入和扣减界面。
+# 提供养成计算器已有材料录入、同步导入和扣减界面。
 """Owned-material inputs shared by the toolbox cultivation result."""
 
 from __future__ import annotations
@@ -306,6 +306,8 @@ class CultivationOwnedMaterials(QFrame):
             "border:1px solid #30363d;border-radius:9px;}"
         ))
         root = QVBoxLayout(self)
+        self._root = root
+        self._status_label: QLabel | None = None
         root.setContentsMargins(14, 10, 14, 12)
         root.setSpacing(8)
         header = QHBoxLayout()
@@ -319,7 +321,7 @@ class CultivationOwnedMaterials(QFrame):
         self._import_button = QPushButton("同步材料", self)
         self._import_button.setObjectName("cultivationOwnedImport")
         self._import_button.setEnabled(False)
-        self._import_button.setToolTip("读取当前账号最近的原生物品归档；抓包背包暂不提供材料数量。")
+        self._import_button.setToolTip("原生模式读取当前账号归档；低风险模式读取账号已保存的稳定抓包材料观测，停止同步后仍可使用。未观测项数量未知。")
         self._import_button.clicked.connect(lambda _checked=False: self.import_requested.emit())
         header.addWidget(self._import_button)
         clear = QPushButton("清空", self)
@@ -343,6 +345,15 @@ class CultivationOwnedMaterials(QFrame):
 
     def set_import_status(self, message: str) -> None:
         self._import_button.setToolTip(message)
+        if self._status_label is None:
+            label = QLabel(self)
+            label.setObjectName("cultivationOwnedImportStatus")
+            label.setWordWrap(True)
+            label.setStyleSheet(themed_style("color:#8b949e;font-size:12px;"))
+            self._root.insertWidget(1, label)
+            self._status_label = label
+        self._status_label.setText(message)
+        self._status_label.show()
 
     def apply_import(self, quantities: Mapping[str, int]) -> int:
         """Overlay observed entries only; manual edits and absent IDs remain unchanged."""
@@ -367,7 +378,7 @@ class CultivationOwnedMaterials(QFrame):
         self._manual_overrides.clear()
         self._canvas.clear_quantities()
         self._owned_cache.update(self._canvas.quantities())
-        self.set_import_status("已有材料草稿已清空；账号原生归档保持不变。")
+        self.set_import_status("已有材料草稿已清空；账号已保存的同步记录保持不变。")
         if changed:
             self.quantities_changed.emit()
 
@@ -396,7 +407,9 @@ class CultivationOwnedMaterials(QFrame):
         self._owned_cache.clear()
         self._manual_overrides.clear()
         self._canvas.set_materials(())
-        self.set_import_status("原生材料需先完成原生背包同步；未观测材料保持手填值。")
+        self._import_button.setToolTip("同步后仅已观测材料更新；未观测项保持手填值。")
+        if self._status_label is not None:
+            self._status_label.hide()
         self.layout_changed.emit()
 
 
