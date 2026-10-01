@@ -36,6 +36,9 @@ schema、当前静态 dataset/schema/hash 和本次导出账号昵称。`manifes
 - `frozen_build` 保存冻结角色养成、觉醒选择、技能、好感度、弧盘、空幕/驱动及词条；
 - `saved_build_edit` 保存唯一战报角色修改副本及独立的 `is_active` 指针；配装覆盖是已复制的战报装备，不是
   账号活动槽位指针。只要副本存在配装覆盖，即使 `is_active=false`，导出装备仍优先采用该已保存校准；
+  显式历史恢复可在 profile 中保存 `battle_world_bonus`（完整的 AtkAdd、CritDamageBase）及
+  `native_recovery` 来源和冻结参照。恢复参照只用于重算输入，原始快照和逐击不改写；启用恢复副本时，
+  原生面板差值以恢复参照为基准，后续编辑才作为配装反事实。停用副本恢复原冻结输入。
 - `locked_equipment_at_export` 保存每角色最终导出装备、来源种类和规范化 SHA-256。导入后该摘要写入装备锁，
   作为 Service 和 DAO 拒绝装备变化的依据；
 - 用户确认目标、环境、生命/防御/抗性、争锋选项和魔女赐福；可用时还保存导出时读取或重新生成的自动
@@ -44,13 +47,20 @@ schema、当前静态 dataset/schema/hash 和本次导出账号昵称。`manifes
 - 当前战报存在时保存详情范围、时间范围和角色筛选页面状态；
 - `database_rows` 保存白名单战报表的精确可移植行图，作为读取功能的唯一数据库导入输入。
 
-当前 v2 读取器明确接受账号库 schema 36、37、38、39、40 和 41，不按当前账号库版本做机械的严格相等判断。schema 36
+当前 v2 读取器明确接受账号库 schema 36～44，不按当前账号库版本做机械的严格相等判断。schema 36
 战报缺少 `fork_breakthrough_stage` 时，导入到当前库的 nullable 列保持 `NULL`，继续使用旧战报的
 等级派生语义且不改写原始快照；schema 36～38 的时停行缺少 `pause_type_mask` 时也以 `NULL` 导入，保留旧
 记录类型未知及旧 Q 锚定兼容，不从时间或技能反推 mask。schema 39 的 v5 压缩区间可显式保存 `NULL`，仅
 参与有效时钟扣除，不视为 Q 或 type6 证据。schema 40 仅收口配装优化偏好的分配策略，没有改变战报白名单表。
 schema 41 仅新增账号角色等级与突破观测表，没有改变战报白名单表。
-低于 36 或高于 41 的包必须拒绝，新增 schema 兼容性需逐版审计后显式加入。
+schema 42 扩展账号角色养成观测，schema 43 新增全物品快照；两者均未改变战报白名单表。schema 44 仅新增抓包物品数量观测表，同样不改变战报白名单表。
+低于 36 或高于 44 的包必须拒绝，新增 schema 兼容性需逐版审计后显式加入。
+
+历史角色投影错误可显式运行 `tools/battle_reports/recover_native_character_profiles.py`：要求单场 combat、
+首击绑定和全场配置稳定、完整角色/家具观测、相同静态库哈希，并由采集工程的离线投影器解析角色原始域。
+只在临时数据库保存修改副本并输出新包；已有副本、多半场、观测缺项或已有输出路径均拒绝覆盖。
+包内保存来源包、角色域和投影器哈希及恢复版本；旧派生结果清空后由独立分析组件重算。
+已有同 capture_operation_id 的战报仍按既有规则跳过，恢复包应在独立账号导入，不覆盖当前账号历史。
 
 原生逐击的 `native_capture.rawHit` 按原始 JSON 保存：包括 GE、独立暴击/元素已知状态、双方 Buff 快照、
 本击采样时间、生命与最大生命采样及其关联字段，以及 `executionEvidence` 的执行前输入、执行后输出和读取状态。
@@ -82,3 +92,5 @@ record 和容器摘要按可移植内容重新计算；本机原始数据库和�
 
 日志只能记录导入/导出阶段、战报数量、跳过数量、安全错误和战报 ID；不得记录账号昵称、装备 UID、完整
 payload 或文件绝对路径。
+
+新采集记录的 `calc_capture_context.equipment_storage.version=1` 表示装备正文以 `battle_equipment_snapshot` 及词条表为唯一物化副本；半场上下文以 `equipment_refs` 引用。无法合入统一配置的半场装备及未完成业务转换的原始装备分别按内容摘要在 `scope_equipment`、`unprojected_equipment` 保留一次。原始逐击与首击引用不改写，旧记录保持原布局。候选背包不进入此结构。

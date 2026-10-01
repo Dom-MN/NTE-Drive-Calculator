@@ -1,9 +1,14 @@
 # 游戏组件整包与清理契约
 
-本期采用最小 D3D 采集入口，同时保留可选 Loader；两者加载同一个无界面采集 DLL，Calc 通过配套 Core 统一消费业务接口。Calc 不承载开发工具界面、MCP 或热重载编排。
+组件包按清单区分旧的独立采集布局与新的受限插件宿主布局。Calc 通过采集 Core 统一消费业务接口；新布局额外提供显式插件更新。两种布局均不承载开发工具界面或 MCP。新布局的验证与实际晋升分别记录，不能以源码接入代替当前包身份。
 
 本契约定义本机应用级组件检查与清理；管道、协议握手、人物/配装、完整背包、队伍/环境及战报业务能力须另行检测。
 文件检查成功不代表组件已加载，Loader 停止不代表游戏进程内 DLL 已卸载。
+
+自动部署的写入、校验或 Loader 启动故障会保存到本机 `config/component_deployment_failure.json`，
+停止同一故障的后台重试；轮询、刷新检测缓存及重启 Calc 都不会恢复部署。
+用户处理原因后，可通过“检测并处理”或确认组件准备显式重试；只读预检不清除故障。
+Windows 明确报告恶意软件阻止时显示系统拦截原因；临时文件消失只说明写入结果不可用，不自行判定为 Defender。
 
 ## 随附组件清单
 
@@ -25,10 +30,35 @@ PyInstaller 发行的资源根目录为 `_internal`，与主 EXE 所在目录不
 | `files` | 根目录内 POSIX 相对文件路径至 SHA-256 的映射；检查全部声明文件。 |
 | `roles` | 组件语义至 `files` 中确切路径的映射。 |
 
-运行、部署与发行只接受显式声明 `layout: "native-capture-v1"` 的组件包。缺少布局或旧 `legacy-mods-v1` 清单不再支持，原生包缺失或损坏时不会回退到旧 DLL、脚本工作区或其他组件副本。
+运行与部署接受显式声明 `native-capture-v1`、`native-plugins-v2` 或 `native-plugins-v3` 的组件包；新的发行输入要求 v3，旧布局仅保留读取及现有部署支持。缺少布局或旧 `legacy-mods-v1` 清单不再支持，原生包缺失或损坏时不会回退到旧 DLL、脚本工作区或其他组件副本。
 所有声明角色必须分别对应文件；路径不得越界、使用绝对路径或重复键。清单不替代来源与许可证审核，也不证明实机验收通过。
 
-## 无界面采集组件清单
+## 受限插件布局与迁移
+
+`native-plugins-v2` 复用 UETools 的无界面 Toolkit 宿主，部署 `d3d12.dll`、`plugins/NTE_PluginUser.dll`、`plugins/NTE_PluginCombat.dll` 及同名 `.dll.sig`。
+声明 `performance.trace.v1` 时还须成对交付 `performance_plugin` 和 `performance_signature`，固定对应 `plugins/NTE_PluginPerformance.dll` 及其 `.sig`。
+旧包没有此能力时不要求该插件。新宿主仅扩充这一明确的签名插件身份，仍拒绝任意 DLL。
+在下述公共来源、哈希、大小、许可与 Core 契约之外，新增 `user_plugin`、`user_signature`、`capture_signature` 角色，且 `plugin_policy` 必须为 `calc-publisher-rsa3072-sha256-v1`。
+相应角色必须绑定固定文件名；不扫描任意 DLL。首次迁移游戏必须退出，旧 NTE_Capture 不能热卸载。
+
+v2 根据角色准备 User、Combat 及可选 Performance 和各自签名，先插件与签名、最后宿主。v3 固定加入 HUD 与 Performance，共五个 DLL、四份签名；D3D 与 Loader 专用目录保持同一布局。Loader payload 为专用目录中的 `d3d12.dll`，沿用 `loadlibrary`，额外核验 `nte_calc_host_v1` 能力；旧 Loader 不因支持独立采集 DLL 就自动兼容宿主。
+发行映射保留插件子目录和签名；新布局不混入旧 `NTE_Capture.dll`。Core 和许可证仍保留在应用资源目录。
+后台冷部署继续要求游戏退出。插件热更新仅供开发维护工具按 [宿主更新契约](native-plugin-host.md) 调用，允许在游戏运行、业务已停止且宿主不变时更新插件；界面不提供独立热更新按钮。
+清理仅处理已登记的固定宿主、插件和签名路径；未登记文件须有当前包或已核实旧包哈希证据，不删除整个 plugins 目录。
+
+下文提到两个文件、单独 NTE_Capture 或 `nte_capture_runtime_v1` 的部分专指旧布局；路径归属、操作代次、失败处理、许可与文件核对规则两者共用。新布局实际分离范围、第三方限制及结果未知的处理见 [本方插件宿主](native-plugin-host.md)。
+
+## 独立 HUD 的 v3 清单
+
+v3 保留 v2 的宿主、User、Combat 和签名身份，新增必需 `hud_plugin`／`hud_signature`，固定对应 `plugins/NTE_PluginHUD.dll` 及其 `.sig`；Performance 及签名在 v3 同样必需。部署、记录恢复、清理、Loader 和显式更新全部按这些精确角色处理。
+
+来源或发行中的 `capture-component.json` 必须属于整包哈希输入，其 `layout` 和 `sourceTreeSha256` 分别匹配 v3 与 `input_digests.capture`。其中保护记录的 DLL 集合必须精确覆盖五个文件，每项最终 SHA-256 匹配正式角色。五个 DLL 统一使用 `selected-functions-v1` 和 StripDebugInfo，宿主不再使用整文件 Pack／ResourceProtection；函数数量为正，声明身份及必要授权字段完整。旧整文件宿主回执不得伪装为当前函数保护交付，仍需重新生成整套清单和最终字节签名。保护与签名不代表安全检测或实机验收已通过。
+
+每项声明是 `nte.component-notice/1`，构建方在原始 DLL 中核对并保留声明导出，Calc 按受保护哈希核对随附解析副本。授权声明与业务能力分开，不在此清单里发明私有源码权限或 AI 审查保证。
+
+当前工作区随附包已接入重新构建的 v3 五 DLL、最终签名和配套采集 Core，来源与发行映射均通过整包核验。清单记录未提交工作树及其冻结输入摘要；本地接入不代表已发布或实机验收完成。升级必须使用重新构建和核验的整套输入，不能只把旧清单改为 v3。
+
+## 旧独立采集组件清单
 
 `layout: "native-capture-v1"` 选择无界面采集链。必需角色为 `host`、`capture_plugin`、`core`、
 `capture_license`、`capture_source`、`core_license`、`core_source`；每个角色绑定不同的声明文件。
