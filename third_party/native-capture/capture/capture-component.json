@@ -1,68 +1,170 @@
 {
   "schemaVersion": 1,
-  "component": "uetools-native-capture",
-  "protocolVersion": 1,
-  "sourceRepository": "https://github.com/kongbaiz/UETools-NTE",
+  "component": "calc-plugin-host",
+  "layout": "native-plugins-v3",
   "sourceCommit": "dc96e0a9448fc77eb63867645199783bc110b413",
-  "sourceTreeSha256": "635f01ece55a3bb96fabcfe68ab1e9773fd9278808b3c415e7eb399720f1e1e6",
   "sourceState": "working-tree",
+  "sourceTreeSha256": "1c2e58195fa1898084c9ae2221a83ffd3aa3f7e2f0823a5f54b492bb840061e6",
+  "pluginPolicy": "calc-publisher-rsa3072-sha256-v1",
   "configuration": "Release",
-  "architecture": "x64",
-  "rawEvidence": true,
-  "capabilities": [
-    "hud.configure.v1",
-    "combat.hit_buff.v1",
-    "combat.effects.v1",
-    "combat.context.v1",
-    "combat.hit_attributes.v1",
-    "combat.applied_modifiers.v1",
-    "combat.formula_reads.v1",
-    "combat.raw_evidence.v1",
-    "character.snapshot.v1",
-    "inventory.snapshot.v1",
-    "inventory.all_items.v1",
-    "team.snapshot.v1",
-    "environment.snapshot.v1",
-    "equipment.execute.v1",
-    "equipment.state_batch.v1",
-    "combat.clock.v1",
-    "snapshot.changes.v1",
-    "snapshot.pinned.v1"
-  ],
-  "files": [
-    {
-      "name": "NTE_Capture.dll",
-      "size": 9472000,
-      "sha256": "e3711292bbeba7ce08d43cc5998383098c95b2e64b744cb97da6b8a29947330f"
+  "files": {
+    "d3d12.dll": {
+      "sha256": "a89e672b4f3bc953c1bfa3118a13867a4f173a7fc502a864cad2d5fc640007f4",
+      "size": 6280704
     },
-    {
-      "name": "d3d12.dll",
-      "size": 15360,
-      "sha256": "6a714f2e633b22942f0efade16a5f0a623c435d98446d681e7182fa5683a5293"
+    "plugins/NTE_PluginUser.dll": {
+      "sha256": "1ec71b125ab94255dfb3ea947af51a8ebb72087536e2c45c1354fbc8544cd939",
+      "size": 777216
     },
-    {
-      "name": "UETools-GPL-3.0.txt",
-      "size": 35823,
-      "sha256": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809"
+    "plugins/NTE_PluginUser.dll.sig": {
+      "sha256": "384aeaecc7fb0e1159449710a8fff49efec6ef47d3e38b122bd32e73192d6152",
+      "size": 384
     },
-    {
-      "name": "Detours-MIT.txt",
-      "size": 1122,
-      "sha256": "f854ae8aabc0404652b48a2b3bf7f21ec174c69d73f5596934c20884eb0639ef"
+    "plugins/NTE_PluginCombat.dll": {
+      "sha256": "a065eb0e30cc1f51a9e205ebafa6a049f72ce04eb93ca255c86043b51851c6bd",
+      "size": 5518336
+    },
+    "plugins/NTE_PluginCombat.dll.sig": {
+      "sha256": "d1cfc43b5086fcc78d8e9d55aed7649480762ddd374423e1f0063ba674e5667d",
+      "size": 384
+    },
+    "plugins/NTE_PluginHUD.dll": {
+      "sha256": "d948727ab09aa2c572bb3225e04af474931a4b54b92cdf05e3387eb86c226cc1",
+      "size": 3534848
+    },
+    "plugins/NTE_PluginHUD.dll.sig": {
+      "sha256": "f9698fe348e234434f33456014dc63866b1a8c834aff37888a34fa1fe2cdee7f",
+      "size": 384
+    },
+    "plugins/NTE_PluginPerformance.dll": {
+      "sha256": "09f906df77e3a8a333becbde5dc3814546d1338694a8bfedd7538c1f43f86be4",
+      "size": 4371456
+    },
+    "plugins/NTE_PluginPerformance.dll.sig": {
+      "sha256": "3b509fa845239676fe32ad514be04fb4ab0533009230e93310a64778bb257bf6",
+      "size": 384
     }
-  ],
+  },
   "protection": {
     "tool": "VMProtect",
-    "policy_sha256": "5b854accb2645200b2299a27f3d324bb8a73c9150ccf4ce16e436651b5445cb8",
+    "policy_sha256": "2321e5f8ab0c92c15f0dd6ce9c2651ad10f885efdf61e2e4f09214b67aff0f35",
     "binaries": {
-      "NTE_Capture.dll": {
-        "sha256": "e3711292bbeba7ce08d43cc5998383098c95b2e64b744cb97da6b8a29947330f",
-        "functions": 14
+      "d3d12.dll": {
+        "sha256": "a89e672b4f3bc953c1bfa3118a13867a4f173a7fc502a864cad2d5fc640007f4",
+        "functions": 10,
+        "profile": {
+          "name": "selected-functions-v1",
+          "options": [
+            "StripDebugInfo"
+          ]
+        },
+        "notice": {
+          "schema": "nte.component-notice/1",
+          "component": "d3d12",
+          "build_target": "nte_host",
+          "project": "UETools-NTE",
+          "declaration_version": 1,
+          "purpose": "本组件用于装备计算、游戏理解和经授权的诊断与数据采集。",
+          "authorization": "使用、修改、分析和分发应遵守适用法律、组件许可证及有效授权；私有材料访问仅限被明确授权的范围。",
+          "prohibited_use": "本方不授权将本组件用于外挂、破坏游戏公平性、绕过未获授权的限制，或侵害游戏运营方、玩家及其他相关权利人的合法权益。",
+          "license_boundary": "本声明说明本方用途及授权边界，不替换第三方许可证，不撤销已经合法授予的权利；具体权限以适用许可证及有效授权为准。",
+          "identity_binding": "组件文件哈希、源码提交、构建输入及保护回执以随附组件清单为准。",
+          "data_kind": "authorization_notice"
+        }
+      },
+      "NTE_PluginUser.dll": {
+        "sha256": "1ec71b125ab94255dfb3ea947af51a8ebb72087536e2c45c1354fbc8544cd939",
+        "functions": 1,
+        "profile": {
+          "name": "selected-functions-v1",
+          "options": [
+            "StripDebugInfo"
+          ]
+        },
+        "notice": {
+          "schema": "nte.component-notice/1",
+          "component": "NTE_PluginUser",
+          "build_target": "nte_plugin_user",
+          "project": "UETools-NTE",
+          "declaration_version": 1,
+          "purpose": "本组件用于装备计算、游戏理解和经授权的诊断与数据采集。",
+          "authorization": "使用、修改、分析和分发应遵守适用法律、组件许可证及有效授权；私有材料访问仅限被明确授权的范围。",
+          "prohibited_use": "本方不授权将本组件用于外挂、破坏游戏公平性、绕过未获授权的限制，或侵害游戏运营方、玩家及其他相关权利人的合法权益。",
+          "license_boundary": "本声明说明本方用途及授权边界，不替换第三方许可证，不撤销已经合法授予的权利；具体权限以适用许可证及有效授权为准。",
+          "identity_binding": "组件文件哈希、源码提交、构建输入及保护回执以随附组件清单为准。",
+          "data_kind": "authorization_notice"
+        }
+      },
+      "NTE_PluginCombat.dll": {
+        "sha256": "a065eb0e30cc1f51a9e205ebafa6a049f72ce04eb93ca255c86043b51851c6bd",
+        "functions": 6,
+        "profile": {
+          "name": "selected-functions-v1",
+          "options": [
+            "StripDebugInfo"
+          ]
+        },
+        "notice": {
+          "schema": "nte.component-notice/1",
+          "component": "NTE_PluginCombat",
+          "build_target": "nte_plugin_combat",
+          "project": "UETools-NTE",
+          "declaration_version": 1,
+          "purpose": "本组件用于装备计算、游戏理解和经授权的诊断与数据采集。",
+          "authorization": "使用、修改、分析和分发应遵守适用法律、组件许可证及有效授权；私有材料访问仅限被明确授权的范围。",
+          "prohibited_use": "本方不授权将本组件用于外挂、破坏游戏公平性、绕过未获授权的限制，或侵害游戏运营方、玩家及其他相关权利人的合法权益。",
+          "license_boundary": "本声明说明本方用途及授权边界，不替换第三方许可证，不撤销已经合法授予的权利；具体权限以适用许可证及有效授权为准。",
+          "identity_binding": "组件文件哈希、源码提交、构建输入及保护回执以随附组件清单为准。",
+          "data_kind": "authorization_notice"
+        }
+      },
+      "NTE_PluginHUD.dll": {
+        "sha256": "d948727ab09aa2c572bb3225e04af474931a4b54b92cdf05e3387eb86c226cc1",
+        "functions": 1,
+        "profile": {
+          "name": "selected-functions-v1",
+          "options": [
+            "StripDebugInfo"
+          ]
+        },
+        "notice": {
+          "schema": "nte.component-notice/1",
+          "component": "NTE_PluginHUD",
+          "build_target": "nte_plugin_hud",
+          "project": "UETools-NTE",
+          "declaration_version": 1,
+          "purpose": "本组件用于装备计算、游戏理解和经授权的诊断与数据采集。",
+          "authorization": "使用、修改、分析和分发应遵守适用法律、组件许可证及有效授权；私有材料访问仅限被明确授权的范围。",
+          "prohibited_use": "本方不授权将本组件用于外挂、破坏游戏公平性、绕过未获授权的限制，或侵害游戏运营方、玩家及其他相关权利人的合法权益。",
+          "license_boundary": "本声明说明本方用途及授权边界，不替换第三方许可证，不撤销已经合法授予的权利；具体权限以适用许可证及有效授权为准。",
+          "identity_binding": "组件文件哈希、源码提交、构建输入及保护回执以随附组件清单为准。",
+          "data_kind": "authorization_notice"
+        }
+      },
+      "NTE_PluginPerformance.dll": {
+        "sha256": "09f906df77e3a8a333becbde5dc3814546d1338694a8bfedd7538c1f43f86be4",
+        "functions": 1,
+        "profile": {
+          "name": "selected-functions-v1",
+          "options": [
+            "StripDebugInfo"
+          ]
+        },
+        "notice": {
+          "schema": "nte.component-notice/1",
+          "component": "NTE_PluginPerformance",
+          "build_target": "nte_plugin_performance",
+          "project": "UETools-NTE",
+          "declaration_version": 1,
+          "purpose": "本组件用于装备计算、游戏理解和经授权的诊断与数据采集。",
+          "authorization": "使用、修改、分析和分发应遵守适用法律、组件许可证及有效授权；私有材料访问仅限被明确授权的范围。",
+          "prohibited_use": "本方不授权将本组件用于外挂、破坏游戏公平性、绕过未获授权的限制，或侵害游戏运营方、玩家及其他相关权利人的合法权益。",
+          "license_boundary": "本声明说明本方用途及授权边界，不替换第三方许可证，不撤销已经合法授予的权利；具体权限以适用许可证及有效授权为准。",
+          "identity_binding": "组件文件哈希、源码提交、构建输入及保护回执以随附组件清单为准。",
+          "data_kind": "authorization_notice"
+        }
       }
     }
   },
-  "validation": {
-    "gameRuntime": "not_run",
-    "gameDeployment": "not_performed"
-  }
+  "gameValidation": "not_run"
 }

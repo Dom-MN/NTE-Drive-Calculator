@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "core_rebuilt": true,
-  "core_sha256": "63b9f7098ed7d35ba030ef422961611984d20503453b4db2c30cbfc14d70ee48",
-  "capture_sha256": "e3711292bbeba7ce08d43cc5998383098c95b2e64b744cb97da6b8a29947330f",
-  "proxy_sha256": "6a714f2e633b22942f0efade16a5f0a623c435d98446d681e7182fa5683a5293",
+  "core_sha256": "1f875858409ad47eed83ded7991d7a3133eb4afafebf2c2b09cd52802c7b2fed",
+  "capture_sha256": "a065eb0e30cc1f51a9e205ebafa6a049f72ce04eb93ca255c86043b51851c6bd",
+  "proxy_sha256": "a89e672b4f3bc953c1bfa3118a13867a4f173a7fc502a864cad2d5fc640007f4",
   "protocol_version": 1,
   "provider_capabilities": [
     "hud.configure.v1",
@@ -23,7 +23,13 @@
     "equipment.state_batch.v1",
     "combat.clock.v1",
     "snapshot.changes.v1",
-    "snapshot.pinned.v1"
+    "snapshot.pinned.v1",
+    "performance.overlay.v1",
+    "combat.abyss.v1",
+    "combat.abyss.v2",
+    "combat.abyss.restart_scope.v1",
+    "combat.rounds.v1",
+    "performance.trace.v1"
   ],
   "core_capabilities": [
     "capture",
@@ -50,14 +56,20 @@
     "native_combat_clock_v1",
     "native_character_profile_v1",
     "native_inventory_dto_v1",
-    "inventory_observed_items_v1"
+    "native_performance_v1",
+    "native_battle_lifecycle_v1",
+    "native_performance_trace_v1",
+    "native_battle_equipped_v1"
   ],
   "validation": {
-    "build": "Local Core trial rebuilt from private dev/hxwd inputs with remapped Release paths; capture DLL and proxy unchanged.",
-    "non_game": "Release stdio handshake advertised inventory_observed_items_v1; get_observed_items returned INVENTORY_ITEMS_NOT_READY before capture.",
-    "capture_integration": "Deterministic C++ snapshot timing fixture passed; other capture integration suites not rerun.",
-    "calc": "Calc cultivation material importer integrated; main.py and live packet-material trial pending for this exact Core.",
-    "game": "not_run_for_exact_candidate; packet material counts and 1057 game acceptance pending"
+    "build": "Release x64 protected and signed component set; Combat context preparation and isolated modifier read scopes. Other DLL executable bytes and Core unchanged.",
+    "focused": "27 Calc snapshot/preparation/pinned cases, required Python checks, native reference retention and guarded-reader fixtures passed.",
+    "isolated_final": "Exact signed candidate passed dependency, tamper rejection, HUD lifecycle, trace completion and SDK-not-ready checks.",
+    "game_developer": "Exact rebuilt Core with developer plugins: full inventory/character projections, 20-second concurrent monitoring, 38 service rows, complete trace and zero dropped records.",
+    "game_protected": "Pending first-hit and combat performance runtime acceptance; previous capture still failed these acceptance points.",
+    "frames": "PresentMon denied by current process permissions; FPS, frame time and 1% Low remain unknown.",
+    "defender": "Five exact DLLs reported no threats in local Defender scans on 2026-10-01.",
+    "core_equipped": "Production mapping passed synthetic coverage checks and archived first-hit equipment projection (4 members, 32 items); live acceptance pending."
   },
   "limits": [
     "Counterfactual modifier and formula evidence remains partial; capability advertisement does not prove runtime coverage.",
@@ -66,6 +78,11 @@
     "Conflicting configurations across halves cannot yet be replayed as multiple versions.",
     "Retail SDK removed OnAbyssStateChangeLogCallBack; only existing supported callbacks are captured.",
     "All-items collection proves the observed client containers, not complete server account assets.",
-    "Final protected standalone binaries and Calc application require user final in-game regression."
-  ]
+    "Final protected host, plugins and Calc require real-game acceptance."
+  ],
+  "user_sha256": "1ec71b125ab94255dfb3ea947af51a8ebb72087536e2c45c1354fbc8544cd939",
+  "performance_sha256": "09f906df77e3a8a333becbde5dc3814546d1338694a8bfedd7538c1f43f86be4",
+  "layout": "native-plugins-v3",
+  "hud_sha256": "d948727ab09aa2c572bb3225e04af474931a4b54b92cdf05e3387eb86c226cc1",
+  "core_reused": false
 }

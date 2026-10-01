@@ -1,8 +1,7 @@
-# nte-mod-loader 来源说明
+# User-mode Loader source
 
-基于 [nte-dps-toolkit](https://github.com/kongbaiz/nte-dps-toolkit) 的现有 Loader 源码，本机配套构建日期 2026-09-15。
-源码基底为 `3e3bcd05583c369cfecc477aaa0adc933591841b`；实际输入摘要、二进制大小与 SHA-256 见 COMPONENT.md，未执行公开发布。
+Based on the existing nte-dps-toolkit Loader; base commit b58a86589563fa06e91be3b8807e5b13704a206c, working-tree input SHA-256 eea80ee79d39894dc8223e35f68f7492040ded025471eda2b674530a5089a0cc. The base alone does not reproduce this build.
 
-Loader 监控启动器，通过内嵌 shim 的 CreateProcessW Hook 加载显式指定的 payload DLL；
-由应用通过 UAC、stop event 和 owner PID 管理，不复制到游戏目录。
-沿用 AGPL-3.0 和随包第三方许可；私有源码、调试符号、账号数据不进入交付包。
+Adds nte_calc_host_v1 identity validation for the integrated Calc host while preserving the legacy developer host Platform check and independent capture-runtime identity. Uses the existing standard LoadLibrary path, UAC, stop event and owner PID; no kernel driver or security-policy changes.
+
+Release EXE and embedded shim are built together. Exact embedded-shim capability and host loading passed in an isolated ordinary process; actual launcher/game integration remains unverified. AGPL-3.0 and bundled dependency notices remain applicable.
