@@ -116,7 +116,7 @@ def _unique_capability_pairs(pairs):
     return value
 
 
-def probe_mod_loader_capabilities(loader_path: str | Path) -> frozenset[str]:
+def probe_mod_loader_capabilities(loader_path: str | Path, *, required_kind: str = 'nte_capture_runtime_v1') -> frozenset[str]:
     """Query the explicit dry-run protocol; the Loader checks its own embedded shim."""
     loader = Path(loader_path).resolve()
     try:
@@ -148,7 +148,7 @@ def probe_mod_loader_capabilities(loader_path: str | Path) -> frozenset[str]:
                 or not isinstance(modes, list) or not modes
                 or any(not isinstance(mode, str) for mode in modes) or len(modes) != len(set(modes))
                 or not isinstance(kinds, list) or any(not isinstance(kind, str) for kind in kinds)
-                or len(kinds) != len(set(kinds)) or 'nte_capture_runtime_v1' not in kinds):
+                or len(kinds) != len(set(kinds)) or required_kind not in kinds):
             raise ValueError('capability protocol mismatch')
     except (ValueError, TypeError, AttributeError, RecursionError) as error:
         raise ModLoaderRuntimeError('当前 Loader 与内嵌 shim 未声明兼容的标准加载能力，请更换配套 Loader。') from error
@@ -216,6 +216,9 @@ class ModLoaderRuntime:
         loader = packaged_mod_loader(self._application_root)
         if mode not in probe_mod_loader_capabilities(loader):
             raise ModLoaderRuntimeError('当前 Loader 不支持标准采集加载，请更换配套 Loader。')
+
+    def require_payload_kind(self, kind: str) -> None:
+        probe_mod_loader_capabilities(packaged_mod_loader(self._application_root), required_kind=kind)
 
     def snapshot(self, *, payload_path: str | Path) -> ModLoaderRuntimeSnapshot:
         payload = Path(payload_path).resolve()

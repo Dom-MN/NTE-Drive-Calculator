@@ -5,6 +5,7 @@ import json
 import pytest
 
 from src.integrations.native_plugin_bundle import NATIVE_PLUGIN_CAPABILITIES
+from tests.native_plugin_v3_fixture import add_split_roles
 from tools.release.game_component_bundle_build import prepare_component_bundle, validate_packaged_component_bundle
 from tools.release.native_component_bundle_build import (
     NATIVE_NOTICES, NATIVE_PROGRAMS, NATIVE_ROLE_DESTINATIONS,
@@ -35,6 +36,7 @@ def native_source(tmp_path, *, loader=False):
                "capabilities": sorted(NATIVE_PLUGIN_CAPABILITIES), "roles": roles,
                "files": {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names},
                "file_sizes": {name: (root / name).stat().st_size for name in names}}
+    add_split_roles(root, payload, prefix="third_party/native-capture/capture/")
     manifest = root / "third_party/native-capture/component-bundle.json"
     manifest.write_text(json.dumps(payload), encoding="utf-8")
     return root, manifest, payload
@@ -55,11 +57,12 @@ def test_native_bundle_preserves_all_notices_identity_and_capabilities(tmp_path,
     assert set(bundled["files"]) == set(bundled["file_sizes"])
     assert len(bundled["files"]) == len(payload["files"])
     assert (result.resource_root / "nte-mod-loader.exe").exists() == loader
-    assert not (result.resource_root / "plugins").exists()
+    assert (result.resource_root / "plugins/NTE_PluginHUD.dll").is_file()
+    assert not (result.resource_root / "NTE_Capture.dll").exists()
     validate_packaged_component_bundle(result.resource_root, source_manifest_path=source)
     payload["input_digests"]["capture"] = "e" * 64
     source.write_text(json.dumps(payload), encoding="utf-8")
-    with pytest.raises(ValueError, match="当前已批准"):
+    with pytest.raises(ValueError, match="当前已批准|未通过核对"):
         validate_packaged_component_bundle(result.resource_root, source_manifest_path=source)
 
 
@@ -117,6 +120,36 @@ def test_installer_and_release_accept_native_layout_without_legacy_mods(tmp_path
     standalone.write_bytes((root / _payload["roles"]["core"]).read_bytes())
     monkeypatch.setattr(release, "validate_core_capabilities", lambda _core: None)
     release.validate_components()
+    standalone.write_bytes(b"different core")
+    with pytest.raises(RuntimeError, match="字节不一致"):
+        release.validate_components()
+
+
+@pytest.mark.parametrize("capabilities", [[], ["capture_wait_v1"], ["buff_snapshot_v1"],
+                                        ["capture_wait_v1", "buff_snapshot_v1"],
+                                        ["capture_wait_v1", "buff_snapshot_v1", "inventory_observed_items_v1"]])
+def test_release_checks_actual_packet_capabilities(tmp_path, monkeypatch, capabilities):
+    from tools.release import prepare_release as release
+
+    class Client:
+        hello_result = {"capabilities": capabilities}
+
+        def __init__(self, *, executable, required_source):
+            assert executable == tmp_path / "core.exe"
+            assert required_source == "packet"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(release, "NteCoreClient", Client)
+    if len(capabilities) == 3:
+        release.validate_core_capabilities(tmp_path / "core.exe")
+    else:
+        with pytest.raises(RuntimeError, match="握手缺少"):
+            release.validate_core_capabilities(tmp_path / "core.exe")
 
 
 def test_release_rejects_core_that_drops_wait_or_buff_capability(monkeypatch, tmp_path):

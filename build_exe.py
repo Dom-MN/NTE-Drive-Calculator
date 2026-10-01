@@ -239,6 +239,16 @@ if not SQLITE_SCHEMA_DIR.is_dir():
 _append_add_data(SQLITE_SCHEMA_DIR, "src/storage/sqlite/schema")
 
 
+# The optional display feature still ships a complete, hash-checked frame sampler.
+presentmon_dir = THIRD_PARTY_DIR / "presentmon"
+presentmon_manifest = json.loads(_required_build_file("PresentMon manifest", presentmon_dir / "component.json").read_text(encoding="utf-8"))
+presentmon_exe = _required_build_file("PresentMon console", presentmon_dir / "PresentMon.exe")
+if hashlib.sha256(presentmon_exe.read_bytes()).hexdigest() != presentmon_manifest["sha256"]:
+    raise ValueError("PresentMon 组件哈希不符")
+_append_add_binary(presentmon_exe, "third_party/presentmon")
+for notice in ("component.json", "LICENSE.txt", "SOURCE.md"):
+    _append_add_data(_required_build_file(notice, presentmon_dir / notice), "third_party/presentmon")
+
 # Independent analysis component; never substitute the capture executable.
 analysis_core_path = _required_build_file("nte-analysis-core.exe", ANALYSIS_CORE_PATH)
 analysis_manifest_path = _required_build_file(

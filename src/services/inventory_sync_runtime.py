@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from src.observability import log_event
+from src.integrations.nte_core_protocol import NteCoreProcessError
 from src.services.account_settings_service import AccountSettingsService
 from src.services.all_item_snapshot_storage import store_all_item_snapshot
 from src.services.raw_capture_retention import prune_raw_capture_files
@@ -72,6 +73,7 @@ def run_inventory_sync(service: Any) -> None:
     client: InventoryCoreClient | None = None
     packet_items: PacketItemObservationSync | None = None
     fatal_error: Exception | None = None
+    stop_reason = "stop_requested"
     diagnostics = InventorySyncDiagnostics(service._operation_context)
     sync_stage = "loading_settings"
     stabilizer: InventorySnapshotStabilizer | None = None
@@ -503,16 +505,26 @@ def run_inventory_sync(service: Any) -> None:
                     error_code=None,
                 )
                 sync_stage = "listening"
-    except InventorySyncCancelled:
-        pass
+    except InventorySyncCancelled as exc:
+        # Only classify from bounded owner state; exception text can contain
+        # third-party payloads and does not prove who requested cancellation.
+        stop_reason = (
+            "stop_requested" if service._stop_requested.is_set() else
+            "context_changed" if service._context_is_current is not None and not service._context_is_current() else
+            exc.reason if exc.reason != "operation_cancelled" else
+            "native_session_cancelled" if service.capture_source == "native" else "operation_cancelled"
+        )
     except Exception as exc:
         fatal_error = exc
+        stop_reason = ("connection_lost" if service.capture_source == "native"
+                       and isinstance(exc, NteCoreProcessError) else "operation_failed")
         log_event(
             "ERROR",
             "inventory_sync.failed",
             "背包同步服务异常停止",
             service._operation_context,
             failure_stage=sync_stage,
+            stop_reason=stop_reason,
             error=exc,
             error_code=(
                 str(getattr(exc, "domain_code"))
@@ -526,6 +538,7 @@ def run_inventory_sync(service: Any) -> None:
             running=False,
             capturing=False,
             error=f"{type(exc).__name__}: {exc}",
+            stop_reason=stop_reason,
             error_code=(
                 str(getattr(exc, "domain_code"))
                 if getattr(exc, "domain_code", None)
@@ -568,6 +581,8 @@ def run_inventory_sync(service: Any) -> None:
                 "inventory_sync.stopped",
                 "背包同步已停止",
                 service._operation_context,
+                stop_reason=stop_reason,
+                stop_stage=sync_stage,
             )
             service._publish(
                 "stopped",
@@ -575,6 +590,7 @@ def run_inventory_sync(service: Any) -> None:
                 running=False,
                 capturing=False,
                 pending_item_count=None,
+                stop_reason=stop_reason,
             )
 
 

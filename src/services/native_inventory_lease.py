@@ -28,10 +28,22 @@ class NativeInventoryLease:
         self._sequence = 0
         self._snapshot_ready = False
         self._equipment_context = None
+        self._write_outcome_unknown = False
+        self._write_operation = '游戏配装'
         self._changes = NativeSnapshotChanges()
         self._all_items_pending = None
         self._all_items_saved_revision = None
         self._all_items_retry_at = 0.0
+
+    @property
+    def maintenance_blocked(self):
+        return self._equipment_context is not None or self._write_outcome_unknown
+
+    @property
+    def maintenance_description(self):
+        if self._write_outcome_unknown:
+            return f'{self._write_operation}的执行结果未确认，请先核对游戏中的实际状态；本次不更新插件，也不重发操作。'
+        return f'{self._write_operation}正在执行或等待结果确认，请等待该功能结束，再更新插件。'
 
     @property
     def snapshot_ready(self):
@@ -279,6 +291,10 @@ class NativeInventoryLease:
     def _equipment_direct(self, method, **kwargs):
         self._check()
         self._owner._guard("native_equipment")
+        self._write_operation = {
+            'equip_one_key': '极速装配', 'set_item_locked': '仓库锁定／解锁',
+            'set_item_discarded': '仓库弃置标记', 'set_item_states': '仓库锁定／弃置批量标记',
+        }.get(method, '游戏装备调整')
         try:
             return getattr(self._client, method)(**kwargs)
         except NteCoreRpcError as error:
@@ -295,6 +311,11 @@ class NativeInventoryLease:
                 "message": "source_changed",
                 "data": {"domain_code": "EQUIPMENT_REQUEST_REJECTED"},
             }) from error
+        except Exception:
+            # Transport/protocol failure after dispatch must not be treated as a
+            # completed write or replayed after reconnect. Retain the session.
+            self._write_outcome_unknown = True
+            raise
 
     def equip_one_key(self, **kwargs):
         return self._equipment("equip_one_key", **kwargs)

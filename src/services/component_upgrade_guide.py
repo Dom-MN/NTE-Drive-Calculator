@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Mapping
 
 from src.integrations.legacy_game_proxy import legacy_game_proxy_present
+from src.integrations.native_plugin_bundle import NATIVE_PLUGIN_LAYOUTS
 from src.services.deployed_plugin_inspection import inspect_deployed_native_plugin
 from src.services.equipment_plugin_deployment import (
     EquipmentPluginDeploymentError, mod_workspace_registry_snapshot,
@@ -45,7 +46,7 @@ def inspect_upgrade_evidence(*, application_root: Path, game_path: str,
     except OSError as error:
         return UpgradeEvidence("path_unknown", "读取旧组件状态失败。", type(error).__name__, method)
     old_workspace = str(deployment.get("workspace_path") or "")
-    old_record = has_record and deployment.get("deployment_layout") != "native-capture-v1"
+    old_record = has_record and deployment.get("deployment_layout") not in NATIVE_PLUGIN_LAYOUTS
     if proxy_present or old_record:
         try:
             registered, registry_path = mod_workspace_registry_snapshot()

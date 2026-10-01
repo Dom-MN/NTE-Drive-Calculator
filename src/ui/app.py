@@ -530,6 +530,8 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
                 self.scanning_controller.role_selector.save_temporary_priority_config()
             except Exception as exc:
                 logger.warning(f"保存临时优先级失败: {exc}")
+        self.native_plugin_update_controller.stop()
+        self.performance_controller.close()
         self.character_profile_sync_controller.close()
         self.auto_sync_controller.close()
         self.work_mode_controller.close()

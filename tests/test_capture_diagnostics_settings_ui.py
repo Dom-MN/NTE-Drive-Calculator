@@ -1,6 +1,7 @@
 # 验证设置页只提供采集排错选项，保存时不重启同步或改写旧策略。
 import os
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -24,6 +25,7 @@ def test_settings_card_removes_manual_sync_policy_controls():
         _get_sync_settings=lambda: {"raw_capture_enabled": True, "capture_device_id": ""},
         _save_capture_diagnostics=lambda: saves.append(True),
         work_mode_controller=SimpleNamespace(set_raw_capture_draft=lambda _enabled: None),
+        performance_controller=Mock(snapshot=lambda: {"linked": True}),
     )
     card = _build_capture_diagnostics_card(host)
     try:

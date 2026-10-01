@@ -179,6 +179,8 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         allow_unrecorded_legacy_cleanup=False,
         preview=False,
     ):
+        if getattr(self.runtime.native_session, 'maintenance_active', False):
+            return None
         revision, generation = expected or (
             self.policy.settings.revision, self.window.app_context.generation,
         )
@@ -193,10 +195,14 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
             if preview:
                 tick_args["preview"] = True
             probe = self.runtime.tick(**tick_args)
+            if getattr(self.runtime.native_session, 'maintenance_active', False):
+                return None
             if self._observe_plugins is not None:
                 self._observe_plugins(probe)
             return revision, generation, probe, request_id
         except Exception as error:
+            if getattr(self.runtime.native_session, 'maintenance_active', False):
+                return None
             detail = detection_failure_detail(error, record=bool(request_id or allow_connect))
             return ObservationResult("fault", detail, revision, generation, request_id)
 
@@ -319,7 +325,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         self.check(show=True, preview=True)
 
     def check(self, *, show: bool = False, allow_unrecorded_legacy_cleanup: bool = False,
-              preview: bool = False) -> None:
+              preview: bool = False, retry_deployment: bool = False) -> None:
         if self._closed or self._sync_activation_request is not None:
             return
         self._request_serial += 1
@@ -345,7 +351,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         def perform():
             if self._closed:
                 return None
-            self.runtime.invalidate()
+            self.runtime.invalidate(retry_deployment=retry_deployment and not preview)
             result = self._observe(
                 allow_connect=not preview,
                 request_id=request_id,
@@ -655,7 +661,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         def perform():
             settings = self.policy.settings
             expected = settings.revision, frozen[1]
-            self.runtime.invalidate()
+            self.runtime.invalidate(retry_deployment=True)
             result = self._observe(allow_connect=True, request_id=request_id, expected=expected)
             if isinstance(result, ObservationResult) or result is None:
                 return result or ObservationResult("superseded", "准备上下文已改变，请重新检测。", *expected, request_id)

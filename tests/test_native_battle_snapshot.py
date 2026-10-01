@@ -71,7 +71,8 @@ def test_freezes_trial_raw_without_promoting_unknown_or_mutating_source():
     assert set(result["domains"]) == set(DOMAINS)
     assert result["domains"]["character"]["records"][0]["bIsTemporary"] is True
     assert result["domains"]["character"]["complete"] is False
-    assert "inventory_projection_unavailable" in result["missing"]
+    assert "inventory_projection" not in result
+    assert not any(p.get("domain") == "inventory" for _, p in core.calls)
     core.revision = "2"
     assert result["domains"]["character"]["revision"] == "1"
 
@@ -87,8 +88,21 @@ def test_formal_and_raw_pages_share_one_refresh_per_domain():
         result = freeze_native_battle_snapshot(core, lambda: None)
     assert result["state"] == "observed"
     assert [p["domain"] for m, p in core.calls if m == "native.snapshot.refresh"] == list(DOMAINS)
-    for domain in ("character", "inventory"):
+    for domain in ("character",):
         assert headers[domain]["snapshotId"] == result["domains"][domain]["snapshotId"]
+
+
+def test_future_first_hit_publishes_context_before_account_pagination():
+    core = Core()
+    published = []
+    def page_completed(page):
+        published.append(page["domain"])
+        if page["domain"] == "character":
+            assert {"team", "environment"} <= set(published)
+    core.on_page = page_completed
+    result = freeze_native_battle_snapshot(core, lambda: None, require_current=True)
+    assert result["state"] == "observed"
+    assert published == ["team", "environment", "character"]
 
 
 def test_scene_change_after_read_keeps_immutable_observations_for_first_hit_validation():
@@ -100,7 +114,7 @@ def test_scene_change_after_read_keeps_immutable_observations_for_first_hit_vali
     result = freeze_native_battle_snapshot(core, lambda: None)
     assert result["state"] == "observed"
     assert {s["revision"] for s in result["domains"].values()} == {"1"}
-    assert sum(m == "native.snapshot.refresh" for m, _ in core.calls) == 4
+    assert sum(m == "native.snapshot.refresh" for m, _ in core.calls) == 3
 
 
 def test_live_revision_changes_do_not_discard_completed_pages():
@@ -109,6 +123,36 @@ def test_live_revision_changes_do_not_discard_completed_pages():
     result = freeze_native_battle_snapshot(core, lambda: None)
     assert result["state"] == "observed"
     assert {s["revision"] for s in result["domains"].values()} == {"1"}
+
+
+def test_future_hit_preparation_restarts_when_later_domain_retires_cached_build():
+    from src.integrations.native_snapshot_baseline import NativeSnapshotBaseline
+    core = Core()
+    baseline = NativeSnapshotBaseline()
+    for domain in ("character",):
+        baseline.put(domain, {**core.header(domain), "records": [{"source": "old-scene"}]})
+    statuses = 0
+    def changed(c):
+        nonlocal statuses
+        statuses += 1
+        if statuses == 2:
+            c.revision = "2"
+    core.on_status = changed
+    result = freeze_native_battle_snapshot(core, lambda: None, baseline=baseline, require_current=True)
+    assert result["state"] == "observed"
+    assert {s["revision"] for s in result["domains"].values()} == {"2"}
+    assert result["domains"]["character"]["records"][0]["source"] == "fixture"
+    assert [p["domain"] for m, p in core.calls if m == "native.snapshot.refresh"] == [
+        "team", "environment", "team", "environment", "character"]
+
+
+def test_future_hit_preparation_stays_retryable_when_revisions_keep_changing():
+    core = Core()
+    core.on_status = lambda c: setattr(c, "revision", str(int(c.revision) + 1))
+    result = freeze_native_battle_snapshot(core, lambda: None, require_current=True)
+    assert result["state"] == "source_changed"
+    assert result["domains"] == {}
+    assert sum(m == "native.snapshot.refresh" for m, _ in core.calls) == 6
 
 
 def test_incomplete_page_never_becomes_battle_snapshot():
@@ -145,7 +189,7 @@ def test_unavailable_domain_retains_other_stable_observations():
     core.call = unavailable
     result = freeze_native_battle_snapshot(core, lambda: None)
     assert result["state"] == "observed"
-    assert set(result["domains"]) == {"inventory", "team", "environment"}
+    assert set(result["domains"]) == {"team", "environment"}
     assert "character_snapshot_unavailable" in result["missing"]
 
 
@@ -159,9 +203,9 @@ def test_environment_transition_does_not_discard_completed_role_and_equipment():
     core.call = transition
     result = freeze_native_battle_snapshot(core, lambda: None)
     assert result["state"] == "observed"
-    assert set(result["domains"]) == {"character", "inventory", "team"}
+    assert set(result["domains"]) == {"character", "team"}
     assert "environment_snapshot_unavailable" in result["missing"]
-    assert sum(m == "native.snapshot.refresh" for m, _ in core.calls) == 3
+    assert sum(m == "native.snapshot.refresh" for m, _ in core.calls) == 2
 
 
 def test_transient_start_not_ready_preserves_native_lease_for_retry():
@@ -186,3 +230,29 @@ def test_transient_start_not_ready_preserves_native_lease_for_retry():
     finally:
         lease.close()
         session.close()
+
+
+def test_team_only_change_reuses_completed_character_page_on_retry():
+    from src.integrations.native_snapshot_baseline import NativeSnapshotBaseline
+    core = Core()
+    core.hello_result["capabilities"].extend(["native_character_profile_v1", "inventory.snapshot.v1", "native_inventory_dto_v1"])
+    original_header = core.header
+    status_count = 0
+    def header(domain):
+        value = original_header(domain)
+        if domain == "team" and status_count >= 2:
+            value.update(revision="2", snapshotId="team2")
+        return value
+    def status(_):
+        nonlocal status_count
+        status_count += 1
+    core.header, core.on_status = header, status
+    with patch("src.integrations.native_battle_snapshot.read_native_projection",
+               side_effect=lambda call, check, domain, header: deepcopy(header)):
+        result = freeze_native_battle_snapshot(core, lambda: None,
+                                              baseline=NativeSnapshotBaseline(), require_current=True)
+    assert result["state"] == "observed"
+    reads = [p["domain"] for m, p in core.calls if m == "native.snapshot.refresh"]
+    assert reads.count("character") == 1
+    assert reads.count("team") == 2
+    assert "inventory" not in reads

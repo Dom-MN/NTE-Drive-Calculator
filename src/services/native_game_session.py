@@ -13,18 +13,22 @@ from src.integrations.native_inventory_snapshot import NativeSnapshotPending, re
 from src.integrations.native_snapshot_baseline import NativeSnapshotBaseline
 from src.integrations.native_raw_snapshot import read_native_raw_domain
 from src.services.inventory_capture_wait import InventorySyncCancelled
-from src.services.native_snapshot_changes import domain_status, snapshot_change_key
+from src.services.native_snapshot_changes import require_current_sync_revision
+from src.services.native_session_inspection import _inspect_snapshot
+from src.services.native_status_queries import NativeStatusQueries
+from src.services.native_performance_control import configure_performance, read_performance_status, control_performance_trace
+from src.services.native_session_maintenance import plugin_maintenance, reserve_plugin_maintenance
 from src.observability import OperationContext, log_event
-from src.integrations.native_transport_diagnostics import RuntimeCostLog, snapshot_refresh_diagnostic
+from src.integrations.native_transport_diagnostics import RuntimeCostLog, snapshot_refresh_diagnostic, archive_failed
 
 
 SNAPSHOT_DOMAINS = ("character", "inventory", "team", "environment")
 NATIVE_REFRESH_TIMEOUT_SECONDS = 65.0
 NATIVE_BATTLE_HANDOFF_TIMEOUT_SECONDS = 10.0
 NATIVE_EQUIPMENT_CAPABILITIES = frozenset({"equipment", "native_equipment_v1"})
-
-
 class NativeGameSession:
+    _inspect_snapshot = _inspect_snapshot
+
     def __init__(
         self, factory: Callable[[], NteCoreClient], guard: Callable[[str], None],
         context_key: Callable[[], object] | None = None,
@@ -35,11 +39,15 @@ class NativeGameSession:
         self._diagnostics_enabled = diagnostics_enabled
         self._diagnostics_applied = None
         self._hud_applied = None
+        self._performance_active = False
+        self._performance_trace_active = False
         self._runtime_cost_log = RuntimeCostLog()
         self._connected_context: object = None
         self._client: NteCoreClient | None = None
         self._lock = RLock()
         self._snapshot_lock = RLock()
+        self._status_queries = NativeStatusQueries()
+        self._performance_trace_owner = None
         self._inventory_lease = None
         self._lease: NativeBattleLease | None = None
         self._closing = False
@@ -49,7 +57,17 @@ class NativeGameSession:
         self._snapshots_disabled = False
         self._refresh_active = None
         self._battle_requested = Event()
+        self._maintenance = Event()
         self._baseline = NativeSnapshotBaseline()
+
+    def read_performance_status(self):
+        return read_performance_status(self)
+
+    def configure_performance(self, payload):
+        return configure_performance(self, payload)
+
+    def control_performance_trace(self, payload, context_key):
+        return control_performance_trace(self, payload, context_key)
 
     @property
     def battle_active(self) -> bool:
@@ -63,6 +81,8 @@ class NativeGameSession:
         return self._connected_context == self._current_context()
 
     def _connect(self) -> NteCoreClient:
+        if self._maintenance.is_set():
+            raise NteCoreError('组件正在更新，暂不接受新的原生连接。')
         if self._closing or self._close_requested.is_set():
             raise RuntimeError("原生会话正在收尾，等待当前战报结束。")
         if self._client is None and self._lease is not None:
@@ -94,7 +114,7 @@ class NativeGameSession:
             self._client = client
             self._runtime_cost_log = RuntimeCostLog()
             self._baseline = NativeSnapshotBaseline()
-            client.add_event_handler("event.native.diagnostics.error", self._archive_failed)
+            client.add_event_handler("event.native.diagnostics.error", archive_failed)
             self._connected_context = context
             self._failed = False
             self._snapshots_disabled = False
@@ -109,16 +129,11 @@ class NativeGameSession:
                     except NteCoreRpcError as error:
                         if error.domain_code != "NATIVE_SNAPSHOT_ARCHIVE_WRITE_FAILED":
                             raise
-                        self._archive_failed()
+                        archive_failed()
                 elif enabled:
                     raise RuntimeError("当前 Core 不支持 DLL 原始快照排错保存，请更新随附组件。")
                 self._diagnostics_applied = applied
         return self._client
-
-    @staticmethod
-    def _archive_failed(_event=None):
-        from src.utils.logger import logger
-        logger.warning("DLL 原始快照未能保存，已停止本次诊断归档；请检查账号日志目录可写性与磁盘空间。")
 
     def inspect(self, *, refresh: bool = False, check_equipment: bool = True) -> dict[str, Any]:
         with self._snapshot_scope(self._check_inspection):
@@ -135,8 +150,10 @@ class NativeGameSession:
             raise InventorySyncCancelled("原生检测已停止或账号上下文已改变。")
 
     def _check_snapshot_priority(self):
+        if self._maintenance.is_set():
+            raise InventorySyncCancelled('组件维护中，暂停原生读取。', reason="maintenance")
         if self._battle_requested.is_set():
-            raise InventorySyncCancelled("本次原生刷新已让出会话，正在开始战报。")
+            raise InventorySyncCancelled("本次原生刷新已让出会话，正在开始战报。", reason="battle_requested")
 
     @contextmanager
     def _snapshot_scope(self, check):
@@ -179,90 +196,6 @@ class NativeGameSession:
                 if self._refresh_active is token:
                     self._refresh_active = None
 
-    def _inspect_snapshot(self, *, refresh: bool = False, check_equipment: bool = True) -> dict[str, Any]:
-        with self._lock:
-            self._check_inspection()
-            client = self._connect()
-        try:
-            capabilities = (client.hello_result or {}).get("capabilities", [])
-            # Status calls must not hold the lock needed by a battle stop timeout abort.
-            status = client.status()
-            self._runtime_cost_log.observe(status)
-            domains = {}
-            domain_errors: dict[str, dict[str, Any]] = {}
-            if any(f"{domain}.snapshot.v1" in capabilities for domain in SNAPSHOT_DOMAINS):
-                if refresh:
-                    for domain in SNAPSHOT_DOMAINS:
-                        if f"{domain}.snapshot.v1" in capabilities:
-                            with self._lock:
-                                if self._lease is not None or self._inventory_lease is not None:
-                                    break
-                                self._guard("native_sync")
-                                if self._close_requested.is_set():
-                                    raise RuntimeError("原生会话正在收尾。")
-                                if self._client is not client or not self._context_matches():
-                                    raise RuntimeError("原生刷新期间账号上下文已改变。")
-                            try:
-                                check = lambda: self._check_inspection(client)
-                                if "snapshot.changes.v1" not in capabilities:
-                                    self._refresh_snapshot(client, {"domain": domain}, check)
-                                elif ((domain == "character" and "native_character_profile_v1" in capabilities)
-                                      or (domain == "inventory" and "native_inventory_dto_v1" in capabilities)):
-                                    self._read_projection(client, domain, check)
-                                else:
-                                    from src.integrations.native_battle_snapshot import validate_native_snapshot_current
-                                    baseline = self._baseline
-                                    current = client.call("native.snapshot.status", {}, check_cancelled=check)
-                                    if baseline.get(domain, current) is None:
-                                        def call(method, params):
-                                            if method == "native.snapshot.refresh":
-                                                return self._refresh_snapshot(client, params, check)
-                                            return client.call(method, params, check_cancelled=check)
-                                        raw = read_native_raw_domain(call, check, domain)
-                                        validate_native_snapshot_current({"domains": {domain: raw}}, call("native.snapshot.status", {}))
-                                        check()
-                                        baseline.put(domain, raw)
-                            except NativeSnapshotPending:
-                                break
-                            except NteCoreRpcError as error:
-                                # These exact provider rejections invalidate only this domain.
-                                if error.code != -32001 or error.message not in {"not_ready", "source_changed"}:
-                                    raise
-                                reason = error.data.get("reason")
-                                domain_errors[domain] = {
-                                    "code": error.code,
-                                    "message": error.message,
-                                    "reason": reason if isinstance(reason, str) else "",
-                                }
-                self._guard("native_sync")
-                domains = client.call("native.snapshot.status", {})
-            equipment = None
-            # 装备接口检测在游戏线程执行，后台同步观察不应反复发起；实际装配仍逐次复核。
-            if check_equipment and NATIVE_EQUIPMENT_CAPABILITIES.issubset(capabilities):
-                try:
-                    equipment = self.equipment_status(client)
-                except NteCoreRpcError as error:
-                    if error.code != -32001 or error.message not in {"not_ready", "source_changed"}:
-                        raise
-                    equipment = {"ready": False, "reason": error.message}
-            with self._lock:
-                self._guard("native_sync")
-                if self._client is not client or not self._context_matches():
-                    raise RuntimeError("原生检测结果已过期。")
-                return {
-                    "hello": client.hello_result or {}, "status": status,
-                    "domains": domains, "domain_errors": domain_errors,
-                    "equipment": equipment,
-                    "inventory_snapshot_ready": bool(self._inventory_lease is not None and self._inventory_lease.snapshot_ready),
-                }
-        except Exception:
-            with self._lock:
-                if self._client is client:
-                    self._failed = True
-                    if self._lease is None:
-                        self._finish_close()
-            raise
-
     def inventory_client(self):
         from src.services.native_inventory_lease import NativeInventoryLease
         with self._lock:
@@ -289,10 +222,13 @@ class NativeGameSession:
             try:
                 self._guard("native_sync")
             except PermissionError as error:
-                raise InventorySyncCancelled("原生同步权限已撤销。") from error
-            if (self._close_requested.is_set() or self._client is not client
-                    or not self._context_matches() or self._failed):
-                raise InventorySyncCancelled("原生同步已取消或账号上下文已改变。")
+                raise InventorySyncCancelled("原生同步权限已撤销。", reason="permission_revoked") from error
+            if self._close_requested.is_set():
+                raise InventorySyncCancelled("原生同步已停止。", reason="stop_requested")
+            if self._client is not client or self._failed or not client.is_running:
+                raise InventorySyncCancelled("原生采集连接已失效。", reason="connection_lost")
+            if not self._context_matches():
+                raise InventorySyncCancelled("账号上下文已改变。", reason="context_changed")
         if check is not None:
             check()
 
@@ -334,10 +270,10 @@ class NativeGameSession:
                           (client.hello_result or {}).get("capabilities", ()) else None)
                 projection = read_native_projection(inline.call if inline else call, current, domain=domain)
                 if tracked:
-                    self._require_current_sync_revision(projection, call("native.snapshot.status", {}))
+                    require_current_sync_revision(projection, call("native.snapshot.status", {}))
                     raw = (inline.read(projection, current) if inline else
                            read_native_raw_domain(call, current, domain, header=refreshed_header))
-                    self._require_current_sync_revision(raw, call("native.snapshot.status", {}))
+                    require_current_sync_revision(raw, call("native.snapshot.status", {}))
                     baseline.put(domain, raw, projection)
                 completed = True
                 return projection
@@ -377,15 +313,6 @@ class NativeGameSession:
                               stage_duration_ms={key: round(value, 2) for key, value in timings.items()},
                               stage_call_count=counts)
 
-    @staticmethod
-    def _require_current_sync_revision(snapshot, status):
-        domain = snapshot["domain"]
-        expected = tuple(snapshot[key] for key in ("providerId", "domainKey", "revision"))
-        row = domain_status(status, domain)
-        if (snapshot_change_key(status, domain) != expected or row.get("ready") is not True
-                or row.get("dirty") is not False or row.get("enabled") is not True):
-            raise NativeSnapshotPending("同步读取期间来源发生变化，等待重新采集。")
-
     def read_all_items(self, client, check):
         from src.domain.all_item_snapshot import ALL_ITEMS_CAPABILITY
         from src.integrations.native_all_item_snapshot import read_all_item_snapshot
@@ -399,7 +326,6 @@ class NativeGameSession:
                 if method == "native.snapshot.refresh":
                     return self._refresh_snapshot(client, params, current)
                 return client.call(method, params, check_cancelled=current)
-
             return read_all_item_snapshot(call, current)
 
     def read_character_profiles(self, *, check=None):
@@ -482,6 +408,8 @@ class NativeGameSession:
     def configure_hud(self, options: dict[str, bool], *, connect: bool) -> dict:
         """Share the capture owner; disabling never opens a new connection."""
         with self._lock:
+            if self._maintenance.is_set() and (options.get('cooldown') or options.get('enemy_bars')):
+                raise NteCoreError('组件更新中，HUD 暂时暂停。')
             if connect:
                 self._guard("native_load")
                 client = self._connect()
@@ -522,7 +450,7 @@ class NativeGameSession:
         try:
             with self._lock:
                 if (self._client is None or self._lease is not None or self._inventory_lease is not None
-                        or self._refresh_active is not None or self._battle_requested.is_set()):
+                        or self._refresh_active is not None or self._battle_requested.is_set() or self._performance_active or self._performance_trace_active):
                     return False
                 if self._hud_applied is not None:
                     options = self._hud_applied[1]
@@ -537,6 +465,10 @@ class NativeGameSession:
         finally:
             self._snapshot_lock.release()
 
+    plugin_maintenance = plugin_maintenance
+    reserve_plugin_maintenance = reserve_plugin_maintenance
+    maintenance_active = property(lambda self: self._maintenance.is_set())
+
     def request_close(self, *, permanent: bool = False) -> None:
         """Nonblocking revocation; the observer owner performs RPC teardown later."""
         if permanent:
@@ -544,6 +476,9 @@ class NativeGameSession:
         self._close_requested.set()
 
     def _finish_close(self) -> None:
+        self._performance_active = False
+        self._performance_trace_active = False
+        self._performance_trace_owner = None
         client, self._client = self._client, None
         self._closing = False
         self._failed = False
@@ -617,7 +552,6 @@ class NativeBattleLease:
         key = (event, handler)
         if key in self._handlers:
             return
-
         def guarded(payload):
             try:
                 self._check()
@@ -625,7 +559,6 @@ class NativeBattleLease:
             except (PermissionError, RuntimeError):
                 return
             handler(payload)
-
         self._handlers[key] = guarded
         self._client.add_event_handler(event, guarded)
 
@@ -714,7 +647,7 @@ class NativeBattleLease:
                      if final or entry["snapshot"].get("binding") != "pending_first_hit"}
         return {"state": "scoped", "scopes": published} if changed else None
 
-    def _read_battle_snapshot(self, stop_requested, *, references=None):
+    def _read_battle_snapshot(self, stop_requested, *, references=None, require_current=False):
         from src.integrations.native_battle_snapshot import freeze_native_battle_snapshot, read_first_hit_snapshot
         started = False
         stop_deadline = None
@@ -729,7 +662,8 @@ class NativeBattleLease:
         try:
             with self._owner._snapshot_scope(check):
                 started = True
-                frozen = (freeze_native_battle_snapshot(self._client, check, baseline=self._owner._baseline)
+                frozen = (freeze_native_battle_snapshot(self._client, check, baseline=self._owner._baseline,
+                                                       require_current=require_current)
                           if references is None else read_first_hit_snapshot(self._client, check, references))
         except CancelledError:
             self._check(new_work=True)

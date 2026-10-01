@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.features.settings.work_mode_card import build_work_mode_card
+from src.features.settings.performance_card import PerformanceCard
 from src.app.constants import NETDISK_DOWNLOAD_LINKS
 from src.app.context import AppContext
 from src.app.theme import THEME_LABELS, themed_style
@@ -138,7 +139,10 @@ def _build_capture_diagnostics_card(window):
 
     def save_capture_diagnostics() -> None:
         if callable(save_handler):
-            save_handler()
+            settings = save_handler()
+            window.performance_controller.capture_changed(settings)
+            if settings is None and callable(settings_reader):
+                window._sync_raw_capture_toggle.setChecked(bool(settings_reader()["raw_capture_enabled"]))
 
     window._sync_capture_device_edit.editingFinished.connect(save_capture_diagnostics)
 
@@ -167,6 +171,14 @@ def _build_capture_diagnostics_card(window):
 
     window._sync_raw_capture_toggle.clicked.connect(save_raw_capture_diagnostics)
     form.addRow("采集排错:", raw_capture_row)
+    performance_link = QCheckBox("同时记录性能")
+    performance_link.setToolTip("排错开启时保存服务耗时到账号日志目录；不额外启动同步、战报或 HUD。")
+    performance_link.clicked.connect(window.performance_controller.set_linked)
+    def refresh_performance_link():
+        performance_link.setChecked(window.performance_controller.snapshot()["linked"])
+    window.performance_controller.changed.connect(refresh_performance_link)
+    refresh_performance_link()
+    form.addRow("性能日志:", performance_link)
     card.layout().addLayout(form)
     return card
 
@@ -515,6 +527,9 @@ def build_settings_page(
     layout.addWidget(about_card)
 
     layout.addWidget(plugin_card)
+    performance_card = window._card("性能监控")
+    performance_card.layout().addWidget(PerformanceCard(window.performance_controller))
+    layout.addWidget(performance_card)
     layout.addWidget(sync_card)
 
     paths = _settings_paths(app_context)

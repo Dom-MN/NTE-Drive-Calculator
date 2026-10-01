@@ -77,6 +77,11 @@ class PluginService:
 
     def _apply(self, *, game_running, connect):
         self.apply_mode_policy()
+        if getattr(self.session, 'maintenance_active', False):
+            with self._lock:
+                self._statuses = {key: '插件更新中，显示暂时暂停' for key in _PLUGIN_FIELDS}
+                self._refresh_aggregate_status(self.settings)
+            return
         with self._lock:
             settings = self.settings
         allowed = self.policy.allowed("native_load") and not self.policy.settings.paused

@@ -10,6 +10,13 @@ from tests.test_native_plugin_bundle import make_bundle, game_files
 
 
 def setup_runtime(tmp_path, monkeypatch, *, deployed=True):
+    # Component fixtures must never discover or delete this machine's registry.
+    from src.services import equipment_plugin_deployment as deployment
+    monkeypatch.setattr(deployment, 'mod_workspace_registry_snapshot', lambda: (False, None))
+    monkeypatch.setattr(deployment, 'cleanup_mod_workspace', lambda **_kwargs: None)
+    from src.services import managed_plugin_cleanup as cleanup
+    monkeypatch.setattr(cleanup, 'mod_workspace_registry_snapshot', lambda: (False, None))
+    monkeypatch.setattr(cleanup, 'cleanup_mod_workspace', lambda **_kwargs: None)
     root, payload = make_bundle(tmp_path)
     game = game_files(tmp_path, root, payload)
     if not deployed:
@@ -117,7 +124,7 @@ def test_manual_deployment_ui_ignores_config_saves_and_cleans_old_pending_record
     original_revision = policy.operation_revision
     assert policy.settings.revision != original_revision
     window = SimpleNamespace(
-        app_context=SimpleNamespace(paths=SimpleNamespace(root=runtime.root)),
+        app_context=SimpleNamespace(paths=SimpleNamespace(root=runtime.root), generation=1),
         native_game_session=runtime.native_session, _mod_plugin_loading_service=runtime.loader,
         work_mode_service=policy, work_mode_runtime=runtime,
         operation_generation=lambda: (policy.operation_revision, 1),

@@ -20,44 +20,15 @@ from src.storage.sqlite.user_data_dao import UserDataDao
 from src.utils.logger import logger
 
 from .inventory_sync_contracts import InventoryCoreClient
+from .inventory_sync_state import InventorySyncState as InventorySyncState, SyncPhase
 from .inventory_sync_runtime import prune_raw_captures, run_inventory_sync
 from .inventory_capture_wait import CaptureWaitMonitor, InventorySyncCancelled, receive_capture_status, require_inventory_operation
 
 
-SyncPhase = Literal[
-    "stopped",
-    "starting",
-    "waiting",
-    "collecting",
-    "saving",
-    "listening",
-    "error",
-]
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-
-
-@dataclass(frozen=True)
-class InventorySyncState:
-    phase: SyncPhase = "stopped"
-    message: str = "背包同步尚未启动"
-    running: bool = False
-    capturing: bool = False
-    pending_item_count: int | None = None
-    added_count: int = 0
-    removed_count: int = 0
-    last_snapshot_id: int | None = None
-    last_item_count: int | None = None
-    last_synced_at_utc: str | None = None
-    source_snapshot_ready: bool = False
-    capture_source: Literal["packet", "native"] = "packet"
-    error: str | None = None
-    error_code: str | None = None
-    character_sync_revision: int = 0
-    character_sync_error: str | None = None
-    updated_at_utc: str = ""
 
 
 @dataclass(frozen=True)
@@ -453,7 +424,7 @@ class InventorySyncService:
         self._stop_requested.clear()
         self._event_ready.clear()
         self._capture_ready.clear()
-        self._state = replace(self._state, source_snapshot_ready=False)
+        self._state = replace(self._state, source_snapshot_ready=False, stop_reason=None)
         self._capture_monitor = CaptureWaitMonitor()
         with self._event_lock:
             self._latest_inventory_event = None

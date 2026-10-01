@@ -330,7 +330,7 @@ class ModeReportDialog(QDialog):
         if self._preview:
             self._controller.check(show=True, preview=True)
         else:
-            self._controller.check(show=True)
+            self._controller.check(show=True, retry_deployment=True)
 
     def _clear_actions(self):
         while self.actions.count():
@@ -553,9 +553,9 @@ def build_work_mode_card(window):
     combo.setCurrentIndex(combo.findData(service.settings.mode.value))
     combo.setFixedWidth(150)
     controls.addWidget(combo)
-    check = QPushButton("检测详情")
+    check = QPushButton("检测并处理")
     check.setFixedWidth(96)
-    check.clicked.connect(lambda: controller.check(show=True))
+    check.clicked.connect(lambda: controller.check(show=True, retry_deployment=True))
     controls.addWidget(check)
     controls.addStretch()
     card.layout().addLayout(controls)

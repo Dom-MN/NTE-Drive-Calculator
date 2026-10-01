@@ -86,8 +86,8 @@ def prepare_component_bundle(
     if not isinstance(payload, dict) or not isinstance(payload.get("files"), dict) or not isinstance(payload.get("roles"), dict):
         raise ValueError("来源组件整包清单格式无效。")
     files = payload["files"]
-    if payload.get("layout") != "native-capture-v1":
-        raise ValueError("仅支持 native-capture-v1 原生组件包，旧 Mods 布局已移除。")
+    if payload.get("layout") not in {"native-capture-v1", "native-plugins-v2", "native-plugins-v3"}:
+        raise ValueError("仅支持核对过的原生组件包，旧 Mods 布局已移除。")
     from tools.release.native_component_bundle_build import native_distribution_path, native_distribution_manifest
     mapper = native_distribution_path
     distribution = native_distribution_manifest(payload)

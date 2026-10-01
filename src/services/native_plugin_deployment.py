@@ -12,7 +12,7 @@ import tempfile
 from typing import Callable
 
 from src.integrations.native_plugin_bundle import (
-    NATIVE_PLUGIN_DEPLOYMENT_PATHS, inspect_native_plugin_bundle,
+    NATIVE_PLUGIN_DEPLOYMENT_PATHS, HOT_PLUGIN_DEPLOYMENT_PATHS, PERFORMANCE_DEPLOYMENT_PATHS, HUD_DEPLOYMENT_PATHS, inspect_native_plugin_bundle,
 )
 from src.integrations.operation_guard import require_operation
 from src.integrations.legacy_game_proxy import remove_legacy_game_proxy
@@ -66,7 +66,7 @@ def _digest(path: Path) -> str:
 
 
 def _target(directory: Path, relative: str) -> Path:
-    if relative not in NATIVE_PLUGIN_DEPLOYMENT_PATHS.values():
+    if relative not in {*NATIVE_PLUGIN_DEPLOYMENT_PATHS.values(), *HOT_PLUGIN_DEPLOYMENT_PATHS.values(), *PERFORMANCE_DEPLOYMENT_PATHS.values(), *HUD_DEPLOYMENT_PATHS.values()}:
         raise EquipmentPluginDeploymentError('组件记录包含正式布局之外的文件。')
     target = directory / relative
     if target.is_symlink() or not target.resolve().is_relative_to(directory):
@@ -93,6 +93,7 @@ def _replace_file(source: Path, target: Path, digest: str, require_idle, *, suff
     descriptor, temporary_name = tempfile.mkstemp(prefix='.nte-deploy-', suffix=suffix, dir=target.parent)
     os.close(descriptor)
     temporary = Path(temporary_name)
+    failure = None
     try:
         shutil.copy2(source, temporary)
         if _digest(temporary) != digest:
@@ -104,14 +105,29 @@ def _replace_file(source: Path, target: Path, digest: str, require_idle, *, suff
         if current != expected_target:
             raise EquipmentPluginDeploymentError('组件目标在暂存期间发生变化，未覆盖现场文件。')
         os.replace(temporary, target)
+    except Exception as error:
+        failure = error
+        if isinstance(error, OSError) and getattr(error, 'winerror', None) in {225, 226}:
+            raise EquipmentPluginDeploymentError(
+                f'Windows 安全防护阻止部署 {target.name}，请查看系统保护历史并核查组件来源。'
+            ) from error
+        if isinstance(error, FileNotFoundError):
+            raise EquipmentPluginDeploymentError(
+                f'部署 {target.name} 时文件消失，写入结果无法核验；请检查系统保护历史和文件占用情况。'
+            ) from error
+        raise
     finally:
-        temporary.unlink(missing_ok=True)
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            if failure is None:
+                raise  # Keep an earlier deployment failure when cleanup is also blocked.
 
 def deploy_native_component_files(
     *, application_root: str | Path, directory_path: str | Path,
     operation_guard: Callable[[str], None] | None,
     game_running: Callable[[], bool] | None = None,
-    component_roles: tuple[str, ...] = ('capture_plugin', 'host'),
+    component_roles: tuple[str, ...] | None = None,
     expected_existing_files: Mapping[str, str | None] | None = None,
     cleanup_legacy_proxy: bool = False,
 ) -> NativeComponentFilesDeployment:
@@ -128,13 +144,17 @@ def deploy_native_component_files(
     if not bundle.ready:
         raise EquipmentPluginDeploymentError('；'.join(bundle.issues))
     directory = Path(directory_path).expanduser().resolve()
+    paths = bundle.deployment_paths
+    component_roles = tuple(paths) if component_roles is None else component_roles
     if (not component_roles or len(set(component_roles)) != len(component_roles)
-            or any(role not in {'capture_plugin', 'host'} for role in component_roles)):
+            or any(role not in paths for role in component_roles)):
         raise EquipmentPluginDeploymentError('部署请求包含无效的采集组件角色。')
-    order = tuple(role for role in ('capture_plugin', 'host') if role in component_roles)
+    order = tuple(role for role in paths if role != 'host' and role in component_roles)
+    if 'host' in component_roles:
+        order += ('host',)
     sources, targets, expected = {}, {}, {}
     for role in order:
-        relative = NATIVE_PLUGIN_DEPLOYMENT_PATHS[role]
+        relative = paths[role]
         source = root / bundle.roles[role]
         target = _target(directory, relative)
         if source.resolve() == target.resolve():
@@ -211,12 +231,13 @@ def deploy_native_plugin(
 ) -> NativePluginDeployment:
     require_operation(operation_guard, 'native_load')
     executable = game_executable(game_executable_path)
+    bundle = inspect_native_plugin_bundle(application_root)
 
     def wrap(record: NativeComponentFilesDeployment) -> NativePluginDeployment:
         return NativePluginDeployment(
             executable, record.directory / NATIVE_PLUGIN_DEPLOYMENT_PATHS['host'],
             record.managed_files.get(NATIVE_PLUGIN_DEPLOYMENT_PATHS['host'], ''),
-            record.directory, record.backup_path, dict(record.managed_files),
+            record.directory, record.backup_path, dict(record.managed_files), deployment_layout=bundle.layout,
         )
 
     try:
@@ -292,7 +313,7 @@ def cleanup_manual_native_plugin(
     bundle = inspect_native_plugin_bundle(application_root)
     allowed: dict[str, set[str]] = {}
     if bundle.ready:
-        for role, relative in NATIVE_PLUGIN_DEPLOYMENT_PATHS.items():
+        for role, relative in bundle.deployment_paths.items():
             allowed[relative] = {
                 bundle.files[bundle.roles[role]], *bundle.upgrade_from.get(relative, ()),
             }
@@ -300,7 +321,7 @@ def cleanup_manual_native_plugin(
     try:
         for relative in recorded:
             _manual_cleanup_target(directory, relative)
-        for relative in NATIVE_PLUGIN_DEPLOYMENT_PATHS.values():
+        for relative in {*NATIVE_PLUGIN_DEPLOYMENT_PATHS.values(), *HOT_PLUGIN_DEPLOYMENT_PATHS.values(), *PERFORMANCE_DEPLOYMENT_PATHS.values(), *HUD_DEPLOYMENT_PATHS.values()}:
             target = _manual_cleanup_target(directory, relative)
             if not target.exists():
                 continue

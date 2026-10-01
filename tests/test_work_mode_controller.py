@@ -93,7 +93,7 @@ def controller(tmp_path, monkeypatch, qt_app):
     runtime = SimpleNamespace(
         path_detail="", cleanup_detail="", cleanup_exit_detail="",
         native_session=native, loader=None,
-        invalidate=lambda: events.append("invalidate"),
+        invalidate=lambda **kwargs: events.append("invalidate"),
         tick=lambda **kwargs: probe, discover=lambda: (),
         request_close=lambda: events.append("runtime_request"),
         close=lambda: events.append("runtime_close"),
@@ -783,3 +783,14 @@ def test_medium_probe_without_npcap_is_forwarded_without_starting_core(controlle
     c._apply((policy.settings.revision, 1, probe, 0))
     assert window.observed_sync_probes == [probe, probe]
     assert "packet_start" not in events
+
+
+@pytest.mark.parametrize("options,retry", [({}, False), ({"show": True}, False),
+    ({"show": True, "retry_deployment": True}, True), ({"preview": True, "retry_deployment": True}, False)])
+def test_only_explicit_deployment_retry_clears_failure(controller, options, retry):
+    c, *_ = controller
+    seen = []
+    c.runtime.invalidate = lambda **kwargs: seen.append(kwargs)
+    c.check(**options)
+    c._observer.run_jobs()
+    assert seen == [{"retry_deployment": retry}]

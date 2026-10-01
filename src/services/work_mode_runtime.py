@@ -11,12 +11,15 @@ from typing import Callable
 from src.domain.work_mode import CheckState, NativeFeatureProbe, WorkModeProbe
 from src.integrations.analysis_core_release import create_bundled_analysis_client
 from src.integrations.game_component_bundle import inspect_game_component_bundle
+from src.integrations.component_deployment_failure import ComponentDeploymentFailure
+from src.integrations.native_plugin_bundle import NATIVE_PLUGIN_LAYOUTS
 from src.integrations.legacy_game_proxy import legacy_game_proxy_present
 from src.integrations.game_path_discovery import running_game_executables
 from src.integrations.native_capture_process import native_capture_game_pid
 from src.integrations.launcher_process import LauncherProcessProbeError, selected_launcher_running
 from src.integrations.mod_loader import ModLoaderRuntimeError, game_launcher_candidates
 from src.integrations.nte_core import resolve_nte_core_executable
+from src.integrations.nte_core_protocol import NteCoreError
 from src.services.deployed_plugin_inspection import inspect_deployed_native_plugin
 from src.services.native_plugin_deployment import PluginDeploymentPendingCleanup
 from src.services.native_plugin_deployment import (
@@ -84,15 +87,26 @@ class WorkModeRuntime:
         self._closed = False
         self._analysis_available = False
         self._last_analysis = float("-inf")
-        self._auto_error = ""
+        self._deployment_failure = ComponentDeploymentFailure(config_dir)
+        self._auto_error = self._deployment_failure.load()
 
-    def invalidate(self) -> None:
+    def invalidate(self, *, retry_deployment: bool = False) -> None:
         with self._lock:
+            if retry_deployment:
+                self._deployment_failure.clear()
+                self._auto_error = ""
             self._last_files = float("-inf")
             self._last_auto_attempt = float("-inf")
             self._last_analysis = float("-inf")
             self._last_discovery = float("-inf")
-            self._auto_error = ""
+
+    def _block_automatic_deployment(self, detail: str) -> None:
+        self._auto_error = detail + "；已停止自动重试，请核查原因后点击“检测并处理”重试。"
+        try:
+            self._deployment_failure.save(self._auto_error)
+        except OSError:
+            self._auto_error += " 故障状态未能保存，请勿在原因处理前重启自动部署。"
+        self.cleanup_detail = self._auto_error
 
     @staticmethod
     def _validated_game_path(raw: str | Path) -> str:
@@ -156,7 +170,7 @@ class WorkModeRuntime:
         record = {key: str(value) if isinstance(value, Path) else value
                   for key, value in asdict(deployed).items()}
         previous = self.policy.deployment_record
-        if (record.get("deployment_layout") == "native-capture-v1"
+        if (record.get("deployment_layout") in NATIVE_PLUGIN_LAYOUTS
                 and previous.get("game_executable") == record.get("game_executable")):
             record["managed_files"] = {**previous.get("managed_files", {}), **record.get("managed_files", {})}
         for key in ("native_workspace_root", "native_workspace_files", "native_workspace_backup_path"):
@@ -167,11 +181,12 @@ class WorkModeRuntime:
         self.policy.set_game_executable(str(deployed.game_executable))
         if not self.policy.allowed("native_load"):
             self.policy.set_cleanup_pending(True)
-        self.invalidate()
+        self.invalidate(retry_deployment=True)
 
     def save_pending_deployment(self, error: PluginDeploymentPendingCleanup) -> None:
         self.save_deployment(error.deployment)
         self.policy.set_cleanup_pending(True)
+        self._block_automatic_deployment(str(error))
         self._record_cleanup(CheckState.CLEANUP_PENDING, str(error), notify=True)
 
     def prepare_manual_native_deployment(self, *, expected_operation_revision: int) -> int:
@@ -246,7 +261,7 @@ class WorkModeRuntime:
             self._recorded_cleanup_path(recorded_path)
             if recorded_path else self._validated_game_path(self.policy.settings.game_executable)
         )
-        workspace_only = (record.get("deployment_layout") == "native-capture-v1"
+        workspace_only = (record.get("deployment_layout") in NATIVE_PLUGIN_LAYOUTS
                           and not record.get("managed_files") and bool(record.get("native_workspace_root")))
         if not path and not workspace_only:
             detail = (
@@ -255,7 +270,7 @@ class WorkModeRuntime:
             )
             self._record_cleanup(CheckState.WAITING, detail, notify=has_deployment)
             return
-        if record.get("deployment_layout") == "native-capture-v1":
+        if record.get("deployment_layout") in NATIVE_PLUGIN_LAYOUTS:
             self._restore_native_workspace(record)
             self.loader.stop_loader()
             managed_files = record.get("managed_files", {})
@@ -365,6 +380,9 @@ class WorkModeRuntime:
         self.invalidate()
 
     def _automatic_deploy(self, running: bool) -> None:
+        if self._auto_error:
+            self.cleanup_detail = self._auto_error
+            return
         if self._closed or self.native_session.battle_active or self.policy.settings.pending_cleanup:
             return
         if not self.policy.allowed("native_load", automatic=True):
@@ -416,8 +434,7 @@ class WorkModeRuntime:
         except PluginDeploymentPendingCleanup as error:
             self.save_pending_deployment(error)
         except (EquipmentPluginDeploymentError, PermissionError, OSError) as error:
-            self.cleanup_detail = "自动原生组件部署失败：" + str(error)
-            self._auto_error = self.cleanup_detail
+            self._block_automatic_deployment("自动原生组件部署失败：" + str(error))
 
     def _restore_native_workspace(self, record) -> None:
         path = record.get("native_workspace_root")
@@ -434,7 +451,7 @@ class WorkModeRuntime:
         record = self.policy.deployment_record
         previous_files = (record.get("native_workspace_files", {})
                           if record.get("native_workspace_root") == str(workspace.directory) else {})
-        record.update({"game_executable": executable, "deployment_layout": "native-capture-v1",
+        record.update({"game_executable": executable, "deployment_layout": inspect_game_component_bundle(self.root).layout,
                        "native_workspace_root": str(workspace.directory),
                        "native_workspace_files": {**previous_files, **workspace.managed_files},
                        "native_workspace_backup_path": str(workspace.backup_path) if workspace.backup_path else None,
@@ -484,7 +501,7 @@ class WorkModeRuntime:
                 return None
             self.native_session.close()
             guard("native_load")
-            if frozen.pending_cleanup or (record.get("deployment_layout") == "native-capture-v1" and record.get("managed_files")):
+            if frozen.pending_cleanup or (record.get("deployment_layout") in NATIVE_PLUGIN_LAYOUTS and record.get("managed_files")):
                 self.policy.set_cleanup_pending(True)
                 self.cleanup(running=False)
                 if self.policy.settings.pending_cleanup:
@@ -532,8 +549,7 @@ class WorkModeRuntime:
         except ModPluginLoadingWaiting as error:
             self.cleanup_detail = str(error)
         except (EquipmentPluginDeploymentError, ModPluginLoadingError, PermissionError) as error:
-            self.cleanup_detail = "自动 Loader 启动失败：" + str(error)
-            self._auto_error = self.cleanup_detail
+            self._block_automatic_deployment("自动 Loader 启动失败：" + str(error))
 
     def _inspect_component_files(self, *, path_valid: bool, running: bool) -> None:
         settings = self.policy.settings
@@ -587,7 +603,7 @@ class WorkModeRuntime:
                 record = self.policy.deployment_record
                 recorded_cleanup_path = self._recorded_cleanup_path(record.get("game_executable") or "")
                 workspace_only = (
-                    record.get("deployment_layout") == "native-capture-v1"
+                    record.get("deployment_layout") in NATIVE_PLUGIN_LAYOUTS
                     and not record.get("managed_files")
                     and bool(record.get("native_workspace_root"))
                 )
@@ -741,9 +757,10 @@ class WorkModeRuntime:
                         )
                     probe = replace(probe, logged_in=battle.get("ready") is True)
                 except Exception as error:
-                    # The failure may occur after hello; do not invent a failed handshake
-                    # or retain partially projected results from this incomplete inspection.
-                    values = {key: replace(getattr(probe, key), pipe=pipe) for key in values}
+                    # Preserve only this request's confirmed transport fact, never partial business data.
+                    context = error.request_context if isinstance(error, NteCoreError) else None
+                    handshake = True if context is not None and context.handshake_confirmed else None
+                    values = {key: replace(getattr(probe, key), pipe=pipe, handshake=handshake) for key in values}
                     probe = replace(probe, native_diagnostic=detection_failure_detail(error, record=allow_connect))
             return replace(probe, **values)
 
