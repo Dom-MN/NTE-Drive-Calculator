@@ -17,6 +17,7 @@ from tools.game_data.promote_static_release import (
     StaticReleasePromotionError,
     _validate_candidate_database,
 )
+from tools.game_data.static_database_build_support import IMPORTER_VERSION, SCHEMA_VERSION
 from tools.game_data.build_reference_catalog import ReferenceCatalogBuilder
 
 
@@ -94,8 +95,8 @@ class ReferenceProgressionCurrencyContractTests(unittest.TestCase):
                 connection.execute("UPDATE progression_item_alias SET item_id='Fons'")
                 connection.commit()
             summary = {
-                "dataset_id": "fixture", "schema_version": 38,
-                "importer_version": 49, "catalog_scope": "reference",
+                "dataset_id": "fixture", "schema_version": SCHEMA_VERSION,
+                "importer_version": IMPORTER_VERSION, "catalog_scope": "reference",
             }
             config = {"dataset_id": "fixture", "official_content_root": str(candidate)}
             with (

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from contextlib import closing
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -22,13 +23,23 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.storage.sqlite.fork_permanent_projection import (
     FORK_PERMANENT_EVIDENCE_SQL,
     FORK_REFINEMENT_LEVEL_SQL,
+    FORK_SOURCE_COVERAGE_SQL,
     cursor_dicts,
     resolve_projection_rows,
 )
 from tools.game_data.build_graduation_templates import populate_graduation_templates
+from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 from tools.game_data.static_database_build_support import (
     IMPORTER_VERSION,
+    SCHEMA_VERSION,
     file_sha256,
+)
+from tools.game_data.static_database_buff_imports import BuffImportMixin
+
+
+SCHEMA_039 = (
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema"
+    / "039_game_static_fork_permanent_review.sql"
 )
 
 
@@ -61,17 +72,42 @@ def reproject_candidate(
         shutil.copy2(source, temporary)
         with closing(sqlite3.connect(temporary)) as connection:
             connection.execute("PRAGMA foreign_keys = ON")
+            importer_version = int(connection.execute(
+                "SELECT importer_version FROM dataset"
+            ).fetchone()[0])
             schema_version = int(connection.execute(
                 "SELECT COALESCE(MAX(version), 0) FROM schema_migration"
             ).fetchone()[0])
-            if schema_version < 32:
-                raise RuntimeError(f"候选静态库 schema 不是 v32：{schema_version}")
+            if schema_version not in (38, SCHEMA_VERSION):
+                raise RuntimeError(f"候选静态库 schema 不是可升级版本：{schema_version}")
+            if schema_version == 38:
+                connection.executescript(SCHEMA_039.read_text(encoding="utf-8"))
+                connection.execute(
+                    "INSERT INTO schema_migration VALUES (?, ?)",
+                    (SCHEMA_VERSION, datetime.now(timezone.utc).isoformat()),
+                )
+                connection.execute(
+                    "UPDATE dataset SET importer_version = ?", (IMPORTER_VERSION,)
+                )
+                connection.commit()
+                schema_version = SCHEMA_VERSION
+            importer = BuffImportMixin()
+            importer.connection = connection
+            importer._import_buff_definitions(include_links=False)
+            connection.execute(
+                "UPDATE dataset SET importer_version = ?, built_at_utc = ?",
+                (IMPORTER_VERSION, datetime.now(timezone.utc).isoformat()),
+            )
+            connection.commit()
+            importer_version = IMPORTER_VERSION
             resolved, audit = resolve_projection_rows(
                 cursor_dicts(connection.execute(FORK_PERMANENT_EVIDENCE_SQL)),
                 cursor_dicts(connection.execute(FORK_REFINEMENT_LEVEL_SQL)),
+                cursor_dicts(connection.execute(FORK_SOURCE_COVERAGE_SQL)),
             )
             connection.execute("BEGIN")
             connection.execute("DELETE FROM fork_permanent_property")
+            connection.execute("DELETE FROM fork_permanent_review")
             connection.executemany(
                 """
                 INSERT INTO fork_permanent_property(
@@ -96,9 +132,20 @@ def reproject_candidate(
                     for value in resolved
                 ),
             )
-            connection.execute(
-                "UPDATE dataset SET importer_version = ?",
-                (IMPORTER_VERSION,),
+            connection.executemany(
+                """
+                INSERT INTO fork_permanent_review(
+                    fork_id, status, expected_level_count,
+                    resolved_level_count, candidate_count, detail
+                ) VALUES (?,?,?,?,?,?)
+                """,
+                (
+                    (
+                        item.fork_id, item.status, len(item.expected_levels),
+                        len(item.resolved_levels), item.candidate_count, item.detail,
+                    )
+                    for item in audit
+                ),
             )
             connection.commit()
             template_columns = tuple(
@@ -161,8 +208,12 @@ def reproject_candidate(
                     f"候选校验失败：foreign_keys={violations[:5]}, integrity={integrity}"
                 )
             connection.commit()
+            StaticGameDataDao.close_shared_connections(temporary)
+            connection.execute("VACUUM")
+        StaticGameDataDao.close_shared_connections(temporary)
         os.replace(temporary, output)
     except BaseException:
+        StaticGameDataDao.close_shared_connections(temporary)
         temporary.unlink(missing_ok=True)
         raise
 
@@ -174,7 +225,7 @@ def reproject_candidate(
         "output_filename": output.name,
         "output_sha256": file_sha256(output).upper(),
         "schema_version": schema_version,
-        "importer_version": IMPORTER_VERSION,
+        "importer_version": importer_version,
         "resolved_forks": len({value.fork_id for value in resolved}),
         "resolved_rows": len(resolved),
         "graduation_template_count": graduation_template_count,

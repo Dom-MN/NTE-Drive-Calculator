@@ -114,6 +114,41 @@ class AllocationBatchSaveTests(unittest.TestCase):
             self.dao.save_calculated_loadout_plans([a, b], checkpoint=lambda: None)
         self.assertIsNone(self.dao.get_loadout_slot(a["slot_id"])["current_plan"])
 
+    def test_new_slot_is_created_with_plan_in_same_transaction(self):
+        self.assertEqual([], self.dao.list_loadout_slots(1004))
+        row = dict(
+            slot_id=None, create_slot_name="测试", character_id=1004,
+            name="计算方案", source_snapshot_id=self.snapshot_id,
+            status="ready", score=25.0, assignments=[assignment()], payload={},
+        )
+        statements = []
+        self.dao._db().set_trace_callback(statements.append)
+        try:
+            self.dao.save_calculated_loadout_plans([row], checkpoint=lambda: None)
+        finally:
+            self.dao._db().set_trace_callback(None)
+        slots = self.dao.list_loadout_slots(1004)
+        self.assertEqual(1, len(slots))
+        self.assertTrue(slots[0]["current_plan"]["is_active"])
+        self.assertEqual(1, sum(sql == "COMMIT" for sql in statements))
+
+    def test_cancel_after_new_slot_creation_rolls_back_empty_slot(self):
+        row = dict(
+            slot_id=None, create_slot_name="测试", character_id=1004,
+            name="计算方案", source_snapshot_id=self.snapshot_id,
+            status="ready", score=25.0, assignments=[assignment()], payload={},
+        )
+
+        def cancel_after_slot_creation():
+            if self.dao.list_loadout_slots(1004):
+                raise CancelledError()
+
+        with self.assertRaises(CancelledError):
+            self.dao.save_calculated_loadout_plans(
+                [row], checkpoint=cancel_after_slot_creation,
+            )
+        self.assertEqual([], self.dao.list_loadout_slots(1004))
+
     def test_unrelated_visual_snapshot_uid_does_not_release_old_owner(self):
         first = self.dao.import_inventory_snapshot(inventory_snapshot(), source="vision")
         old = self.dao.save_loadout_plan(
@@ -192,6 +227,48 @@ class AllocationBatchSaveTests(unittest.TestCase):
         self.assertEqual(1, saved)
         self.assertTrue(self.dao.get_loadout_slot(slot)["current_plan"]["is_active"])
         self.assertEqual(2, events[-1][1])  # One validation and one committed batch; UI refresh remains.
+
+    def test_save_service_creates_missing_slot_only_with_validated_plan(self):
+        from src.services.allocation_lock_service import build_allocation_lock_snapshot
+        from src.services.allocation_plan_save import save_allocation_plans
+        from tests.test_saved_state_loadout_bridge import _snapshot, _inventory_item
+
+        snapshot = self.dao.import_inventory_snapshot(_snapshot([
+            _inventory_item(slot=41, serial=410, kind="module", geometry="ZhiJiao2"),
+            _inventory_item(slot=51, serial=510, kind="core"),
+        ]))
+        static_path = Path(__file__).resolve().parents[1] / "data/game_static.sqlite3"
+        with StaticGameDataDao(static_path) as static:
+            dataset = static.summary()["dataset"]["dataset_id"]
+        stat = static_path.stat()
+        self.assertEqual([], self.dao.list_loadout_slots(1003))
+        row = dict(
+            role_name="早雾", character_id=1003, snapshot_id=snapshot,
+            name="保存测试", score=25, payload={}, slot_id=None,
+            role_state={
+                "blueprint_layout": [
+                    ["XX"] * 5,
+                    ["XX", "L_3_TL", "L_3_TL", "XX", "XX"],
+                    ["XX", "L_3_TL", "XX", "XX", "XX"],
+                    ["XX"] * 5, ["XX"] * 5,
+                ],
+                "equipped_drives": [{"uid": "nte-module-41-410", "shape_id": "L_3_TL"}],
+                "equipped_tape": {"uid": "nte-core-51-510"},
+            },
+        )
+        save_allocation_plans(
+            database_path=Path(self.temp.name) / "user.sqlite3",
+            static_database_path=static_path,
+            static_identity=(static_path, dataset, (stat.st_size, stat.st_mtime_ns)),
+            lock_snapshot=build_allocation_lock_snapshot(
+                self.dao, inventory_snapshot_id=snapshot,
+            ),
+            rows=[row], checkpoint=lambda: None, progress=lambda _event: None,
+        )
+        slots = self.dao.list_loadout_slots(1003)
+        self.assertEqual(1, len(slots))
+        self.assertEqual("primary", slots[0]["slot_key"])
+        self.assertTrue(slots[0]["current_plan"]["is_active"])
 
 
 class AllocationSaveProgressTests(unittest.TestCase):

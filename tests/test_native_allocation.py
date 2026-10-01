@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def inputs():
-    roles = {name: {"default_set": "Set", "weights": {"攻击力%": 1.0}, "board_matrix": [[1]]}
+    roles = {name: {"default_set": "Set", "weights": {"攻击力%": 1.0}, "board_matrix": [[1]],
+                    "crit_source_known": True, "non_equipment_crit_rate": 0.0}
              for name in ("A", "B")}
     inventory = tuple(Drive(uid=f"public-{index}", quality="Gold", area=1, shape_id="X",
                             set_name="Set", main_stats={"攻击力": 42, "生命值": 560},
@@ -49,6 +50,8 @@ class NativeAllocationTests(unittest.TestCase):
                          sum(plan["score"] for plan in python.values()))
         self.assertEqual(freeze(request, scorer), before)
         self.assertTrue(all(plan["valid"] for plan in plans.values()))
+        self.assertTrue(all(plan["search_status"] == "found_unproven_optimum"
+                            for plan in plans.values()))
         self.assertIsInstance(plans["A"]["assigned_extra_drives"][0], Drive)
 
     def test_large_user_combo_limit_is_not_rejected_or_clamped(self):
@@ -64,14 +67,77 @@ class NativeAllocationTests(unittest.TestCase):
             "A": {
                 **request.roles_db["A"],
                 "active_fork_crit_rate_bonus": 32.0,
-                "fork_crit_rate": 32.0,
+                "non_equipment_crit_rate": 32.0,
             },
         }
         request = replace(request, roles_db=roles)
         payload = freeze(request, scorer)
+        self.assertEqual(2, payload["request"]["version"])
         role = next(row for row in payload["request"]["roles"] if row["name"] == "A")
         self.assertEqual(32.0, role["data"]["active_fork_crit_rate_bonus"])
-        self.assertEqual(32.0, role["data"]["fork_crit_rate"])
+        self.assertEqual(32.0, role["data"]["non_equipment_crit_rate"])
+        self.assertTrue(role["data"]["crit_source_known"])
+
+    def test_wire_omits_catalogue_roles_without_frozen_crit_evidence(self):
+        request, scorer = inputs()
+        roles = {**request.roles_db, "C": {"default_set": "Set", "weights": {}}}
+        request = replace(request, roles_db=roles, role_order=("A",), priority_groups=(("A",),))
+        payload = freeze(request, scorer)["request"]
+        self.assertEqual(["A"], [row["name"] for row in payload["roles"]])
+        self.assertEqual([0], payload["role_order"])
+        self.assertEqual([[0]], payload["groups"])
+
+    def test_unknown_automatic_cap_is_frozen_distinct_from_manual_zero(self):
+        from src.solver.orchestrator import NTEPipelineOrchestrator
+
+        request, _ = inputs()
+        orchestrator = NTEPipelineOrchestrator.from_frozen_inputs(
+            roles_db=copy.deepcopy(request.roles_db), sets_db=request.sets_db,
+            shapes_db={}, config_dir=ROOT / "config",
+        )
+        captured = []
+
+        def capture(frozen_request, scorer):
+            captured.append(freeze(frozen_request, scorer))
+            return {}
+
+        with patch.object(orchestrator, "solve_blueprints", return_value=request.blueprints_db), \
+             patch.object(orchestrator, "_render_results"):
+            orchestrator.run_full_allocation(
+                [], ["A"], crit_rate_caps={"A": None}, crit_rate_baselines={},
+                allocation_executor=capture,
+            )
+        role = next(row for row in captured[0]["request"]["roles"] if row["name"] == "A")
+        self.assertIsNone(role["cap"])
+        self.assertFalse(role["data"]["crit_source_known"])
+        self.assertTrue(role["data"]["automatic_crit_cap_source_unknown"])
+
+    def test_selected_fork_uses_frozen_formal_id(self):
+        from src.solver.orchestrator import NTEPipelineOrchestrator
+
+        request, _ = inputs()
+        roles = copy.deepcopy(request.roles_db)
+        roles["A"]["default_fork_id"] = "fork-default"
+        orchestrator = NTEPipelineOrchestrator.from_frozen_inputs(
+            roles_db=roles, sets_db=request.sets_db, shapes_db={},
+            config_dir=ROOT / "config",
+            fork_ids_by_name={"纠正弧盘": "fork-corrected"},
+        )
+        captured = []
+
+        def capture(frozen_request, scorer):
+            captured.append(freeze(frozen_request, scorer))
+            return {}
+
+        with patch.object(orchestrator, "solve_blueprints", return_value=request.blueprints_db), \
+             patch.object(orchestrator, "_render_results"):
+            orchestrator.run_full_allocation(
+                [], ["A"], custom_weapons={"A": "纠正弧盘"},
+                crit_rate_baselines={"A": 20.0}, allocation_executor=capture,
+            )
+        role = captured[0]["request"]["roles"][0]
+        self.assertEqual("fork-corrected", role["data"]["effective_fork_id"])
+        self.assertEqual(20.0, role["data"]["non_equipment_crit_rate"])
 
     def test_missing_component_has_no_python_fallback(self):
         with patch("src.integrations.native_allocation.create_bundled_analysis_client", return_value=None):
@@ -105,7 +171,7 @@ class NativeAllocationTests(unittest.TestCase):
     def test_wrong_response_version_and_nonfinite_score_are_rejected(self):
         client = NteAnalysisCoreClient(
             ROOT / "third_party/analysis-core/bin/nte-analysis-core.exe", "fixture",
-            capabilities=frozenset({"allocation_v1"}),
+            capabilities=frozenset({"allocation_v2"}),
         )
         for response in ({"batch_kind": "other", "version": 1, "plans": {}},
                          {"batch_kind": "allocation_v1", "version": True, "plans": {}},

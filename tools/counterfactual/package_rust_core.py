@@ -46,7 +46,7 @@ def main() -> int:
         or not isinstance(capabilities, list)
         or "battle_page_v1" not in capabilities
         or "main_static_catalog_v1" not in capabilities
-        or "allocation_v1" not in capabilities
+        or "allocation_v2" not in capabilities
     ):
         raise RuntimeError("分析组件缺少战报数据库直读或空幕分配能力")
     source_files = [source / name for name in (
@@ -88,7 +88,7 @@ def main() -> int:
     if source_notice.resolve() != (destination / "SOURCE.md").resolve():
         shutil.copy2(source_notice, destination / "SOURCE.md")
     text = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
-    (destination / "component.json").write_text(text, encoding="utf-8")
+    (destination / "component.json").write_bytes(text.encode("utf-8"))
     if sha256(destination / "bin/nte-analysis-core.exe") != manifest["sha256"]:
         raise RuntimeError("deployed binary hash mismatch")
     output = args.output.resolve()

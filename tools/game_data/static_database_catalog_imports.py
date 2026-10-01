@@ -9,6 +9,7 @@ from typing import Any
 from src.storage.sqlite.fork_permanent_projection import (
     FORK_PERMANENT_EVIDENCE_SQL,
     FORK_REFINEMENT_LEVEL_SQL,
+    FORK_SOURCE_COVERAGE_SQL,
     cursor_dicts,
     resolve_projection_rows,
 )
@@ -45,8 +46,34 @@ class CatalogImportMixin:
         resolved, audit = resolve_projection_rows(
             cursor_dicts(self.connection.execute(FORK_PERMANENT_EVIDENCE_SQL)),
             cursor_dicts(self.connection.execute(FORK_REFINEMENT_LEVEL_SQL)),
+            cursor_dicts(self.connection.execute(FORK_SOURCE_COVERAGE_SQL)),
         )
+        fork_ids = {
+            str(row[0]) for row in self.connection.execute("SELECT fork_id FROM fork_item")
+        }
+        audited_ids = {item.fork_id for item in audit}
+        if audited_ids != fork_ids or len(audit) != len(fork_ids):
+            raise StaticDatabaseError(
+                "弧盘常驻属性审计未逐件覆盖入库弧盘："
+                f"未审查 {sorted(fork_ids - audited_ids)[:10]}，"
+                f"多出 {sorted(audited_ids - fork_ids)[:10]}"
+            )
         self.fork_permanent_property_audit = [item.to_dict() for item in audit]
+        self.connection.executemany(
+            """
+            INSERT INTO fork_permanent_review(
+                fork_id, status, expected_level_count,
+                resolved_level_count, candidate_count, detail
+            ) VALUES (?,?,?,?,?,?)
+            """,
+            (
+                (
+                    item.fork_id, item.status, len(item.expected_levels),
+                    len(item.resolved_levels), item.candidate_count, item.detail,
+                )
+                for item in audit
+            ),
+        )
         for value in resolved:
             self.connection.execute(
                 """

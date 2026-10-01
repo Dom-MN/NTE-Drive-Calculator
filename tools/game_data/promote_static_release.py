@@ -31,6 +31,15 @@ try:
     )
     from .repair_reference_gold_catalog import validate_gold_fix_provenance
     from .reference_progression_currency import validate_reference_progression_currency
+    from .static_release_fork_promotion import (
+        FORK_REPROJECTION_PROVENANCE_FILENAME,
+        validate_fork_candidate, check_fork_baseline,
+    )
+    from .static_release_size_policy import (
+        DATABASE_HARD_LIMIT_BYTES, DATABASE_REPOSITORY_BUDGET_BYTES,
+        DATABASE_WARNING_BYTES, MIB_BYTES, StaticReleasePromotionError,
+        format_size, validate_database_size,
+    )
 except ImportError:  # 支持直接运行
     from static_database_build_support import (
         IMPORTER_VERSION,
@@ -47,6 +56,15 @@ except ImportError:  # 支持直接运行
     )
     from repair_reference_gold_catalog import validate_gold_fix_provenance
     from reference_progression_currency import validate_reference_progression_currency
+    from static_release_fork_promotion import (
+        FORK_REPROJECTION_PROVENANCE_FILENAME,
+        validate_fork_candidate, check_fork_baseline,
+    )
+    from static_release_size_policy import (
+        DATABASE_HARD_LIMIT_BYTES, DATABASE_REPOSITORY_BUDGET_BYTES,
+        DATABASE_WARNING_BYTES, MIB_BYTES, StaticReleasePromotionError,
+        format_size, validate_database_size,
+    )
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -55,51 +73,7 @@ DATABASE_FILENAME = "game_static.sqlite3"
 MANIFEST_FILENAME = "manifest.json"
 REPORT_RELATIVE_PATH = Path("report") / "static_database_report.json"
 GOLD_FIX_PROVENANCE_FILENAME = "gold_fix_provenance.json"
-MIB_BYTES = 1024 * 1024
-DATABASE_WARNING_BYTES = 95 * MIB_BYTES
-DATABASE_REPOSITORY_BUDGET_BYTES = 96 * MIB_BYTES
-DATABASE_HARD_LIMIT_BYTES = 100 * MIB_BYTES
 SIZE_MANIFEST_REQUIRED_SCHEMA_VERSION = 30
-
-
-class StaticReleasePromotionError(RuntimeError):
-    """候选静态库不满足发行晋升条件。"""
-
-
-def format_size(size_bytes: int) -> str:
-    """同时显示无歧义的字节数和二进制 MiB。"""
-
-    return f"{size_bytes} bytes ({size_bytes / MIB_BYTES:.2f} MiB)"
-
-
-def validate_database_size(
-    size_bytes: int,
-    *,
-    allow_size_warning: bool = False,
-    repository_bound: bool = True,
-) -> None:
-    """执行项目体积预算与 GitHub 100 MiB 单文件硬边界。"""
-
-    if size_bytes >= DATABASE_HARD_LIMIT_BYTES:
-        raise StaticReleasePromotionError(
-            "发行静态数据库达到 GitHub 单文件永久硬上限："
-            f"实际={format_size(size_bytes)}，"
-            f"上限<{format_size(DATABASE_HARD_LIMIT_BYTES)}"
-        )
-    if repository_bound and size_bytes > DATABASE_REPOSITORY_BUDGET_BYTES:
-        raise StaticReleasePromotionError(
-            "发行静态数据库超过仓库绝对预算："
-            f"实际={format_size(size_bytes)}，"
-            f"预算<={format_size(DATABASE_REPOSITORY_BUDGET_BYTES)}；"
-            "请改为 Release 分发或拆分只读库"
-        )
-    if size_bytes >= DATABASE_WARNING_BYTES and not allow_size_warning:
-        raise StaticReleasePromotionError(
-            "发行静态数据库达到默认阻断边界："
-            f"实际={format_size(size_bytes)}，"
-            f"边界={format_size(DATABASE_WARNING_BYTES)}；"
-            "审计增量后可显式使用 --allow-size-warning"
-        )
 
 
 def sha256(path: Path) -> str:
@@ -450,12 +424,23 @@ def _validate_candidate_database(
     provenance_path = candidate_dir / PROVENANCE_FILENAME
     repack_path = candidate_dir / STORAGE_REPACK_PROVENANCE_FILENAME
     gold_fix_path = candidate_dir / GOLD_FIX_PROVENANCE_FILENAME
-    if sum(path.is_file() for path in (provenance_path, repack_path, gold_fix_path)) > 1:
+    fork_reprojection_path = candidate_dir / FORK_REPROJECTION_PROVENANCE_FILENAME
+    if sum(path.is_file() for path in (
+        provenance_path, repack_path, gold_fix_path, fork_reprojection_path,
+    )) > 1:
         raise StaticReleasePromotionError("候选只能声明一种特殊晋升来源")
     upgrade_provenance = None
     storage_repack_provenance = None
     gold_fix_provenance = None
-    if gold_fix_path.is_file():
+    fork_reprojection_provenance = None
+    if fork_reprojection_path.is_file():
+        try:
+            fork_reprojection_provenance = validate_fork_candidate(
+                database_path, candidate_dir, config,
+            )
+        except (OSError, RuntimeError, sqlite3.Error, ValueError, KeyError) as exc:
+            raise StaticReleasePromotionError(f"弧盘重投影 provenance 校验失败：{exc}") from exc
+    elif gold_fix_path.is_file():
         baseline_database_value = config.get("baseline_database_path")
         baseline_manifest_value = config.get("baseline_manifest_path")
         if not isinstance(baseline_database_value, str) or not isinstance(baseline_manifest_value, str):
@@ -521,6 +506,7 @@ def _validate_candidate_database(
         "upgrade_provenance": upgrade_provenance,
         "storage_repack_provenance": storage_repack_provenance,
         "gold_fix_provenance": gold_fix_provenance,
+        "fork_reprojection_provenance": fork_reprojection_provenance,
     }
 
 
@@ -625,6 +611,12 @@ def promote_candidate(
         ):
             raise StaticReleasePromotionError("正式库已变化，物理压缩候选必须重新生成")
     gold_fix_path = resolved_candidate_dir / GOLD_FIX_PROVENANCE_FILENAME
+    fork_reprojection_path = resolved_candidate_dir / FORK_REPROJECTION_PROVENANCE_FILENAME
+    if fork_reprojection_path.is_file():
+        try:
+            check_fork_baseline(resolved_candidate_dir, target_dir)
+        except (OSError, ValueError) as exc:
+            raise StaticReleasePromotionError(str(exc)) from exc
     if gold_fix_path.is_file():
         provenance = _read_json_object(gold_fix_path, "甲硬币修复 provenance")
         current_database = target_dir / DATABASE_FILENAME

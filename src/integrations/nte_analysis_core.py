@@ -106,7 +106,7 @@ class NteAnalysisCoreClient:
         )
         self.supports_allocation = (
             engine_version == ENGINE_VERSION
-            and capabilities is not None and "allocation_v1" in capabilities
+            and capabilities is not None and "allocation_v2" in capabilities
         )
         self.timeout = timeout
         self.cancelled = cancelled
@@ -274,7 +274,7 @@ class NteAnalysisCoreClient:
             raise NativeAnalysisError("空幕分配输入超过大小限制")
         response = _json_object(self._run(encoded, checkpoint=checkpoint))
         if (response.get("batch_kind") != "allocation_v1"
-                or type(response.get("version")) is not int or response["version"] != 1
+                or type(response.get("version")) is not int or response["version"] != 2
                 or not isinstance(response.get("plans"), dict)):
             raise NativeAnalysisError("空幕分配响应协议不匹配")
         self._checkpoint(checkpoint)

@@ -23,6 +23,7 @@ from src.services.custom_character_service import (
     save_custom_character_shape_bonus,
 )
 from src.storage.sqlite.static_game_data_dao import STATIC_DATABASE_ENV, StaticGameDataDao
+from src.storage.sqlite.static_game_data_metadata import SCHEMA_VERSION as STATIC_SCHEMA_VERSION
 from src.storage.sqlite.user_data_dao import UserDataDao
 
 
@@ -149,7 +150,7 @@ class AllocationContextTests(unittest.TestCase):
         self.assertEqual("allocation-context", context.account_id)
         self.assertEqual(snapshot_id, context.snapshot.snapshot_id)
         self.assertEqual("weighted-solver-v1", context.solver_version)
-        self.assertEqual(38, context.static_dataset.schema_version)
+        self.assertEqual(STATIC_SCHEMA_VERSION, context.static_dataset.schema_version)
         self.assertTrue(context.static_dataset.dataset_id)
         self.assertEqual([1003, 1004], [role.character_id for role in context.roles])
         self.assertEqual([0, 2], [role.priority_group for role in context.roles])

@@ -23,6 +23,7 @@ from src.optimizer.contracts import (
     plan_drives,
 )
 from src.services.game_ui_asset_catalog import GameUiAssetCatalog
+from src.services.allocation_failure_text import allocation_failure_text
 from src.services.warehouse_visual_catalog import representative_module_item_id
 from src.ui.puzzle_board import PuzzleBoardWidget
 from src.features.allocation.results_diff_view import _diff_value
@@ -113,8 +114,8 @@ def _render_results(self, plan):
         return
     for role, p in plan.items():
         if not p or not p.get(PLAN_VALID):
-            reason = str((p or {}).get("reason") or "无法凑齐图纸所需的卡带或驱动")
-            failure = QLabel(f"❌ {role}: 无有效配装方案\n原因：{reason}")
+            reason = allocation_failure_text(p)
+            failure = QLabel(f"❌ {role}：{reason}")
             failure.setWordWrap(True)
             failure.setStyleSheet(themed_style("color:#f85149;padding:8px 2px"))
             self.result_content_layout.addWidget(failure)

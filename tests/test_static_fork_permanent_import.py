@@ -6,8 +6,13 @@ from __future__ import annotations
 import json
 import sqlite3
 import unittest
+from unittest.mock import patch
 
 from tools.game_data.static_database_catalog_imports import CatalogImportMixin
+from tools.game_data.static_database_build_support import StaticDatabaseError
+
+
+NTE_TEST_TIER = "core"
 
 
 class _ForkPermanentImportProbe(CatalogImportMixin):
@@ -56,7 +61,13 @@ def _connection() -> sqlite3.Connection:
             property_value REAL NOT NULL, source_parameter_name_id TEXT NOT NULL,
             source_effect_definition_id TEXT NOT NULL,
             source_calculation_asset_path TEXT NOT NULL, source_row_id INTEGER NOT NULL,
-            PRIMARY KEY (fork_id, refinement_level)
+            PRIMARY KEY (fork_id, refinement_level, property_id)
+        );
+        CREATE TABLE fork_permanent_review (
+            fork_id TEXT PRIMARY KEY, status TEXT NOT NULL,
+            expected_level_count INTEGER NOT NULL,
+            resolved_level_count INTEGER NOT NULL,
+            candidate_count INTEGER NOT NULL, detail TEXT NOT NULL
         );
     """)
     return connection
@@ -110,6 +121,46 @@ def _add_fork(
 
 
 class StaticForkPermanentImportTests(unittest.TestCase):
+    def test_candidate_import_rejects_an_incomplete_per_fork_audit(self) -> None:
+        connection = _connection()
+        self.addCleanup(connection.close)
+        connection.execute("INSERT INTO fork_item VALUES (?, ?)", ("fork_Unreviewed", "star"))
+        probe = _ForkPermanentImportProbe(connection)
+
+        with patch(
+            "tools.game_data.static_database_catalog_imports.resolve_projection_rows",
+            return_value=((), ()),
+        ), self.assertRaisesRegex(StaticDatabaseError, "未逐件覆盖"):
+            probe._import_fork_permanent_properties()
+
+    def test_fork_without_refinement_levels_still_receives_an_audit(self) -> None:
+        connection = _connection()
+        self.addCleanup(connection.close)
+        connection.execute(
+            "INSERT INTO fork_item VALUES (?, ?)",
+            ("fork_NoLevels", "star_missing"),
+        )
+
+        probe = _ForkPermanentImportProbe(connection)
+        probe._import_fork_permanent_properties()
+
+        self.assertEqual(
+            [{
+                "fork_id": "fork_NoLevels",
+                "status": "missing_refinement_levels",
+                "expected_levels": (),
+                "resolved_levels": (),
+                "candidate_count": 0,
+            "binding_method": "none",
+                "detail": "弧盘已入库，但未找到可审查的精炼等级定义",
+            }],
+            probe.fork_permanent_property_audit,
+        )
+        self.assertEqual(
+            0,
+            connection.execute("SELECT COUNT(*) FROM fork_permanent_property").fetchone()[0],
+        )
+
     def test_uses_inherited_modifier_when_refinement_buff_has_no_local_modifier(self) -> None:
         connection = _connection()
         self.addCleanup(connection.close)
@@ -244,6 +295,45 @@ class StaticForkPermanentImportTests(unittest.TestCase):
         self.assertEqual(
             {"conditional_only"},
             {item["status"] for item in probe.fork_permanent_property_audit},
+        )
+
+    def test_two_unconditional_panel_properties_share_one_refinement(self) -> None:
+        connection = _connection()
+        self.addCleanup(connection.close)
+        _add_fork(
+            connection,
+            fork_id="fork_TwinBirds",
+            property_id="MagBase",
+            parameter_id="Buff_TwinBirds_MagUp",
+            values=(72.0, 90.0),
+        )
+        for refinement, value in enumerate((0.20, 0.25), start=1):
+            connection.execute(
+                "INSERT INTO fork_star_parameter VALUES (?, ?, 1, ?)",
+                ("star_fork_TwinBirds", refinement, "Buff_TwinBirds_PsycheUp"),
+            )
+            connection.execute(
+                "INSERT INTO fork_refinement_parameter_value VALUES (?, ?, ?, ?)",
+                ("Buff_TwinBirds_PsycheUp", refinement, value, 100 + refinement),
+            )
+        connection.execute(
+            """INSERT INTO buff_modifier(
+                   asset_path, ordinal, property_id, modifier_operation,
+                   calculation_asset_path
+               ) VALUES (
+                   'buff:fork_TwinBirds', 1, 'DamageUpPsycheBase',
+                   'EGameplayModOp::Additive', '/Game/Calculation/TwinBirds/Psyche'
+               )"""
+        )
+
+        _ForkPermanentImportProbe(connection)._import_fork_permanent_properties()
+        self.assertEqual(
+            [(1, "DamageUpPsycheBase", 0.20), (1, "MagBase", 72.0),
+             (2, "DamageUpPsycheBase", 0.25), (2, "MagBase", 90.0)],
+            connection.execute(
+                "SELECT refinement_level, property_id, property_value "
+                "FROM fork_permanent_property ORDER BY refinement_level, property_id"
+            ).fetchall(),
         )
 
     def test_ambiguous_direct_mapping_is_audited_without_guessing(self) -> None:

@@ -491,7 +491,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
 
     def _set_custom_weapon(self, name, text):
         weapon = str(text or "").strip()
-        if weapon and weapon != self._default_weapon_for_role(name):
+        if weapon:
             self.custom_weapons[name] = weapon
         else:
             self.custom_weapons.pop(name, None)
@@ -532,14 +532,18 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
     def _automatic_crit_rate_cap(self, name: str, weapon_name: str) -> float | None:
         """Leave room for the selected fork and enabled level-10 affinity."""
 
-        fork_crit = self._active_fork_crit_rate(name, weapon_name) or 0.0
+        fork_crit = self._active_fork_crit_rate(name, weapon_name)
         affinity_crit = self._likeability_crit_rate(name)
-        if fork_crit <= 0.0 and affinity_crit <= 0.0:
+        if fork_crit is None:
             return None
         return round(max(0.0, 100.0 - fork_crit - affinity_crit * 100.0), 4)
 
     def _active_fork_crit_rate(self, name: str, weapon_name: str) -> float | None:
         role = self.all_roles.get(name) or {}
+        if role.get("is_custom") and not weapon_name:
+            return 0.0
+        if name in self.custom_weapons:
+            return self._weapon_crit_rate(weapon_name)
         if weapon_name == str(role.get("default_weapon") or ""):
             value = role.get("active_fork_crit_rate_bonus")
             if value is not None:
@@ -547,18 +551,27 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
                     return max(0.0, float(value))
                 except (TypeError, ValueError):
                     pass
+            if role.get("active_fork_crit_source_resolved"):
+                return None
         return self._weapon_crit_rate(weapon_name)
 
     def _weapon_crit_rate(self, weapon_name):
         info = self.weapons_db.get(weapon_name)
         if not isinstance(info, dict):
             return None
-        stats = {}
-        level_stats = info.get("level_sub_stats")
-        if isinstance(level_stats, dict) and level_stats:
-            stats = level_stats.get("80") or level_stats.get(80) or next(iter(level_stats.values()), {})
+        if info.get("permanent_properties_known") is False:
+            return None
+        stats = info.get("sub_stats")
         if not isinstance(stats, dict) or not stats:
-            stats = info.get("sub_stats", {}) if isinstance(info.get("sub_stats", {}), dict) else {}
+            level_stats = info.get("level_sub_stats")
+            if isinstance(level_stats, dict) and level_stats:
+                levels = [level for level in level_stats if str(level).isdigit()]
+                if levels:
+                    stats = level_stats[max(levels, key=lambda level: int(level))]
+        if not isinstance(stats, dict):
+            return None
+        if not stats and info.get("permanent_properties_known") is not True:
+            return None
         for key, value in stats.items():
             normalized = str(key or "").replace("%", "")
             if "暴击率" in normalized or "鏆村嚮鐜" in normalized:
@@ -566,18 +579,18 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
                     return max(0.0, float(value))
                 except (TypeError, ValueError):
                     return None
-        return None
+        return 0.0
 
     def get_crit_rate_baselines(self):
-        """Return active fork-only crit for the role-priority floor check.
+        """Return frozen non-equipment crit for the role-priority floor check.
 
         The solver already owns the universal 5% base rate and all selected
-        equipment stats.  This value contains the selected fork's permanent,
-        breakthrough and level crit projection exactly once.
+        equipment stats. This value contains the selected fork's permanent,
+        breakthrough and level crit plus enabled affinity exactly once.
         """
 
         return {
-            name: crit_rate
+            name: round(crit_rate + self._likeability_crit_rate(name) * 100.0, 4)
             for name in self.selected
             if (
                 crit_rate := self._active_fork_crit_rate(

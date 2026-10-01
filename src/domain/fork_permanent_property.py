@@ -12,9 +12,11 @@ from typing import Any, Iterable, Mapping
 _PROPERTY_SUFFIX_ALIASES: dict[str, frozenset[str]] = {
     "atkup": frozenset(("atk",)),
     "chargegetefficiencybase": frozenset(("chargegetefficiency",)),
-    "critbase": frozenset(("crit",)),
+    "critbase": frozenset(("crit", "critup")),
     "critdamagebase": frozenset(("critdamage",)),
+    "damageuppsychebase": frozenset(("psycheup",)),
     "hpmaxup": frozenset(("hpmax", "hp")),
+    "magbase": frozenset(("magup",)),
     "unbalintensitybase": frozenset(("unbalintensity", "unbal")),
 }
 _TAG_COLUMNS = (
@@ -115,72 +117,79 @@ def resolve_fork_permanent_properties(
     """Resolve complete refinement curves and audit every fork without guessing."""
 
     all_rows: dict[str, list[Mapping[str, Any]]] = {}
-    named_matches: dict[str, list[Mapping[str, Any]]] = {}
     for row in rows:
         fork_id = str(row["fork_id"])
         all_rows.setdefault(fork_id, []).append(row)
-        if is_fork_permanent_property_parameter(
-            row.get("property_id"), row.get("name_id")
-        ):
-            named_matches.setdefault(fork_id, []).append(row)
 
     resolved_all: list[ForkPermanentProperty] = []
     audits: list[ForkPermanentAudit] = []
     for fork_id in sorted(expected_levels):
         expected = tuple(sorted({int(level) for level in expected_levels[fork_id]}))
-        binding_method = "property_parameter_identity"
-        selected_rows = named_matches.get(fork_id, [])
-        if not selected_rows:
-            binding_method = "primary_parameter_structure"
-            selected_rows = [
-                row
-                for row in all_rows.get(fork_id, ())
-                if int(row.get("parameter_ordinal", -1)) == 0
+        fork_rows = all_rows.get(fork_id, [])
+        direct_rows = [row for row in fork_rows if is_unconditional_fork_modifier(row)]
+        properties = sorted({str(row["property_id"]) for row in direct_rows})
+        selected: list[ForkPermanentProperty] = []
+        methods: set[str] = set()
+        ambiguous = False
+        incomplete = False
+        candidate_count = 0
+        for property_id in properties:
+            property_rows = [
+                row for row in direct_rows if str(row["property_id"]) == property_id
             ]
-        fork_matches = [
-            (_candidate(row), is_unconditional_fork_modifier(row))
-            for row in selected_rows
-        ]
-        direct = [value for value, unconditional in fork_matches if unconditional]
-        by_level: dict[int, set[ForkPermanentProperty]] = {}
-        for value in direct:
-            by_level.setdefault(value.refinement_level, set()).add(value)
-        unique = {
-            level: next(iter(values))
-            for level, values in by_level.items()
-            if len(values) == 1
-        }
-        candidate_count = sum(len(values) for values in by_level.values())
+            named = [
+                row for row in property_rows
+                if is_fork_permanent_property_parameter(property_id, row["name_id"])
+            ]
+            if named:
+                methods.add("property_parameter_identity")
+                property_rows = named
+            elif len(properties) == 1:
+                methods.add("primary_parameter_structure")
+                property_rows = [
+                    row for row in property_rows
+                    if int(row.get("parameter_ordinal", -1)) == 0
+                ]
+            else:
+                ambiguous = True
+                continue
+            by_level: dict[int, set[ForkPermanentProperty]] = {}
+            for row in property_rows:
+                value = _candidate(row)
+                by_level.setdefault(value.refinement_level, set()).add(value)
+            candidate_count += sum(len(values) for values in by_level.values())
+            if any(len(values) > 1 for values in by_level.values()):
+                ambiguous = True
+            elif tuple(sorted(by_level)) != expected:
+                incomplete = True
+            else:
+                selected.extend(next(iter(by_level[level])) for level in expected)
+        binding_method = "+".join(sorted(methods)) or "none"
+        resolved_levels = tuple(sorted({value.refinement_level for value in selected}))
         status = "missing_calculation_evidence"
         detail = "未找到属性与精炼参数相互匹配的计算证据"
-        if fork_matches and not direct:
+        if not expected:
+            status = "missing_refinement_levels"
+            detail = "弧盘已入库，但未找到可审查的精炼等级定义"
+        elif fork_rows and not direct_rows:
             status = "conditional_only"
             detail = "匹配项均含施加条件或标签条件"
-        elif any(len(values) > 1 for values in by_level.values()):
+        elif ambiguous:
             status = "ambiguous"
-            detail = "同一精炼等级存在多个直接候选"
-        elif tuple(sorted(unique)) != expected:
-            if direct:
-                status = "incomplete_curve"
-                detail = "直接候选未覆盖完整精炼曲线"
-        elif unique:
-            identities = {
-                (value.property_id, value.parameter_name_id)
-                for value in unique.values()
-            }
-            if len(identities) != 1:
-                status = "ambiguous"
-                detail = "不同精炼等级解析到不同属性或参数"
-            else:
-                status = "resolved_permanent"
-                detail = "完整无条件直接属性曲线"
-                resolved_all.extend(unique[level] for level in expected)
+            detail = "属性与精炼参数无法一对一对应，或同级属性有多个来源"
+        elif incomplete:
+            status = "incomplete_curve"
+            detail = "直接候选未覆盖完整精炼曲线"
+        elif selected:
+            status = "resolved_permanent"
+            detail = "完整无条件直接属性曲线"
+            resolved_all.extend(selected)
         audits.append(
             ForkPermanentAudit(
                 fork_id=fork_id,
                 status=status,
                 expected_levels=expected,
-                resolved_levels=tuple(sorted(unique)),
+                resolved_levels=resolved_levels,
                 candidate_count=candidate_count,
                 binding_method=binding_method,
                 detail=detail,

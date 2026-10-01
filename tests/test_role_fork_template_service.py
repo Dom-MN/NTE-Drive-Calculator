@@ -38,3 +38,21 @@ class OfficialRoleForkTemplateServiceTests(unittest.TestCase):
 
         self.assertEqual(1, model["mix_level"])
         self.assertEqual(40.0, model["sub_stats"]["暴击率%"])
+
+    def test_selected_fork_uses_highest_available_breakthrough_for_known_crit(self):
+        models = fork_templates_as_weapon_models({"forks": [{
+            "fork_id": "fork_new", "name_zh": "新弧盘", "max_star": 5,
+            "upgrade_levels": [{"level": 20, "modifiers": []}],
+            "breakthroughs": [
+                {"stage": 1, "max_fork_level": 20, "modifiers": [
+                    {"property_id": "CritBase", "value": 0.1},
+                ]},
+                {"stage": 2, "max_fork_level": 40, "modifiers": [
+                    {"property_id": "CritBase", "value": 0.2},
+                ]},
+            ],
+            "permanent_properties": [],
+        }]})
+
+        self.assertEqual(20.0, models["新弧盘"]["sub_stats"]["暴击率%"])
+        self.assertTrue(models["新弧盘"]["permanent_properties_known"])
