@@ -155,6 +155,80 @@ def test_legacy_calculation_projection_uses_current_role_profile() -> None:
     assert "main_weights" not in projected
 
 
+def test_unknown_profile_fork_does_not_restore_graduation_crit() -> None:
+    detail = {
+        "profile": {
+            "persisted": True, "fork_id": "fork-not-in-static",
+            "likeability_level_10_enabled": False,
+        },
+        "forks": ({
+            "fork_id": "fork-template", "name_zh": "毕业模板弧盘",
+            "permanent_properties": ({
+                "refinement_level": 1, "property_id": "CritBase",
+                "property_value": 0.2,
+            },),
+        },),
+    }
+    projected = catalog_service._current_role_calculation_projection(detail)
+
+    assert projected["default_weapon"] == ""
+    assert projected["active_fork_crit_rate_bonus"] is None
+    assert projected["likeability_level_10_enabled"] is False
+
+
+def test_missing_refinement_evidence_is_not_a_confirmed_zero() -> None:
+    fork = {
+        "fork_id": "fork-current", "name_zh": "当前弧盘",
+        "permanent_properties": ({
+            "refinement_level": 1, "property_id": "CritBase",
+            "property_value": 0.2,
+        },),
+    }
+    for refinement in (None, 2):
+        projected = catalog_service._current_role_calculation_projection({
+            "profile": {
+                "fork_id": "fork-current", "fork_level": 1,
+                "fork_refinement_level": refinement,
+            },
+            "forks": (fork,),
+        })
+        assert projected["active_fork_crit_rate_bonus"] is None
+
+
+def test_reviewed_fork_without_permanent_rows_keeps_level_crit_known() -> None:
+    fork = {
+        "fork_id": "fork-reviewed", "name_zh": "已审查弧盘",
+        "permanent_review_status": "conditional_only",
+        "upgrade_levels": ({
+            "level": 80,
+            "modifiers": ({"property_id": "CritBase", "value": 0.22},),
+        },),
+        "breakthroughs": (),
+        "permanent_properties": (),
+    }
+    projected = catalog_service._current_role_calculation_projection({
+        "profile": {
+            "fork_id": "fork-reviewed", "fork_level": 80,
+            "fork_refinement_level": 1,
+        },
+        "forks": (fork,),
+    })
+
+    assert projected["active_fork_crit_rate_bonus"] == 22.0
+
+
+def test_explicit_unequipped_fork_has_confirmed_zero_crit() -> None:
+    projected = catalog_service._current_role_calculation_projection({
+        "profile": {"persisted": True, "fork_id": None,
+                    "likeability_level_10_enabled": True},
+        "forks": (),
+    })
+
+    assert projected["default_weapon"] == ""
+    assert projected["active_fork_crit_rate_bonus"] == 0.0
+    assert projected["likeability_level_10_enabled"] is True
+
+
 def test_legacy_catalog_freezes_role_projection_when_account_exists(tmp_path) -> None:
     database = tmp_path / "user.sqlite3"
     with UserDataDao(database, account_id="role-projection"):
@@ -195,6 +269,7 @@ def test_legacy_catalog_freezes_role_projection_when_account_exists(tmp_path) ->
     role = next(iter(catalog.roles_db.values()))
     assert role["default_weapon"] == "当前弧盘"
     assert role["active_fork_crit_rate_bonus"] == 12.5
+    assert role["active_fork_crit_source_resolved"] is True
     assert role["weights"] == {"暴击率%": 1.0}
     assert role["main_weights"] == {"攻击力%": 0.8}
     assert project.called

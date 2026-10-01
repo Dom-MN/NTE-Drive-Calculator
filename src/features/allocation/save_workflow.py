@@ -87,6 +87,7 @@ def save_allocation(owner, *, show_message=True):
     from src.features.allocation.runner import (
         _allocation_paths, _select_allocation_save_slots, _role_state_from_plan,
         _persistable_plan_diff, _plan_changed_uids, _plan_assignment_scores,
+        _allocation_context_identity,
     )
 
     if not owner.final_plan or getattr(owner, "_saving", False):
@@ -104,14 +105,13 @@ def save_allocation(owner, *, show_message=True):
         button.repaint()
     dialog = None
     saved_count = 0
-    context = owner.app_context
-    generation = context.generation
+    context_identity = _allocation_context_identity(owner)
     cancel_event = owner._cancel_event
     cancel_event.clear()
     started = time.perf_counter()
 
     def checkpoint():
-        if context.generation != generation or cancel_event.is_set():
+        if _allocation_context_identity(owner) != context_identity or cancel_event.is_set():
             raise CancelledError("保存已取消或账号上下文已失效")
 
     try:
@@ -127,6 +127,7 @@ def save_allocation(owner, *, show_message=True):
             targets = _select_allocation_save_slots(owner, user_dao, static_dao, snapshot_id)
             if targets is None:
                 return False
+        checkpoint()
         # The plan is owned by this save operation until the modal worker finishes.
         source_plans = owner.final_plan
         strategy = owner._pending_strat
@@ -169,7 +170,7 @@ def save_allocation(owner, *, show_message=True):
 
         dialog = AllocationSaveProgress(owner.dialog_parent)
         saved_count, plans, diffs, row_count = dialog.run(prepare_and_save, owner)
-        if context.generation != generation:
+        if _allocation_context_identity(owner) != context_identity:
             return False
         owner.allocation_plan_diff = diffs
         owner._allocation_dirty = False

@@ -23,14 +23,14 @@
     "allocation_v1",
     "allocation_v2"
   ],
-  "sha256": "9556d687e25d582dbd1438feaf01bcd9ff024b43295389f4070ac2008dbbd286",
+  "sha256": "59ab7bc1ea3364c49c3fbe9aba982aa7906b1dbdb628d6ea241da256878c655d",
   "size_bytes": 15602688,
   "source_files": {
     "AGENTS.md": "4650ae73c0ee116295e503f8f8d30b6202e0c9c9aaaea11e9171961c6ec80b53",
     "Cargo.lock": "4e7ab3b35a5fb06fb3aee0f3338766d7e0f96a3dc7b0051a8458cd5b82060e03",
     "Cargo.toml": "eda5ac813da8f49e5be819ad7e23a1f39b400b626f5030fccce550f0d89aa059",
     "data/analysis_algorithm_rules.json": "b593a6b7667dba62e61b5f88a6f1bedeb4ba3d3dcd135284d3afc44f8a6fde8a",
-    "data/battle_analysis_contract.json": "7560d241123d561283ca30f1723c81ccf2ae4acf608c7ce2ea8e63fac9a946d5",
+    "data/battle_analysis_contract.json": "af5e3daa09a02d4ece5cfeb870ce51407546d95e82a902500fc2c2a78ec7a451",
     "data/fork_permanent_evidence.sql": "de4b08fc39d0d8da3dacbc3aadec6cd6b129bc55268c3f67c42b9dc04e7610d7",
     "data/fork_refinement_levels.sql": "03fc1c286987f13b9bceaaa330e346c9bc397d08e9fe48b8c74f67b07c9c5b4e",
     "data/skill_damage_owners.sql": "80723300b91063da2469d7e44126298c1f0c6d36975758c45163e6e9e99539f0",
@@ -290,11 +290,11 @@
     "tests/treatment_compute_contract.rs": "d4fb9c954028231c3246d530588db590bfe5e947e62f426cf9e02cb51f8f4d95",
     "THIRD_PARTY_NOTICES.txt": "9e5ac915f08ec1b3ed8abb753ff6adb0ed071d465b233bec538c9da287918844"
   },
-  "source_base_commit": "12d6d9c4185d4759b0df57f4264aa784c14aa2e6",
+  "source_base_commit": "3974e6ec1875b94320c9511860f27c809c060722",
   "source_worktree_modified": false,
   "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
   "license_sha256": "e0eedba615d5cd1b986afb6c5b3a4b1ae33713e7e9dc74d19daec5e3221f9d2e",
   "dependency_notices_sha256": "9e5ac915f08ec1b3ed8abb753ff6adb0ed071d465b233bec538c9da287918844",
   "scope": "native read-only account and static database loading, frozen battle analysis, replay, robust target fitting, buff and equipment counterfactuals, marginal panel, frozen drive allocation; Python owns user input, blueprint generation, process lifecycle and rendering",
-  "source_input_sha256": "b55771894d86fa13bcb0e2a989aeae900dc66530ace0aeadbe15f88d68e66be4"
+  "source_input_sha256": "3a33af9c958e53547faa19b5d1f69996d2b7d288ccedb99a7e2096336c2bc49d"
 }

@@ -6,17 +6,16 @@ from src.features.weighted_allocation.help_text import WEIGHTED_CRIT_THRESHOLD_H
 
 
 def test_critical_rate_help_names_the_exact_included_and_excluded_sources() -> None:
-    expected_sources = "5% 基础 + 空幕词条 + 额外驱动加成"
-    minimum_exclusions = "不含弧盘、好感度 10 级、角色成长、武器和其他 Buff"
+    expected_sources = "5% 基础 + 卡带/驱动暴击率 + 实际额外驱动加成"
 
     assert expected_sources in CRIT_THRESHOLD_HELP
-    assert minimum_exclusions in CRIT_THRESHOLD_HELP
-    assert "好感暴击率不降低最小值" in CRIT_THRESHOLD_HELP
-    assert "未达标时优先补暴击" in CRIT_THRESHOLD_HELP
-    assert "超过上限的方案无效" not in CRIT_THRESHOLD_HELP
-    assert "100% − 已选弧盘暴击率 − 已启用好感度 10 级暴击率" in CRIT_RATE_CAP_HELP
-    assert "手动填写只会进一步收紧" in CRIT_RATE_CAP_HELP
+    assert "弧盘无条件常驻暴击率 + 已启用好感暴击率" in CRIT_THRESHOLD_HELP
+    assert "数值只由你手动修改" in CRIT_THRESHOLD_HELP
+    assert "留空不设最小值" in CRIT_THRESHOLD_HELP
+    assert "100% − 本次有效弧盘无条件常驻暴击率 − 已启用好感暴击率" in CRIT_RATE_CAP_HELP
+    assert "手填 0 表示不限制；自动算出 0 仍是上限" in CRIT_RATE_CAP_HELP
     assert "超过上限的方案无效" in CRIT_RATE_CAP_HELP
-    assert "未达标时优先补暴击" not in CRIT_RATE_CAP_HELP
-    assert expected_sources in WEIGHTED_CRIT_THRESHOLD_HELP
+    assert "弧盘常驻资料待审查时暂无法核对自动上限" in CRIT_RATE_CAP_HELP
+    assert expected_sources in CRIT_RATE_CAP_HELP
+    assert "5% 基础 + 空幕词条 + 额外驱动加成" in WEIGHTED_CRIT_THRESHOLD_HELP
     assert "不含弧盘、角色成长、武器和其他 Buff" in WEIGHTED_CRIT_THRESHOLD_HELP

@@ -51,7 +51,7 @@ def main() -> int:
         or not isinstance(capabilities, list)
         or "battle_page_v1" not in capabilities
         or "main_static_catalog_v1" not in capabilities
-        or "allocation_v1" not in capabilities
+        or "allocation_v2" not in capabilities
     ):
         raise RuntimeError("分析组件缺少战报数据库直读或空幕分配能力")
     license_path = source.parent / "LICENSE"

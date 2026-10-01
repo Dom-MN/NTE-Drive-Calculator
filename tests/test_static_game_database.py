@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
+from src.storage.sqlite.static_game_data_metadata import SCHEMA_VERSION
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -542,7 +543,7 @@ class StaticGameDatabaseTests(unittest.TestCase):
             connection.close()
 
         self.assertEqual(0, payload_count)
-        self.assertEqual(38, schema_version)
+        self.assertEqual(SCHEMA_VERSION, schema_version)
         self.assertGreater(character_count, 0)
         self.assertEqual(source_row_count, source_hash_count)
         # The role-template DAO adds official ID 1051 as the default avatar

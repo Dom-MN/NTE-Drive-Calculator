@@ -75,12 +75,14 @@ def single_slot_loadout_state(user_dao: UserDataDao) -> dict[str, dict[str, Any]
 def selected_slot_plan_diff(
     user_dao: UserDataDao,
     final_plan: dict[str, Any],
-    targets: dict[str, tuple[int, int]],
+    targets: dict[str, tuple[int, int | None]],
 ) -> dict[str, dict[str, Any]]:
     """Compare every calculated role exclusively with its selected save slot."""
 
     state: dict[str, dict[str, Any]] = {}
     for role_name, (character_id, slot_id) in targets.items():
+        if slot_id is None:
+            continue
         slot = user_dao.get_loadout_slot(int(slot_id))
         if slot is None or int(slot["character_id"]) != int(character_id):
             raise RuntimeError(f"保存槽位不存在或不属于角色 [{role_name}]")

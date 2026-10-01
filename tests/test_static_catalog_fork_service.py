@@ -17,6 +17,7 @@ from src.services.static_catalog_fork_service import (
     StaticCatalogForkService,
 )
 from src.storage.sqlite.static_catalog_fork_queries import StaticCatalogForkDao
+from src.storage.sqlite.static_game_data_metadata import SCHEMA_VERSION
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +37,7 @@ class StaticCatalogForkServiceTests(unittest.TestCase):
     def test_metadata_reports_release_provenance_and_importer_gaps(self) -> None:
         metadata = self.service.metadata()
 
-        self.assertEqual(metadata.schema_version, 38)
+        self.assertEqual(metadata.schema_version, SCHEMA_VERSION)
         self.assertTrue(metadata.dataset_id)
         self.assertGreaterEqual(dict(metadata.counts)["fork_item"], 1)
         self.assertFalse(metadata.has_fork_skill_tables)

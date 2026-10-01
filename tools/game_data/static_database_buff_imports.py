@@ -125,26 +125,56 @@ def _first_semantic(
 class BuffImportMixin:
     connection: Any
 
-    def _import_buff_definitions(self) -> None:
-        available = {
-            str(row[0]).casefold()
-            for row in self.connection.execute(
-                """
-                SELECT asset_path FROM combat_blueprint_asset
-                WHERE asset_kind IN ('buff', 'gameplay_effect')
-                """
-            )
-        }
-        assets = self.connection.execute(
+    def _import_buff_definitions(self, *, include_links: bool = True) -> None:
+        fork_buff_paths = set()
+        for (raw_json,) in self.connection.execute(
+            "SELECT buffs_json FROM fork_star_level"
+        ):
+            for buff in json.loads(str(raw_json)):
+                obj = buff.get("BuffObject") if isinstance(buff, Mapping) else None
+                path = _normalized_asset_path(
+                    obj.get("AssetPathName") if isinstance(obj, Mapping) else None
+                )
+                if path is not None:
+                    fork_buff_paths.add(path.casefold())
+        assets = list(self.connection.execute(
             """
             SELECT asset_path, asset_name, asset_kind, character_id, source_file_id
             FROM combat_blueprint_asset
             WHERE asset_kind IN ('buff', 'gameplay_effect')
             ORDER BY asset_path
             """
-        ).fetchall()
+        ))
+        # Some fork star BuffObjects are classified as calculation assets by
+        # their directory, but expose Buff modifier fields. Import only those
+        # explicitly linked objects through the existing Buff contract.
+        assets.extend(
+            (path, name, "buff", character_id, source_file_id)
+            for path, name, character_id, source_file_id in self.connection.execute(
+                """
+                SELECT asset_path, asset_name, character_id, source_file_id
+                FROM combat_blueprint_asset AS asset
+                WHERE asset_kind = 'calculation'
+                  AND EXISTS (
+                      SELECT 1 FROM combat_blueprint_semantic_property AS semantic
+                      WHERE semantic.source_asset_path = asset.asset_path
+                        AND semantic.property_name IN (
+                            'Modifiers', 'CustomApplicationModifierInfos'
+                        )
+                  )
+                ORDER BY asset_path
+                """
+            )
+            if str(path).casefold() in fork_buff_paths
+        )
+        assets.sort(key=lambda asset: str(asset[0]).casefold())
+        available = {str(asset[0]).casefold() for asset in assets}
         for asset in assets:
             asset_path = str(asset[0])
+            if self.connection.execute(
+                "SELECT 1 FROM buff_definition WHERE asset_path = ?", (asset_path,)
+            ).fetchone() is not None:
+                continue
             semantic_rows = _semantic_rows(self.connection, asset_path)
             duration_policy = _first_semantic(semantic_rows, "DurationPolicy")
             duration_magnitude = _first_semantic(
@@ -177,7 +207,8 @@ class BuffImportMixin:
             )
             self._import_buff_modifiers(asset_path, semantic_rows)
             self._import_buff_triggers(asset_path, semantic_rows)
-        self._import_combat_effect_buff_links(available)
+        if include_links:
+            self._import_combat_effect_buff_links(available)
 
     def _import_buff_modifiers(
         self,

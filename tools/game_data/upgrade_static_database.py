@@ -32,7 +32,6 @@ from tools.game_data.build_graduation_templates import (
 )
 from tools.game_data.catalog_characters import load_datatable
 from tools.game_data.static_database_build_support import (
-    IMPORTER_VERSION,
     SCHEMA_PATHS,
     SCHEMA_VERSION,
     StaticDatabaseError,
@@ -52,6 +51,9 @@ from tools.game_data.static_database_progression_imports import (
 
 
 PROVENANCE_FILENAME = "upgrade_provenance.json"
+# This historical additive path does not import newly linked calculation
+# Buff assets. It must not advertise the full rebuild's later importer version.
+ADDITIVE_UPGRADE_IMPORTER_VERSION = 49
 ITEM_CATALOG_PATH = Path("DataTable/Inventory/DT_ItemConfig.json")
 CHARACTER_ABILITIES_PATH = Path(
     "DataTable/Character/DT_CharacterAbilityConfig.json"
@@ -353,7 +355,7 @@ def build_upgrade_candidate(
             built_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             connection.execute(
                 "UPDATE dataset SET dataset_id=?,importer_version=?,built_at_utc=?",
-                (dataset_id, IMPORTER_VERSION, built_at),
+                (dataset_id, ADDITIVE_UPGRADE_IMPORTER_VERSION, built_at),
             )
             connection.execute(
                 "INSERT INTO dataset_scope VALUES (?, 'game')",
@@ -421,7 +423,7 @@ def build_upgrade_candidate(
         "candidate": {
             "database_sha256": sha256(output_database),
             "schema_version": SCHEMA_VERSION,
-            "importer_version": IMPORTER_VERSION,
+            "importer_version": ADDITIVE_UPGRADE_IMPORTER_VERSION,
             "dataset_id": dataset_id,
         },
         "verified_source_rows": passive_provenance + material_provenance,

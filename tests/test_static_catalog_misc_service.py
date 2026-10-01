@@ -11,6 +11,8 @@ from src.services.static_catalog_misc_service import (
     StaticCatalogMiscService,
 )
 from src.storage.sqlite.static_catalog_misc_queries import StaticCatalogMiscDao
+from src.storage.sqlite.static_game_data_metadata import SCHEMA_VERSION
+from tools.game_data.static_database_build_support import IMPORTER_VERSION
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -108,8 +110,8 @@ class StaticCatalogMiscServiceTests(unittest.TestCase):
             metadata.dataset_id,
             "cn_retail_20260924_9030b45b",
         )
-        self.assertEqual(metadata.schema_version, 38)
-        self.assertEqual(metadata.importer_version, 49)
+        self.assertEqual(metadata.schema_version, SCHEMA_VERSION)
+        self.assertEqual(metadata.importer_version, IMPORTER_VERSION)
         self.assertTrue(metadata.source_payloads_omitted)
 
     def test_source_trace_does_not_promise_an_omitted_payload(self) -> None:
