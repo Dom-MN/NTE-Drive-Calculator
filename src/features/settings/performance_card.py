@@ -21,6 +21,12 @@ STATE_TEXT = {
     "fault": "性能读取失败；下次采样重试",
 }
 SERVICE_NAMES = {"snapshot_pulse": "快照周期", "snapshot_read": "快照分批读取"}
+SERVICE_NAMES.update({
+    "snapshot.clock_roots_before": "战斗时钟 · 查询前身份校验",
+    "snapshot.clock_function": "战斗时钟 · 函数校验",
+    "snapshot.clock_queries": "战斗时钟 · 单次暂停查询",
+    "snapshot.clock_roots_after": "战斗时钟 · 查询后身份复核",
+})
 _READ_STAGES = {
     "job_step": "读取批次", "step_precheck": "读取前校验", "reader_step": "数据读取",
     "step_postcheck": "读取后校验", "character_init": "角色初始化", "character_validate": "角色校验",

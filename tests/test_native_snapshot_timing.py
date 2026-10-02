@@ -5,6 +5,7 @@ import pytest
 
 from src.integrations import native_snapshot_timing as timing
 from src.integrations import native_transport_diagnostics as transport
+from src.integrations.performance_diagnostics import performance_counters
 
 
 def payload():
@@ -64,6 +65,26 @@ def test_only_whitelisted_stages_and_metadata_reach_logs(monkeypatch):
     assert len(rows) == 2 and "private" not in str(rows)
     assert set(rows[0][1]["stages"]) == {"skills"}
     assert rows[1][1]["job"] == 1 and rows[1][1]["step"] == 2
+
+
+def test_clock_segments_reach_logs_and_metrics_without_fabricating_missing_stages(monkeypatch):
+    rows, _ = capture(monkeypatch)
+    value = payload()
+    before = dict(calls=2, total_us=3000, max_us=2000, over_8333_us=0, over_20000_us=0)
+    query = dict(calls=8, total_us=4000, max_us=800, over_8333_us=0, over_20000_us=0)
+    value["stages"] = {"clock_roots_before": before, "clock_queries": query,
+                       "clock_function": {**before, "calls": True}, "private-stage": before}
+    value["recent"][0]["stages"] = deepcopy(value["stages"])
+    timing.SnapshotTimingLog().observe(value)
+    expected = {"clock_roots_before": before, "clock_queries": query}
+    assert rows[0][1]["stages"] == rows[1][1]["stages"] == expected
+    counters = performance_counters({"native_status": {"runtimePerformance": {
+        "version": 1, "snapshot_diagnostics": value,
+    }}})
+    assert counters == {
+        "snapshot." + key: {name: counter[name] for name in ("calls", "total_us", "max_us")}
+        for key, counter in expected.items()
+    }
 
 
 @pytest.mark.parametrize("bad", [True, -1, 2**63, "private", None])

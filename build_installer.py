@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from tools import build_cli
+from src.app.version import windows_numeric_version
 from src.integrations.game_component_bundle import inspect_game_component_bundle
 from src.integrations.ocr_model_resources import validate_packaged_ocr_models
 from tools.release.game_component_bundle_build import source_component_manifest, validate_packaged_component_bundle
@@ -368,6 +369,10 @@ LaunchProgram=启动 %1
 AppId={APP_ID}
 AppName={{#MyAppName}}
 AppVersion={{#MyAppVersion}}
+VersionInfoVersion={windows_numeric_version(version)}
+VersionInfoProductVersion={windows_numeric_version(version)}
+VersionInfoTextVersion={{#MyAppVersion}}
+VersionInfoProductTextVersion={{#MyAppVersion}}
 AppPublisher={{#MyAppPublisher}}
 DefaultDirName={{autopf}}\\NTE Drive Calc
 DefaultGroupName={{#MyAppName}}

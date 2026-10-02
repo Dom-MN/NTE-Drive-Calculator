@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "core_rebuilt": true,
+  "core_rebuilt": false,
   "core_sha256": "1f875858409ad47eed83ded7991d7a3133eb4afafebf2c2b09cd52802c7b2fed",
-  "capture_sha256": "a065eb0e30cc1f51a9e205ebafa6a049f72ce04eb93ca255c86043b51851c6bd",
+  "capture_sha256": "024c39726c229ababe2f180e66430936752b5e1991a1772fb321d6d505157485",
   "proxy_sha256": "a89e672b4f3bc953c1bfa3118a13867a4f173a7fc502a864cad2d5fc640007f4",
   "protocol_version": 1,
   "provider_capabilities": [
@@ -62,13 +62,13 @@
     "native_battle_equipped_v1"
   ],
   "validation": {
-    "build": "Release x64 protected and signed component set; Combat context preparation and isolated modifier read scopes. Other DLL executable bytes and Core unchanged.",
-    "focused": "27 Calc snapshot/preparation/pinned cases, required Python checks, native reference retention and guarded-reader fixtures passed.",
-    "isolated_final": "Exact signed candidate passed dependency, tamper rejection, HUD lifecycle, trace completion and SDK-not-ready checks.",
-    "game_developer": "Exact rebuilt Core with developer plugins: full inventory/character projections, 20-second concurrent monitoring, 38 service rows, complete trace and zero dropped records.",
-    "game_protected": "Pending first-hit and combat performance runtime acceptance; previous capture still failed these acceptance points.",
-    "frames": "PresentMon denied by current process permissions; FPS, frame time and 1% Low remain unknown.",
-    "defender": "Five exact DLLs reported no threats in local Defender scans on 2026-10-01.",
+    "build": "Release x64 candidate, selected function protection and four final-byte signatures verified; source inputs frozen. Core and Loader reused unchanged.",
+    "focused": "Twenty-five focused HUD cases plus one exact signed-host isolation case passed. Calc version/update and packaging verification is recorded with the installer.",
+    "isolated_final": "Exact signed five-DLL set passed isolated loading, tamper rejection, dependencies, HUD lifecycle, trace completion and SDK-not-ready refusal.",
+    "game_developer": "Not run for this candidate.",
+    "game_protected": "Not run for this candidate; long-stall attribution remains incomplete.",
+    "frames": "No new PresentMon or real-game frame measurements for this candidate.",
+    "defender": "No new explicit antivirus scan for this candidate; prior DLL scan observations do not validate the rebuilt files.",
     "core_equipped": "Production mapping passed synthetic coverage checks and archived first-hit equipment projection (4 members, 32 items); live acceptance pending."
   },
   "limits": [
@@ -80,9 +80,9 @@
     "All-items collection proves the observed client containers, not complete server account assets.",
     "Final protected host, plugins and Calc require real-game acceptance."
   ],
-  "user_sha256": "1ec71b125ab94255dfb3ea947af51a8ebb72087536e2c45c1354fbc8544cd939",
+  "user_sha256": "e9fa510dc59b89bbf76f441d06525c8a6ce3303c2e2fbdfcdc5ec925077a6335",
   "performance_sha256": "09f906df77e3a8a333becbde5dc3814546d1338694a8bfedd7538c1f43f86be4",
   "layout": "native-plugins-v3",
-  "hud_sha256": "d948727ab09aa2c572bb3225e04af474931a4b54b92cdf05e3387eb86c226cc1",
-  "core_reused": false
+  "hud_sha256": "4520e4918a41054890a6c72e8947540bf86369bc3c91da15acac3333049e5a6c",
+  "core_reused": true
 }
