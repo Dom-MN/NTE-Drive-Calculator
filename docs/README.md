@@ -15,6 +15,7 @@
 | 已交付的页面、计算、同步、配装和设置 | [功能原理](features.md) |
 | 战报当前行为 | [战报功能](features/battle-report.md) |
 | 资料库与养成计算器当前行为 | [工具与游戏资料库](features/tools-and-catalog.md) |
+| 养成历史、材料录入与批量删除开发契约 | [养成历史方案](roadmap/cultivation-history.md) |
 | nte-core、分析组件、插件、OCR、输入和静态构建 | [外部集成](integrations.md) |
 | 尚未稳定或仍待外部事实的能力 | [当前路线图](roadmap.md) |
 | 战报证据、拟合与分析核心待办 | [战报路线图](roadmap/battle-report.md) |

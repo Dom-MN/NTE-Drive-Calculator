@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import replace
+from tests.cultivation_planner_fixture import PlanningFixture
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 
 def test_cultivation_uses_one_verified_role_catalog_for_data_and_images(tmp_path) -> None:
     from src.app.context import ApplicationPaths
@@ -72,7 +72,7 @@ def test_toolbox_opens_cultivation_as_page_and_preserves_same_session_draft() ->
 
     from src.features.toolbox.page import ToolboxDependencies, ToolboxPage
 
-    class Service:
+    class Service(PlanningFixture):
         def list_roles(self):
             return ()
 
@@ -138,7 +138,7 @@ def test_cultivation_page_uses_one_vertical_scroll_surface() -> None:
 
     from src.features.toolbox.cultivation_page import CultivationCalculatorPage
 
-    class Service:
+    class Service(PlanningFixture):
         def list_roles(self):
             return ()
 
@@ -186,7 +186,7 @@ def test_cultivation_owned_materials_deduct_and_keep_five_columns() -> None:
         for index in range(1, 6)
     )
 
-    class Service:
+    class Service(PlanningFixture):
         stamina_calls = 0
 
         def list_roles(self):
@@ -391,7 +391,7 @@ def test_native_material_import_updates_both_drafts_without_overwriting_manual_v
     from src.services.cultivation_owned_material_import import ImportedOwnedMaterials
     from src.services.cultivation_planner_service import CultivationMaterial
 
-    class Service:
+    class Service(PlanningFixture):
         def list_roles(self):
             return ()
 
@@ -437,7 +437,7 @@ def test_cultivation_page_removes_saved_state_note_and_switches_mode_drafts() ->
     from src.features.toolbox.cultivation_page import CultivationCalculatorPage
     from src.services.cultivation_planner_service import CultivationRole, CultivationSeed
 
-    class Service:
+    class Service(PlanningFixture):
         def list_roles(self):
             return tuple(CultivationRole(index, f"角色 {index}") for index in range(1, 4))
 
@@ -492,7 +492,7 @@ def test_multi_character_page_calculates_combined_stamina_and_ordered_targets() 
         CultivationSeed,
     )
 
-    class Service:
+    class Service(PlanningFixture):
         def list_roles(self):
             return (CultivationRole(1, "角色一"), CultivationRole(2, "角色二"))
 
@@ -638,7 +638,7 @@ def test_multi_character_page_selects_all_available_roles_without_count_cap() ->
         CultivationSeed,
     )
 
-    class Service:
+    class Service(PlanningFixture):
         def list_roles(self):
             return tuple(CultivationRole(index, f"角色 {index}") for index in range(1, 13))
 
@@ -753,7 +753,7 @@ def test_multi_character_inline_editor_keeps_draft_and_updates_fork_image(tmp_pa
         "fork_items": {"fork-a": "first.png", "fork-b": "second.png"},
     }), encoding="utf-8")
 
-    class Service:
+    class Service(PlanningFixture):
         def list_roles(self):
             return (CultivationRole(1, "角色一"), CultivationRole(2, "角色二"))
 

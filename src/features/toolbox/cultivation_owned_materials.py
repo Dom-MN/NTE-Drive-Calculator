@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from src.app.theme import theme_color, themed_style
 from src.domain.progression_material_conversion import allocate_owned, lower_tier_ids
+from src.domain.cultivation_history import normalize_owned_materials
 from src.features.toolbox.cultivation_controls import disable_numeric_input_method
 from src.services.cultivation_planner_service import CultivationMaterial
 from src.ui.progression_material_card import ProgressionMaterialCard
@@ -85,6 +86,7 @@ class _OwnedMaterialCanvas(QWidget):
         self._editor.setRange(0, 99_999_999)
         disable_numeric_input_method(self._editor)
         self._editor.valueChanged.connect(self._quantity_edited)
+        self._editor.lineEdit().textEdited.connect(self._manual_text_edited)
         self._editor.advance_requested.connect(self._advance_selection)
         self._editor.hide()
         self.setFixedHeight(0)
@@ -252,6 +254,12 @@ class _OwnedMaterialCanvas(QWidget):
         self.quantity_changed.emit(self._selected_id)
         self.update()
 
+    def _manual_text_edited(self, _text: str) -> None:
+        """输入与显示值相同的零仍是明确手工覆盖，单纯聚焦不算填写。"""
+        if not self._updating and self._selected_id is not None:
+            self._owned[self._selected_id] = self._editor.value()
+            self.quantity_changed.emit(self._selected_id)
+
     def _advance_selection(self, step: int) -> None:
         if not self._materials or self._selected_id is None:
             return
@@ -316,7 +324,7 @@ class CultivationOwnedMaterials(QFrame):
             "color:#c9d1d9;font-size:14px;font-weight:800"
         ))
         header.addWidget(title)
-        header.addWidget(QLabel("点击材料卡填写已有数量，再重新计算", self))
+        header.addWidget(QLabel("点击材料卡填写已有数量，再点击计算", self))
         header.addStretch(1)
         self._import_button = QPushButton("同步材料", self)
         self._import_button.setObjectName("cultivationOwnedImport")
@@ -333,6 +341,7 @@ class CultivationOwnedMaterials(QFrame):
         self._canvas = _OwnedMaterialCanvas(icon_lookup, self)
         self._owned_cache: dict[str, int] = {}
         self._manual_overrides: set[str] = set()
+        self._history_sources: dict[str, tuple[str, str | None]] = {}
         self._canvas.quantity_changed.connect(self._quantity_changed)
         self._canvas.layout_changed.connect(self.layout_changed)
         root.addWidget(self._canvas)
@@ -355,15 +364,25 @@ class CultivationOwnedMaterials(QFrame):
         self._status_label.setText(message)
         self._status_label.show()
 
-    def apply_import(self, quantities: Mapping[str, int]) -> int:
+    def apply_import(
+        self, quantities: Mapping[str, int], *, source: str = "native", saved_at_utc: str | None = None,
+    ) -> int:
         """Overlay observed entries only; manual edits and absent IDs remain unchanged."""
 
+        validated = normalize_owned_materials([
+            {"item_id": item_id, "quantity": amount, "manual_override": False,
+             "source": source, "observed_at_utc": saved_at_utc}
+            for item_id, amount in quantities.items()
+        ])
         changed = 0
-        for item_id, amount in quantities.items():
+        for item in validated:
+            item_id, amount = item["item_id"], item["quantity"]
             if item_id in self._manual_overrides:
                 continue
-            if self._owned_cache.get(item_id) != amount:
+            if (self._owned_cache.get(item_id) != amount
+                    or self._history_sources.get(item_id) != (source, saved_at_utc)):
                 self._owned_cache[item_id] = amount
+                self._history_sources[item_id] = (source, saved_at_utc)
                 changed += 1
         if changed:
             self._canvas.refresh_quantities(self._owned_cache)
@@ -373,9 +392,10 @@ class CultivationOwnedMaterials(QFrame):
     def clear_quantities(self) -> None:
         """Clear only the draft quantities, including currently hidden materials."""
 
-        changed = any(self._owned_cache.values())
+        changed = bool(self._history_sources) or any(self._owned_cache.values())
         self._owned_cache.clear()
         self._manual_overrides.clear()
+        self._history_sources.clear()
         self._canvas.clear_quantities()
         self._owned_cache.update(self._canvas.quantities())
         self.set_import_status("已有材料草稿已清空；账号已保存的同步记录保持不变。")
@@ -385,6 +405,26 @@ class CultivationOwnedMaterials(QFrame):
     def _quantity_changed(self, item_id: str) -> None:
         self._owned_cache.update(self._canvas.quantities())
         self._manual_overrides.add(item_id)
+        self._history_sources[item_id] = ("manual", None)
+        self.quantities_changed.emit()
+
+    def export_history_materials(self) -> list[dict[str, object]]:
+        """只保存已观测或明确填写的数量，画布默认零不伪装成账号数据。"""
+        return [{"item_id": item_id, "quantity": self._owned_cache[item_id],
+                 "manual_override": item_id in self._manual_overrides,
+                 "source": source, "observed_at_utc": observed_at}
+                for item_id, (source, observed_at) in sorted(self._history_sources.items())]
+
+    def restore_history_materials(self, values: object) -> None:
+        """先完整验证后替换；数量与覆盖标记一起恢复，不触发导入。"""
+        normalized = normalize_owned_materials(values)
+        quantities = {item["item_id"]: item["quantity"] for item in normalized}
+        overrides = {item["item_id"] for item in normalized if item["manual_override"]}
+        sources = {item["item_id"]: (item["source"], item["observed_at_utc"]) for item in normalized}
+        self._owned_cache = quantities
+        self._manual_overrides = overrides
+        self._history_sources = sources
+        self._canvas.refresh_quantities(quantities)
         self.quantities_changed.emit()
 
     def select_material(self, item_id: str) -> bool:
@@ -406,6 +446,7 @@ class CultivationOwnedMaterials(QFrame):
     def clear_materials(self) -> None:
         self._owned_cache.clear()
         self._manual_overrides.clear()
+        self._history_sources.clear()
         self._canvas.set_materials(())
         self._import_button.setToolTip("同步后仅已观测材料更新；未观测项保持手填值。")
         if self._status_label is not None:

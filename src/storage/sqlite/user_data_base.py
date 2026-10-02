@@ -15,6 +15,7 @@ from .user_data_support import (
     UserDataError,
     _utc_now,
 )
+from .user_data_migration_backup import backup_before_history_migration
 
 class UserDataDaoCore:
     """单个应用账号所拥有数据的读写边界。
@@ -51,7 +52,7 @@ class UserDataDaoCore:
                     account_id=str(account_id),
                     account_name=str(account_name or account_id),
                 )
-            self._migrate_schema()
+            self._migrate_schema(backup_existing=existed)
             self._validate_schema()
         except BaseException:
             self.close()
@@ -115,7 +116,7 @@ class UserDataDaoCore:
         except (OSError, sqlite3.Error) as exc:
             raise UserDataError("无法初始化用户数据库") from exc
 
-    def _migrate_schema(self) -> None:
+    def _migrate_schema(self, *, backup_existing: bool = True) -> None:
         connection = self._db()
         try:
             row = connection.execute(
@@ -128,6 +129,8 @@ class UserDataDaoCore:
             raise UserDataError(
                 f"用户数据库结构版本 {version} 高于当前程序支持的 {SCHEMA_VERSION}"
             )
+        if backup_existing and version < 45 <= SCHEMA_VERSION:
+            backup_before_history_migration(self.database_path, version)
         try:
             for target_version in range(version + 1, SCHEMA_VERSION + 1):
                 migration_path = USER_MIGRATIONS.get(target_version)
@@ -141,6 +144,13 @@ class UserDataDaoCore:
                     connection.execute("PRAGMA foreign_keys = OFF")
                 try:
                     connection.execute("BEGIN IMMEDIATE")
+                    # Another account owner may have completed the same migration while we waited.
+                    actual_version = connection.execute(
+                        "SELECT MAX(version) FROM schema_migration"
+                    ).fetchone()[0]
+                    if actual_version >= target_version:
+                        connection.rollback()
+                        continue
                     self._prepare_migration(connection, target_version)
                     self._execute_migration_script(connection, migration_sql)
                     connection.execute(

@@ -108,9 +108,8 @@ from src.ui.work_mode_composition import (
 from src.ui.main_window_mixins import FeatureMainWindowMixin
 from src.ui.equipment_presentation import EquipmentPresentation
 from src.features.blueprints.page import BlueprintPage
-from src.features.toolbox.page import ToolboxDependencies, ToolboxPage
-from src.features.toolbox.toolbox_navigation import cultivation_context_identity
-from src.services.cultivation_planner_service import CultivationPlannerService
+from src.features.toolbox.page import ToolboxPage
+from src.ui.toolbox_composition import build_toolbox_dependencies
 from src.features.static_catalog.controller import StaticCatalogController
 from src.features.static_catalog.dependencies import (
     build_static_catalog_domain_pages,
@@ -120,7 +119,6 @@ from src.features.static_catalog.page import StaticCatalogPage
 from src.services.static_catalog_service import StaticCatalogService
 from src.services.warehouse_inventory_service import WarehouseInventoryService
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
-from src.services.rewind_shape_recommendation_service import RewindShapeRecommendationService
 from src.features.battle_report.dependencies import build_battle_report_controller
 from src.features.identification.controller import IdentificationController
 from src.features.onboarding.guide import OnboardingGuide
@@ -331,27 +329,13 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
             navigate=self._go,
         )
         self.toolbox_page = ToolboxPage(
-            dependencies=ToolboxDependencies(
+            dependencies=build_toolbox_dependencies(
+                self.app_context,
                 operation_entry=self.operation_entry,
                 operation_unavailable=self.operation_unavailable,
                 operation_guard=self.operation_guard,
                 operation_generation=self.operation_generation,
-                rewind_service_factory=lambda: RewindShapeRecommendationService(
-                    user_database_path=self.app_context.account.user_database_path,
-                    static_database_path=self.app_context.paths.equipment_allocation_database_path,
-                    asset_root=self.app_context.paths.equipment_allocation_asset_root,
-                ),
-                cultivation_service_factory=lambda: CultivationPlannerService(
-                    user_database_path=self.app_context.account.user_database_path,
-                    static_database_path=self.app_context.paths.cultivation_database_path,
-                ),
-                cultivation_material_importer=self._import_cultivation_materials,
-                cultivation_context_identity=lambda: cultivation_context_identity(
-                    self.app_context.account.active_account_id,
-                    self.app_context.generation,
-                    self.app_context.paths.cultivation_database_path,
-                ),
-                cultivation_asset_root=lambda: self.app_context.paths.cultivation_asset_root,
+                material_importer=self._import_cultivation_materials,
                 navigate_static_catalog=lambda: self._go("static_catalog"),
             ),
             dialog_parent=self,

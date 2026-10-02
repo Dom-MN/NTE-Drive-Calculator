@@ -13,6 +13,7 @@ from .battle_analysis_dao import BattleAnalysisDaoMixin
 from .battle_inferred_target_dao import BattleInferredTargetDaoMixin
 from .battle_build_edit_dao import BattleBuildEditDaoMixin
 from .custom_character_dao import CustomCharacterDaoMixin
+from .cultivation_history_dao import CultivationHistoryDaoMixin
 from .equipment_apply_job_dao import EquipmentApplyJobDaoMixin
 from .inventory_snapshot_dao import InventorySnapshotDaoMixin
 from .inventory_runtime_state_dao import InventoryRuntimeStateDaoMixin
@@ -41,6 +42,7 @@ from .user_data_support import (
 
 
 class UserDataDao(
+    CultivationHistoryDaoMixin,
     PacketItemObservationDaoMixin,
     AllItemSnapshotDaoMixin,
     NativeCharacterProfileDaoMixin,

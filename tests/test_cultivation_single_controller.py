@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import time
 
+from tests.cultivation_planner_fixture import PlanningFixture
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
@@ -32,7 +34,7 @@ def test_single_controller_keeps_ui_responsive_and_only_publishes_latest() -> No
 
     from src.features.toolbox.cultivation_single_controller import CultivationSingleController
 
-    class Service:
+    class Service(PlanningFixture):
         def calculate(self, request):
             time.sleep(0.08)
             return request.character_id
@@ -65,7 +67,7 @@ def test_single_controller_discards_changed_context_and_draft() -> None:
 
     from src.features.toolbox.cultivation_single_controller import CultivationSingleController
 
-    class Service:
+    class Service(PlanningFixture):
         def calculate(self, request):
             time.sleep(0.05)
             return request.character_id
