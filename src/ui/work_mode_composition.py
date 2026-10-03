@@ -80,6 +80,7 @@ def initialize_mode_runtime(window):
         request_check=window.work_mode_controller.check,
         request_enable_preflight=window.work_mode_controller.begin_sync_enable,
     )
+    window.work_mode_controller.attach_sync_enable_action(lambda: window.auto_sync_controller.set_enabled(True))
 
     def check_update_blockers():
         if window.work_mode_controller.is_transitioning:

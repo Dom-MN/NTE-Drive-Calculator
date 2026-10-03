@@ -6,8 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QMimeData, QTimer, Qt, Signal
-from PySide6.QtGui import QDrag, QPainter, QPixmap
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -30,6 +29,7 @@ from src.features.allocation.priority_groups import (
     normalize_priority_links,
 )
 from src.features.allocation.role_selector_visuals import role_avatar
+from src.features.allocation.priority_role_button import PriorityRoleButton
 from src.domain.role_name_order import role_name_sort_key
 from src.solver.set_effects import FOUR_PIECE, normalize_set_effect_mode
 
@@ -59,65 +59,6 @@ def normalize_weapons_db(weapons_db) -> dict:
             if name:
                 normalized[name] = info
     return normalized
-
-
-class PriorityRoleButton(QPushButton):
-    """Role chip button that can be clicked to remove or dragged to reorder."""
-
-    def __init__(self, selector: "RoleSelector", role: str, index: int):
-        super().__init__(role)
-        self.selector = selector
-        self.role = role
-        self.index = index
-        self._drag_start_pos = None
-        self.setAcceptDrops(True)
-        self.setCursor(Qt.OpenHandCursor)
-        self.clicked.connect(lambda _checked=False: selector._toggle(role))
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._drag_start_pos = event.position().toPoint()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if not (event.buttons() & Qt.LeftButton) or self._drag_start_pos is None:
-            super().mouseMoveEvent(event)
-            return
-        if (event.position().toPoint() - self._drag_start_pos).manhattanLength() < 8:
-            super().mouseMoveEvent(event)
-            return
-        drag = QDrag(self)
-        mime = QMimeData()
-        mime.setText(str(self.index))
-        drag.setMimeData(mime)
-        source_widget = self.parentWidget() or self
-        drag.setPixmap(self._make_drag_pixmap(source_widget))
-        drag.setHotSpot(self.mapTo(source_widget, event.position().toPoint()))
-        drag.exec(Qt.MoveAction)
-
-    def _make_drag_pixmap(self, source_widget):
-        raw = source_widget.grab()
-        if raw.isNull():
-            return raw
-        pixmap = QPixmap(raw.size())
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        painter.setOpacity(0.72)
-        painter.drawPixmap(0, 0, raw)
-        painter.end()
-        return pixmap
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasText():
-            event.acceptProposedAction()
-
-    def dropEvent(self, event):
-        try:
-            source_index = int(event.mimeData().text())
-        except ValueError:
-            return
-        self.selector._drop_selected_on(source_index, self.index)
-        event.acceptProposedAction()
 
 
 from src.features.allocation.role_selector_preferences import RoleSelectorPreferencesMixin
@@ -360,11 +301,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
             item = QFrame()
             item.setFixedSize(self._priority_role_frame_width(name), 48)
             item.setCursor(Qt.PointingHandCursor)
-            item.setToolTip(f"{name}：点击头像或角色名移回待选区")
-            item.mousePressEvent = (
-                lambda event, role=name: self._toggle(role)
-                if event.button() == Qt.LeftButton else event.ignore()
-            )
+            item.setToolTip(f"{name}：点击头像或角色名移回待选区；按住可拖拽调整优先级")
             item.setStyleSheet(
                 themed_style(
                     "QFrame{background:#161b22;border:1px solid #30363d;border-radius:7px}"
@@ -375,16 +312,14 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
             item_layout.setContentsMargins(6, 6, 6, 6)
             item_layout.setSpacing(5)
 
-            item_layout.addWidget(self._role_avatar(name, 36))
-
-            name_btn = PriorityRoleButton(self, name, index)
+            name_btn = PriorityRoleButton(self, name, index, avatar=self._role_avatar(name, 36))
             name_btn.setObjectName("priorityRoleName")
-            name_btn.setToolTip(f"{name}：点击移出当前优先级；向后拖拽调整优先级")
-            name_btn.setFixedWidth(self._priority_role_name_width())
+            name_btn.setToolTip(f"{name}：点击移出当前优先级；按住头像或角色名拖拽调整优先级")
+            name_btn.setFixedSize(self._priority_role_name_width() + 41, 36)
             name_btn.setStyleSheet(
                 themed_style(
                     "QPushButton{background:transparent;color:#c9d1d9;border:none;"
-                    "padding:3px 5px;font-family:'Microsoft YaHei UI';"
+                    "padding:0;font-family:'Microsoft YaHei UI';"
                     "font-size:13px;font-weight:700;text-align:left}"
                     "QPushButton:hover{color:#c9d1d9}"
                 )

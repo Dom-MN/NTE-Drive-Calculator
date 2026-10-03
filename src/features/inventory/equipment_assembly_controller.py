@@ -156,7 +156,9 @@ def _start_nte_core_equipment_apply(
         return
     sync = getattr(self, "_inventory_sync_service", None)
     if sync is None or not sync.is_running:
-        show_input_unavailable(self, "极速装配", "游戏装备连接尚未就绪，请查看检测详情；需部署组件时先完全退出游戏，部署完成后再启动并进入游戏场景。")
+        show_input_unavailable(
+            self, "极速装配", "同步连接未开启。\n请到工作台开启“自动同步”，进入游戏场景并等待同步就绪。", target="home",
+        )
         return
     current_worker = getattr(self, "_equipment_apply_worker", None)
     if current_worker is not None and current_worker.isRunning():

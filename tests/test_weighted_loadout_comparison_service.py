@@ -76,7 +76,12 @@ class WeightedLoadoutComparisonServiceTests(unittest.TestCase):
             geometry="EquipmentGeometry_Hen2", suit_id=None,
         )
         option = SimpleNamespace(character_id=1003, assignments=(assignment,))
-        context = SimpleNamespace(candidates=(candidate,), attributes=())
+        role = SimpleNamespace(character_id=1003, substat_blacklist=(), blacklist_zero_weight=False,
+                               effective_property_weights=(("AtkAdd", 1),), effective_main_property_weights=())
+        context = SimpleNamespace(candidates=(candidate,), roles=(role,),
+                                  attributes=(SimpleNamespace(property_id="AtkAdd", scoring_name="攻击力"),),
+                                  allocation_strategy="role_priority", static_dataset=SimpleNamespace(dataset_id="fixture"),
+                                  snapshot=SimpleNamespace(snapshot_id=8))
 
         result = freeze_weighted_loadout_comparisons(
             _UserDao(), _StaticDao(), context, (option,),

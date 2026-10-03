@@ -529,6 +529,66 @@ class StreamingScanPipelineTests(unittest.TestCase):
         self.assertTrue(stats["post_actions_enabled"])
         self.assertEqual(1, stats["lock_set_count"])
 
+    def test_partial_state_management_returns_full_parse_results_and_issues(self):
+        from unittest.mock import patch
+
+        from src.integrations.vision.mouse_state_sync import MouseStateIssue, MouseStateSyncResult
+        from src.services.streaming_scan_service import run_streaming_scan_parse
+
+        events = []
+
+        class FakeScanner:
+            output_dir = "screenshots"
+
+            def start_scan(self, total_drives, on_capture=None, commit_on_complete=True):
+                for index in (1, 2):
+                    on_capture(f"screenshots/temp/raw_drive_{index:04d}.png", index, total_drives)
+                return total_drives
+
+            def _commit_temp_output(self):
+                events.append("commit")
+
+            def sync_equipment_states(self, *_args, **_kwargs):
+                events.append("sync")
+                return MouseStateSyncResult(
+                    applied_count=1,
+                    issues=(MouseStateIssue(2, "locked", "identity_mismatch"),),
+                )
+
+        class FakeProcessor:
+            def __init__(self):
+                self.inventory = []
+
+            def process_image_file(self, _path, filename, **_kwargs):
+                item = SimpleNamespace(item_type="drive", filename=filename)
+                self.inventory.append(item)
+                return item, True
+
+        evaluation = SimpleNamespace(
+            config={"discard": {"enabled": True}},
+            state_changes=[
+                {"index": index, "current_state": "normal", "target_state": "locked"}
+                for index in (2, 1)
+            ],
+            filter_summary={"post_action_candidate_count": 2},
+        )
+        processor = FakeProcessor()
+        with patch("src.services.streaming_scan_service.PostActionEvaluator.evaluate", return_value=evaluation), \
+                patch("src.services.streaming_scan_service._equipment_screenshot_state", return_value="normal"), \
+                patch("src.services.streaming_scan_service.time.sleep"):
+            stats = run_streaming_scan_parse(
+                FakeScanner(), processor, 2, parse_during_scan=True, post_actions_config=evaluation.config,
+            )
+
+        self.assertEqual(["commit", "sync"], events)
+        self.assertEqual(2, stats["total_count"])
+        self.assertEqual(2, stats["success_count"])
+        self.assertEqual("full", stats["parse_scope"])
+        self.assertEqual(2, len(processor.inventory))
+        self.assertEqual(1, stats["post_action_applied_count"])
+        self.assertEqual(1, stats["post_action_issue_count"])
+        self.assertEqual(2, stats["post_action_issues"][0]["index"])
+
     def test_stale_generation_discards_pipeline_before_file_commit(self):
         from src.services.streaming_scan_service import run_streaming_scan_parse
 

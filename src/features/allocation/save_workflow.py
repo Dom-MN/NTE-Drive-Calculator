@@ -12,7 +12,7 @@ from src.app.constants import SUPPORT_US_URL
 from src.app.theme import current_style_sheet, theme_color
 from src.app.window_geometry import fit_dialog_to_available_screen
 from src.features.allocation.save_progress import AllocationSaveProgress
-from src.features.allocation.slot_plan_diff import selected_slot_plan_diff
+from src.services.legacy_allocation_comparison_service import selected_legacy_comparison_diffs
 from src.features.inventory.equipment_display_controller import invalidate_saved_equipment_cache
 from src.services.allocation_lock_service import AllocationLockSnapshot
 from src.services.allocation_main_value_service import legacy_plan_tape_main_values
@@ -136,8 +136,7 @@ def save_allocation(owner, *, show_message=True):
         def prepare_and_save(progress):
             checkpoint()
             plans = deepcopy(source_plans)
-            with UserDataDao(database_path) as user_dao:
-                diffs = selected_slot_plan_diff(user_dao, plans, targets)
+            diffs = selected_legacy_comparison_diffs(owner._allocation_frozen_comparisons, plans, targets)
             rows = []
             for role, plan in plans.items():
                 if not isinstance(plan, dict) or not plan.get("valid"):

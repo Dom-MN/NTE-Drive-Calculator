@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from collections.abc import Iterable
 from pathlib import Path
 from types import TracebackType
@@ -81,6 +82,19 @@ class UserDataDaoCore:
         if self._connection is None:
             raise UserDataError("用户数据库 DAO 已关闭")
         return self._connection
+
+    @contextmanager
+    def read_consistent_state(self):
+        """Read related account pointers and immutable facts in one SQLite snapshot."""
+        connection = self._db()
+        owns_transaction = not connection.in_transaction
+        if owns_transaction:
+            connection.execute("BEGIN")
+        try:
+            yield self
+        finally:
+            if owns_transaction:
+                connection.rollback()
 
     def _initialize(self, schema_path: Path, *, account_id: str, account_name: str) -> None:
         if not schema_path.is_file():

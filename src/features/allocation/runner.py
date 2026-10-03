@@ -8,7 +8,7 @@ import shutil
 import threading
 from concurrent.futures import CancelledError
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -18,12 +18,12 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QInputDialog, QLabel, QMessa
 from src.app.theme import current_style_sheet
 from src.app.workers import WorkerThread
 from src.integrations.global_hotkeys import GlobalHotkeyManager
-from src.optimizer.plan_diff import build_plan_diff
+from src.services.allocation_comparison_scoring import persist_comparison_diff
+from src.services.legacy_allocation_comparison_service import (
+    freeze_legacy_slot_comparisons, refresh_legacy_slot_comparisons, single_slot_comparison_diffs,
+)
 from src.optimizer.contracts import (
-    DIFF_ADDED,
-    DIFF_ADDED_UIDS,
     DIFF_CHANGED,
-    DIFF_REMOVED,
     EQUIP_IS_CHANGED,
     EQUIP_UID,
     PLAN_ASSIGNED_TAPE,
@@ -39,9 +39,6 @@ from src.services.sqlite_allocation_inventory import SqliteAllocationInventory
 from src.services.allocation_filter_settings import (
     AllocationFilterSettings,
     filter_allocation_candidates,
-)
-from src.features.allocation.slot_plan_diff import (
-    single_slot_loadout_state,
 )
 from src.services.allocation_lock_service import (
     AllocationLockSnapshot,
@@ -82,6 +79,7 @@ class AllocationRunResult:
     static_file_identity: tuple[int, int]
     context_identity: tuple[int | None, str | None, Path]
     run_id: int | None = None
+    comparisons: dict = field(default_factory=dict)
 
 
 def _allocation_context_identity(window: Any) -> tuple[int | None, str | None, Path]:
@@ -214,6 +212,17 @@ def _run_allocation(
             user_database_path=database_path,
             allocation_static_database_path=static_database_path,
         )
+        comparisons = {}
+
+        def freeze_comparisons(request, scorer):
+            def checkpoint():
+                if (cancel_check is not None and cancel_check()) or _allocation_context_identity(self) != context_identity:
+                    raise CancelledError("分配计算已取消或账号已切换")
+            comparisons.update(freeze_legacy_slot_comparisons(
+                database_path, static_database_path, request, scorer,
+                snapshot_id=projection.snapshot_id, checkpoint=checkpoint,
+            ))
+
         if unlocked_sel:
             if cancel_check is not None and cancel_check():
                 raise CancelledError("分配计算已取消")
@@ -225,6 +234,7 @@ def _run_allocation(
                 cs,
                 strat,
                 locked_uids=set(lock_snapshot.reserved_uids),
+                allocation_observer=freeze_comparisons,
                 **allocation_options,
             )
         else:
@@ -245,6 +255,7 @@ def _run_allocation(
             static_file_identity=static_file_identity,
             context_identity=context_identity,
             run_id=expected_run_id,
+            comparisons=refresh_legacy_slot_comparisons(comparisons, fp),
         )
     except Exception as e:
         logger.error(f"allocation.run_failed | {format_local_exception(e)}")
@@ -290,50 +301,12 @@ def _start_allocation_worker(self: Any) -> None:
     logger.info("分配线程已启动")
 
 
-def _active_sqlite_loadout_state(
-    database_path: str | Path,
-) -> dict[str, dict[str, Any]]:
-    """Build a baseline only for roles that have exactly one visible slot."""
-
-    with UserDataDao(database_path) as user_dao:
-        return single_slot_loadout_state(user_dao)
-
-
-def _sqlite_allocation_plan_diff(
-    database_path: str | Path,
-    final_plan: dict[str, Any],
-) -> dict[str, Any]:
-    """Compare with a slot only when it is unambiguous before saving."""
-
-    return build_plan_diff(_active_sqlite_loadout_state(database_path), final_plan)
-
-
-def _calculation_plan_diff(
-    self: Any,
-    final_plan: dict[str, Any],
-) -> dict[str, Any]:
-    """Prefer active SQLite plans; retain a no-database test-host fallback."""
-
-    try:
-        database_path = _allocation_paths(self)[0]
-        return _sqlite_allocation_plan_diff(database_path, final_plan)
-    except Exception as exc:
-        logger.warning(f"读取 SQLite 配装差异失败，改用无数据库兼容基线：{exc}")
-    return build_plan_diff({}, final_plan)
-
-
 def _persistable_plan_diff(
     role_diff: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Convert in-memory diff sets to JSON-compatible plan payload data."""
 
-    source = role_diff or {}
-    return {
-        DIFF_CHANGED: bool(source.get(DIFF_CHANGED)),
-        DIFF_ADDED_UIDS: sorted(str(uid) for uid in (source.get(DIFF_ADDED_UIDS) or ()) if uid),
-        DIFF_ADDED: [dict(item) for item in (source.get(DIFF_ADDED) or ()) if isinstance(item, dict)],
-        DIFF_REMOVED: [dict(item) for item in (source.get(DIFF_REMOVED) or ()) if isinstance(item, dict)],
-    }
+    return persist_comparison_diff(role_diff)
 
 
 def _plan_changed_uids(
@@ -468,7 +441,8 @@ def _on_done(self: Any, r: Any) -> None:
         self.btn_run.setEnabled(True)
         self.btn_run.setText("⚡  开始计算")
         self._allocation_custom_weapons = dict(getattr(self, "_pending_custom_weapons", {}) or {})
-        self.allocation_plan_diff = _calculation_plan_diff(self, self.final_plan)
+        self._allocation_frozen_comparisons = r.comparisons
+        self.allocation_plan_diff = single_slot_comparison_diffs(r.comparisons)
         self._allocation_dirty = bool(self.final_plan)
         self._render_results(self.final_plan)
         logger.info("_render_results 完成")
@@ -611,6 +585,7 @@ class AllocationController(QObject):
         self._saving = False
         self.btn_save: QPushButton | None = None
         self.final_plan: dict = {}
+        self._allocation_frozen_comparisons: dict = {}
         self.allocation_plan_diff: dict = {}
         self._allocation_dirty = False
         self._pending_allocation_snapshot_id: int | None = None
@@ -708,6 +683,7 @@ class AllocationController(QObject):
         """Discard a displayed calculation without changing persisted plans or inputs."""
 
         self.final_plan = {}
+        self._allocation_frozen_comparisons = {}
         self.allocation_plan_diff = {}
         self._allocation_dirty = False
         self._pending_allocation_snapshot_id = None
@@ -719,6 +695,7 @@ class AllocationController(QObject):
 
     def reset_account_state(self) -> None:
         self.final_plan = {}
+        self._allocation_frozen_comparisons = {}
         self.allocation_plan_diff = {}
         self._allocation_dirty = False
         self._pending_allocation_snapshot_id = None

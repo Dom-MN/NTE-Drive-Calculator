@@ -5,6 +5,7 @@ from src.services.loadout_equipment_identity import source_snapshots_share_equip
 from src.services.virtual_equipment_service import is_virtual_equipment_assignment
 
 from .protocols import UserDataDaoMixinHost
+from .loadout_comparison_guard import assert_comparison_baseline
 from .user_data_support import UserDataError, UserDataValidationError, _integer, _utc_now
 
 
@@ -73,6 +74,7 @@ class AllocationPlanBatchDaoMixin(UserDataDaoMixinHost):
                         or int(slot["character_id"]) != int(row["character_id"])):
                     raise UserDataValidationError("计算方案目标槽位无效或重复")
                 slots[slot_id] = slot
+                assert_comparison_baseline(self, slot_id, row.get("comparison_baseline"))
                 resolved_plans.append(row)
                 self.assert_loadout_slot_save_allowed(
                     slot_id, row["assignments"], source_snapshot_id=row["source_snapshot_id"],

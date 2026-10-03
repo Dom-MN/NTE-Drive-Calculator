@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
     QKeySequenceEdit,
@@ -238,7 +239,13 @@ def _build_environment_card(window):
     window._equipment_plugin_loading_method_combo.currentIndexChanged.connect(
         window._equipment_plugin_loading_method_changed
     )
-    form.addRow("加载方式:", window._equipment_plugin_loading_method_combo)
+    loading_row = QHBoxLayout()
+    loading_row.addWidget(window._equipment_plugin_loading_method_combo)
+    loading_hint = QLabel("若不可用，请选择备用加载方式")
+    loading_hint.setWordWrap(True)
+    loading_hint.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
+    loading_row.addWidget(loading_hint, 1)
+    form.addRow("加载方式:", loading_row)
     window._equipment_plugin_game_executable_edit = QLineEdit()
     window._equipment_plugin_game_executable_edit.setPlaceholderText(
         "可手动粘贴 HTGame.exe 的完整文件地址"
@@ -264,7 +271,10 @@ def _build_environment_card(window):
     card.layout().addLayout(form)
 
     window._equipment_plugin_status_label = QLabel()
-    window._equipment_plugin_status_label.setWordWrap(False)
+    window._equipment_plugin_status_label.setMinimumWidth(0)
+    window._equipment_plugin_status_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+    window._equipment_plugin_status_label.setTextFormat(Qt.PlainText)
+    window._equipment_plugin_status_label.setWordWrap(True)
     window._equipment_plugin_status_label.setStyleSheet(
         themed_style("color:#8b949e;font-size:12px")
     )

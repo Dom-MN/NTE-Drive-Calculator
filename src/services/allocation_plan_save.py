@@ -40,6 +40,7 @@ def save_allocation_plans(*, database_path, static_database_path, static_identit
                     raise RuntimeError("目标配装槽位已改变，请重新选择。")
             prepared.append({
                 **plan.as_record(), "slot_id": slot_id,
+                "comparison_baseline": (row.get("payload") or {}).get("last_diff"),
                 "create_slot_name": row["role_name"] if slot_id is None else None,
             })
             progress((f"已校验配装方案 {index}/{len(rows)}", index, len(rows) + 4))

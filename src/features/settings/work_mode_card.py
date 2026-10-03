@@ -158,9 +158,10 @@ def prompt_offline_sync_mode(parent) -> bool:
 class ModeReportDialog(QDialog):
     """Keep the explicit check visible from queued work through its final report."""
 
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, *, sync_action_provider=None):
         super().__init__(parent)
         self._controller = controller
+        self._sync_action_provider = sync_action_provider
         self._settings_target = "deployment"
         self._preview = False
         self.setWindowModality(Qt.WindowModal)
@@ -183,6 +184,12 @@ class ModeReportDialog(QDialog):
         self.metadata.setObjectName("modeReportMetadata")
         self.metadata.setStyleSheet(f"color:{theme_color('#8b949e')};font-size:11px")
         layout.addWidget(self.metadata)
+        self.warning_hint = QLabel("黄色仅为警告，并非报错，如出现红色信息才需要处理。", self)
+        self.warning_hint.setObjectName("modeReportWarningHint")
+        self.warning_hint.setWordWrap(True)
+        self.warning_hint.setStyleSheet(f"color:{theme_color('#d29922')};font-size:12px")
+        self.warning_hint.hide()
+        layout.addWidget(self.warning_hint)
         self.label = QLabel()
         self.label.setTextFormat(Qt.PlainText)
         self.label.setWordWrap(True)
@@ -297,16 +304,23 @@ class ModeReportDialog(QDialog):
     def _render_report(self, report):
         self._clear_results()
         issues, waiting, available = _report_groups(report)
-        problem_count = sum(len(labels) for _key, labels in issues)
+        faults = [group for group in issues if group[0][0] == "fault"]
+        warnings = [group for group in issues if group[0][0] != "fault"]
+        problem_count = sum(len(labels) for _key, labels in faults)
+        warning_count = sum(len(labels) for _key, labels in warnings)
+        self.warning_hint.setVisible(bool(warnings))
         waiting_count = sum(len(labels) for _key, labels in waiting)
         ready_count = sum(len(labels) for _key, labels in available)
         if problem_count:
-            self.overview.setText(f"需处理 {problem_count} 项 · 等待 {waiting_count} 项 · 已就绪 {ready_count} 项")
+            self.overview.setText(f"需处理 {problem_count} 项 · 警告 {warning_count} 项 · 等待 {waiting_count} 项 · 已就绪 {ready_count} 项")
+        elif warning_count:
+            self.overview.setText(f"警告 {warning_count} 项 · 等待 {waiting_count} 项 · 已就绪 {ready_count} 项")
         elif waiting_count:
             self.overview.setText(f"等待 {waiting_count} 项 · 已就绪 {ready_count} 项")
         else:
             self.overview.setText(f"全部 {ready_count} 项已就绪")
-        self._add_result_section("需处理", issues, "#f85149")
+        self._add_result_section("需处理", faults, "#f85149")
+        self._add_result_section("警告", warnings, "#d29922")
         self._add_result_section("等待或待核对", waiting, "#58a6ff")
         if available:
             heading = QLabel(f"已就绪（{ready_count} 项）", self.results)
@@ -345,6 +359,7 @@ class ModeReportDialog(QDialog):
         self._clear_results()
         self.overview.setText("正在核对同步条件…" if preview else "正在检测环境…")
         self.metadata.clear()
+        self.warning_hint.hide()
         self.diagnostic_toggle.setChecked(False)
         self.diagnostic_toggle.hide()
         self.label.clear()
@@ -404,8 +419,14 @@ class ModeReportDialog(QDialog):
                 self._controller.detect_path()
             self._add_action("重新检测路径", detect, close=True)
             self.settings_button.hide()
+        if (not self._preview and self._sync_action_provider is not None
+                and not any(item.state.value == "fault" for item in report.features)):
+            action = self._sync_action_provider(report)
+            if action is not None:
+                self._add_action("开启自动同步", action)
 
     def set_error(self, detail):
+        self.warning_hint.hide()
         self.progress.hide()
         self._clear_actions()
         self._set_primary_action("前往环境设置", self._open_environment_settings)
@@ -444,6 +465,7 @@ class ModeReportDialog(QDialog):
             self.settings_button.hide()
 
     def set_activation_result(self, ready, detail):
+        self.warning_hint.hide()
         self.progress.hide()
         self._clear_actions()
         self.retry_button.setEnabled(True)

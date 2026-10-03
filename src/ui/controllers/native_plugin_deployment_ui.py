@@ -92,6 +92,18 @@ def _refresh_work_mode_detection(window) -> None:
         controller.component_state_changed()
 
 
+def _set_component_status(label, *, issues=(), ready=False, pending=False):
+    if pending:
+        label.setText("Loader 工作区核对未完成；请查看检测详情。")
+        label.setToolTip("")
+    elif ready:
+        label.setText("组件已准备好，启动游戏后会自动检查连接和可用功能。")
+        label.setToolTip("")
+    else:
+        label.setText(f"组件未准备好（{len(issues)} 项）；请查看检测详情。")
+        label.setToolTip("\n".join(str(issue) for issue in issues))
+
+
 def refresh_native_plugin_status(window) -> None:
     bundle = inspect_game_component_bundle(window.app_context.paths.root)
     combo = getattr(window, "_equipment_plugin_loading_method_combo", None)
@@ -116,15 +128,14 @@ def refresh_native_plugin_status(window) -> None:
     label = getattr(window, "_equipment_plugin_status_label", None)
     if label is not None:
         if not bundle.ready:
-            label.setText("组件未准备好：" + "；".join(bundle.issues))
+            _set_component_status(label, issues=bundle.issues)
         elif combo is not None and combo.currentData() == "loader":
             try:
                 service = window._mod_plugin_loading_service
                 workspace = service.inspect_native_workspace()
-                label.setText("组件已准备好，启动游戏后会自动检查连接和可用功能。"
-                              if workspace.files_compatible else "组件未准备好：" + "；".join(workspace.issues))
+                _set_component_status(label, ready=workspace.files_compatible, issues=workspace.issues)
             except (EquipmentPluginDeploymentError, ModPluginLoadingError):
-                label.setText("Loader 工作区核对未完成；请查看检测详情。")
+                _set_component_status(label, pending=True)
         else:
             result = inspect_deployed_native_plugin(
                 application_root=window.app_context.paths.root,
@@ -132,8 +143,7 @@ def refresh_native_plugin_status(window) -> None:
                 recorded_files=window.work_mode_service.deployment_record.get("managed_files", {}),
                 bundle_inspection=bundle,
             )
-            label.setText("组件已准备好，启动游戏后会自动检查连接和可用功能。"
-                          if result.files_compatible else "组件未准备好：" + "；".join(result.issues))
+            _set_component_status(label, ready=result.files_compatible, issues=result.issues)
 
 
 def _confirm_d3d_deployment(window) -> bool:
