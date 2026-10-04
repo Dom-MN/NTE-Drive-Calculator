@@ -33,7 +33,7 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
         history.load_analysis.return_value = overview
         history.load_target_catalog.return_value = {"kinds": ()}
 
-        result = BattleReportAnalysisLoadService.load(
+        result = BattleReportAnalysisLoadService.load_legacy_for_differential(
             history,
             BattleReportAnalysisLoadRequest(
                 battle_record_id=12,
@@ -92,7 +92,7 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
                 side_effect=(materialized, combined),
             ),
         ):
-            result = BattleReportAnalysisLoadService.load(history, request)
+            result = BattleReportAnalysisLoadService.load_legacy_for_differential(history, request)
 
         self.assertIs(combined, result.analysis)
         self.assertEqual({"kinds": ()}, result.target_catalog)
@@ -170,7 +170,7 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
                 return_value=materialized,
             ) as clear_comparison,
         ):
-            result = BattleReportAnalysisLoadService.load(
+            result = BattleReportAnalysisLoadService.load_legacy_for_differential(
                 history,
                 BattleReportAnalysisLoadRequest(
                     battle_record_id=12,
@@ -230,7 +230,7 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
                 return_value=combined,
             ),
         ):
-            result = BattleReportAnalysisLoadService.load(
+            result = BattleReportAnalysisLoadService.load_legacy_for_differential(
                 history,
                 BattleReportAnalysisLoadRequest(
                     battle_record_id=12,
@@ -253,7 +253,7 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
             "catalog unavailable"
         )
 
-        result = BattleReportAnalysisLoadService.load(
+        result = BattleReportAnalysisLoadService.load_legacy_for_differential(
             history,
             BattleReportAnalysisLoadRequest(
                 battle_record_id=7,
@@ -289,7 +289,7 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
             patch("src.services.battle_report_analysis_load_service.BattleBuildCounterfactualService.compare"),
             patch("src.services.battle_report_analysis_load_service.BattleMarginalBenefitService.calculate", side_effect=calculate),
         ):
-            result = BattleReportAnalysisLoadService.load(history, BattleReportAnalysisLoadRequest(
+            result = BattleReportAnalysisLoadService.load_legacy_for_differential(history, BattleReportAnalysisLoadRequest(
                 battle_record_id=12, detail_level="marginal", marginal_candidate=candidate,
                 marginal_benefit_candidate=candidate, selected_character_id=1004,
                 comparison_baseline=analysis,
@@ -312,7 +312,7 @@ class BattleReportAnalysisLoadServiceTests(unittest.TestCase):
                 raise CancelledError
 
         with self.assertRaises(CancelledError):
-            BattleReportAnalysisLoadService.load(
+            BattleReportAnalysisLoadService.load_legacy_for_differential(
                 history,
                 BattleReportAnalysisLoadRequest(battle_record_id=7),
                 progress_callback=cancel,
@@ -376,11 +376,17 @@ class _AsyncHost(BattleReportAnalysisControllerMixin, QObject):
             refresh=lambda _record_id: None
         )
         self._history = Mock(native_page_loader=None)
+        self._history.native_page_loader = SimpleNamespace(load=self._legacy_fixture_load)
         self._marginal_units_provider = lambda: {"CritBase": 0.032}
         self._initialize_analysis_loading()
 
     def _current_history_service(self):
         return self._history
+
+    def _legacy_fixture_load(self, request, *, progress_callback=None):
+        return BattleReportAnalysisLoadService.load_legacy_for_differential(
+            self._history, request, progress_callback=progress_callback,
+        )
 
     def _save_analysis_range(self, *_args) -> None:
         pass
@@ -426,7 +432,7 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
         del host._latest_state
         self.assertTrue(host._analysis_request_is_current(request))
 
-    def test_composition_detail_reuses_hit_replay_load(self) -> None:
+    def test_composition_detail_requests_only_topple_replay(self) -> None:
         loop = QEventLoop()
         page = _AsyncPage(loop)
         host = self._host(page)
@@ -447,7 +453,7 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
             end_us=20,
             selected_character_id=None,
             detail_scope="first",
-            detail_level="hit",
+            detail_level="composition",
             completion_kind="composition",
             completion_payload=None,
         )
@@ -580,3 +586,39 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
         host._analysis_load_failed(1, request, "boom")
 
         self.assertEqual([], page.cleared_messages)
+
+    def test_topple_failure_preserves_overview_and_reports_specific_error(self) -> None:
+        page = _AsyncPage(QEventLoop())
+        page.clear_analysis = Mock()
+        page.show_analysis_detail_error = Mock()
+        host = self._host(page)
+        request = SimpleNamespace(
+            load=BattleReportAnalysisLoadRequest(battle_record_id=12, detail_level="composition"),
+            account_id="test-account", generation=3,
+        )
+        host._desired_analysis_load_token = 1
+        host._analysis_load_failed(1, request, "组件能力缺失")
+        page.clear_analysis.assert_not_called()
+        page.show_analysis_detail_error.assert_called_once_with("倾陷归属未完成：组件能力缺失")
+
+    def test_half_hit_and_buff_failures_keep_existing_report_visible(self) -> None:
+        for half in ("first", "second"):
+            for detail_level in ("hit", "buff"):
+                with self.subTest(half=half, detail_level=detail_level):
+                    page = _AsyncPage(QEventLoop())
+                    page.clear_analysis = Mock()
+                    page.show_analysis_detail_error = Mock()
+                    host = self._host(page)
+                    request = SimpleNamespace(
+                        load=BattleReportAnalysisLoadRequest(
+                            battle_record_id=12, detail_level=detail_level, detail_scope=half),
+                        account_id="test-account", generation=3,
+                    )
+                    host._desired_analysis_load_token = 1
+                    host._analysis_load_failed(1, request, "详情不可用")
+                    page.clear_analysis.assert_not_called()
+                    page.show_analysis_detail_error.assert_called_once()
+                    page.show_analysis_detail_error.reset_mock()
+                    host._analysis_load_ready(1, request, BattleReportAnalysisLoadResult(None, None))
+                    page.clear_analysis.assert_not_called()
+                    page.show_analysis_detail_error.assert_called_once()

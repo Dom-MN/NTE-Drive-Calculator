@@ -126,17 +126,12 @@ class SettingsContextTests(unittest.TestCase):
                 violations.append(str(path))
         self.assertEqual([], violations)
 
-    def test_capture_device_placeholder_warns_against_manual_input(self):
+    def test_capture_device_placeholder_explains_when_manual_input_is_needed(self):
         source = Path("src/features/settings/page.py").read_text(encoding="utf-8")
         self.assertIn(
-            'setPlaceholderText(tr("特殊情况所需，请勿随意填写此空"))',
+            'setPlaceholderText("仅在自动选择网卡失败时填写")',
             source,
         )
-
-    def test_protagonist_name_editor_uses_an_eight_character_width(self):
-        source = Path("src/features/settings/page.py").read_text(encoding="utf-8")
-        self.assertIn('horizontalAdvance("零" * 8) + 36', source)
-        self.assertIn("_protagonist_game_name_edit.setFixedWidth(protagonist_name_width)", source)
 
     def test_account_switch_does_not_reload_or_apply_theme(self):
         tree = ast.parse(

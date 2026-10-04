@@ -137,10 +137,7 @@ def _saved_plan_contains_virtual_equipment(
 def _saved_plan_requires_score_recalculation(
     role_data: Mapping[str, Any],
 ) -> bool:
-    return (
-        not bool(role_data.get("_sqlite_assignment_scores_complete"))
-        or _saved_plan_contains_virtual_equipment(role_data)
-    )
+    return not bool(role_data.get("_sqlite_assignment_scores_complete"))
 
 
 def _saved_official_attribute_panel(
@@ -149,6 +146,8 @@ def _saved_official_attribute_panel(
     *,
     parent: QWidget | None = None,
     weight_for_stat: Callable[[str, str], float] | None = None,
+    comparison_titles: tuple[str, str, str] = ("旧", "新", "变化"),
+    header_control: QWidget | None = None,
 ) -> AttributeSummaryPanel | None:
     summaries = state.get("_official_attribute_summaries")
     if not isinstance(summaries, Mapping):
@@ -157,20 +156,37 @@ def _saved_official_attribute_panel(
     def rows(
         source: Mapping[str, Any], mode: str
     ) -> tuple[AttributeSummaryRow, ...]:
-        return tuple(
-            AttributeSummaryRow(
-                key=str(row.key),
-                label=str(row.label),
+        result = []
+        for row in source.get(mode, ()):
+            key = str(row.key)
+            raw_label = str(row.label)
+            label = (
+                _OFFICIAL_STAT_LABELS.get(key, raw_label)
+                if key.endswith("Up")
+                else raw_label
+            )
+            weight_ids = tuple(getattr(row, "weight_property_ids", ()) or ())
+            weight_names = tuple(
+                _OFFICIAL_STAT_LABELS.get(str(property_id), str(property_id))
+                for property_id in weight_ids
+            ) or (label,)
+            weight_candidates = tuple(dict.fromkeys((*weight_names, raw_label)))
+            weights = []
+            if weight_for_stat is not None:
+                for name in weight_candidates:
+                    try:
+                        weights.append(float(weight_for_stat(name, mode)))
+                    except (KeyError, LookupError):
+                        continue
+            weight = max(weights, default=0.0)
+            result.append(AttributeSummaryRow(
+                key=key,
+                label=label,
                 value=round(float(row.value) * (100.0 if row.percent else 1.0), 2),
                 percent=bool(row.percent),
-                weight=(
-                    float(weight_for_stat(str(row.label), mode))
-                    if weight_for_stat is not None
-                    else 0.0
-                ),
-            )
-            for row in source.get(mode, ())
-        )
+                weight=weight,
+            ))
+        return tuple(result)
 
     current_rows = {
         "equipment": rows(summaries, "equipment"),
@@ -195,6 +211,37 @@ def _saved_official_attribute_panel(
         current_rows,
         parent=parent,
         comparison_rows_by_mode=comparisons,
+        comparison_titles=comparison_titles,
+        header_control=header_control,
+    )
+
+
+def _game_official_attribute_panel(
+    role_name: str,
+    state: Mapping[str, Any],
+    saved_state: Mapping[str, Any],
+    *,
+    parent: QWidget | None = None,
+    weight_for_stat: Callable[[str, str], float] | None = None,
+    header_control: QWidget | None = None,
+) -> AttributeSummaryPanel | None:
+    """Compare game equipment with one saved slot on the current role profile."""
+
+    game_summaries = state.get("_official_attribute_summaries")
+    calculation_summaries = saved_state.get("_official_attribute_summaries")
+    if not isinstance(game_summaries, Mapping) or not isinstance(
+        calculation_summaries, Mapping
+    ):
+        return None
+    projected = dict(saved_state)
+    projected["_official_previous_attribute_summaries"] = game_summaries
+    return _saved_official_attribute_panel(
+        role_name,
+        projected,
+        parent=parent,
+        weight_for_stat=weight_for_stat,
+        comparison_titles=("游戏", "计算", "变化"),
+        header_control=header_control,
     )
 
 
@@ -382,9 +429,10 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
     _sm = rd.get("strategy_mode", "")
     if _sm:
         _ml = {
-            "role_priority": tr("角色优先"),
-            "update_mode": tr("增量更新"),
-            "game_inventory": tr("游戏配装"),
+            "role_priority": "角色优先",
+            "update_mode": "增量更新",
+            "damage_based": "期望伤害",
+            "game_inventory": "游戏配装",
         }.get(_sm, _sm)
         sml = QLabel(_ml)
         sml.setStyleSheet(
@@ -402,7 +450,7 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
     graduation_layout = QHBoxLayout(graduation_frame)
     graduation_layout.setSpacing(6)
     graduation_layout.setContentsMargins(4, 0, 4, 0)
-    graduation_label = QLabel(tr("毕业率"))
+    graduation_label = QLabel(tr("空幕毕业率"))
     graduation_label.setObjectName("equipmentGraduationLabel")
     graduation_layout.addWidget(graduation_label)
     graduation_value = QLabel("--")
@@ -519,6 +567,7 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
                 if isinstance(candidate, dict)
                 and candidate.get("_loadout_slot_id") is not None
             ]
+        if comparison_slots:
             comparison_control = QWidget()
             comparison_layout = QHBoxLayout(comparison_control)
             comparison_layout.setContentsMargins(0, 0, 0, 0)
@@ -535,59 +584,69 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
                 QComboBox.AdjustToMinimumContentsLengthWithIcon
             )
             comparison_selector.setMinimumContentsLength(5)
-            if comparison_slots:
-                selected_slot_id = (
-                    saved_state.get("_loadout_slot_id")
-                    if isinstance(saved_state, dict)
-                    else None
+            selected_slot_id = (
+                saved_state.get("_loadout_slot_id")
+                if isinstance(saved_state, dict)
+                else None
+            )
+            for candidate in comparison_slots:
+                label = str(
+                    candidate.get("_display_name")
+                    or candidate.get("_loadout_slot_name")
+                    or "未命名槽位"
                 )
-                for candidate in comparison_slots:
-                    label = str(
-                        candidate.get("_display_name")
-                        or candidate.get("_loadout_slot_name")
-                        or "未命名槽位"
-                    )
-                    comparison_selector.addItem(label, candidate["_loadout_slot_id"])
-                selected_index = comparison_selector.findData(selected_slot_id)
-                comparison_selector.setCurrentIndex(
-                    selected_index if selected_index >= 0 else 0
+                comparison_selector.addItem(label, candidate["_loadout_slot_id"])
+            selected_index = comparison_selector.findData(selected_slot_id)
+            comparison_selector.setCurrentIndex(
+                selected_index if selected_index >= 0 else 0
+            )
+
+            def select_comparison_slot(_index: int) -> None:
+                selected_id = comparison_selector.currentData()
+                selected_state = next(
+                    (
+                        candidate
+                        for candidate in comparison_slots
+                        if candidate.get("_loadout_slot_id") == selected_id
+                    ),
+                    None,
+                )
+                if selected_state is None:
+                    return
+                rd["_game_saved_state"] = selected_state
+                from src.features.inventory.equipment_master_detail_view import (
+                    select_equipment_role,
                 )
 
-                def select_comparison_slot(_index: int) -> None:
-                    selected_id = comparison_selector.currentData()
-                    selected_state = next(
-                        (
-                            candidate
-                            for candidate in comparison_slots
-                            if candidate.get("_loadout_slot_id") == selected_id
-                        ),
-                        None,
-                    )
-                    if selected_state is None:
-                        return
-                    rd["_game_saved_state"] = selected_state
-                    from src.features.inventory.equipment_master_detail_view import (
-                        select_equipment_role,
-                    )
+                select_equipment_role(self, source_role_name)
 
-                    select_equipment_role(self, source_role_name)
-
-                comparison_selector.currentIndexChanged.connect(select_comparison_slot)
-            else:
-                comparison_selector.addItem(tr("无对比方案"))
-                comparison_selector.setEnabled(False)
+            comparison_selector.currentIndexChanged.connect(select_comparison_slot)
             comparison_layout.addWidget(comparison_selector)
         if is_game_mode and isinstance(saved_state, dict):
-            bonus_panel = presentation.role_loadout_comparison_panel(
+            official_bonus_panel = _game_official_attribute_panel(
                 source_role_name,
-                tape_data,
-                drives,
-                saved_state.get(ROLE_EQUIPPED_TAPE),
-                saved_state.get(ROLE_EQUIPPED_DRIVES, []),
-                priority_stats=presentation.role_stat_priority_stats(source_role_name),
+                rd,
+                saved_state,
+                parent=self if isinstance(self, QWidget) else None,
+                weight_for_stat=lambda stat, mode: presentation.attribute_summary_weight(
+                    source_role_name, stat, mode
+                ),
                 header_control=comparison_control,
             )
-            bonus_stretch = 1
+            if official_bonus_panel is not None:
+                bonus_panel = official_bonus_panel
+                bonus_stretch = 1
+            else:
+                bonus_panel = presentation.role_loadout_comparison_panel(
+                    source_role_name,
+                    tape_data,
+                    drives,
+                    saved_state.get(ROLE_EQUIPPED_TAPE),
+                    saved_state.get(ROLE_EQUIPPED_DRIVES, []),
+                    priority_stats=presentation.role_stat_priority_stats(source_role_name),
+                    header_control=comparison_control,
+                )
+                bonus_stretch = 1
         else:
             official_bonus_panel = _saved_official_attribute_panel(
                 source_role_name,

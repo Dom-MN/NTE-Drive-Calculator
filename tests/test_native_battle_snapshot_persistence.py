@@ -17,6 +17,8 @@ from src.services.battle_native_snapshot_persistence import persist_native_snaps
 from src.services.battle_report_analysis_load_service import BattleReportAnalysisLoadRequest
 from src.services.battle_report_persistence_service import BattleReportPersistenceDependencies
 from src.services.battle_report_transfer_service import BattleReportTransferService
+from src.services.battle_report_history_entry_service import list_history_entries
+from src.services.battle_inferred_target_snapshot_service import BattleInferredTargetSnapshotService
 from src.storage.sqlite.user_data_dao import UserDataDao
 from tests.test_battle_report_transfer_dao import _insert_summary, _target_condition
 
@@ -68,6 +70,26 @@ class NativeBattleSnapshotPersistenceTests(unittest.TestCase):
             persist_native_snapshot(row, dependencies=self.dependencies, checkpoint=lambda: None)
             write.assert_not_called()
 
+    def test_history_displays_native_revision_without_reusing_it_as_legacy_formula_input(self):
+        for version in ('battle-encounter-native-first-v9', 'future-native-revision'):
+            row = deepcopy(self.row)
+            row['algorithm_version'] = row['inferred_payload']['algorithm_version'] = version
+            checked = decode_derived_snapshot(row, battle_record_id=self.record_id,
+                                              dataset_version='fixture-dataset')
+            persist_native_snapshot(checked, dependencies=self.dependencies, checkpoint=lambda: None)
+            with UserDataDao(self.dependencies.user_database_path, account_id='fixture') as dao:
+                entries = list_history_entries(user_dao=dao, static_dataset_id='fixture-dataset',
+                                               static_schema_version=31)
+                self.assertEqual(entries[0].environment_name, row['environment_name'])
+                self.assertEqual(entries[0].environment_source, 'inferred')
+                self.assertEqual(dao.load_battle_record(self.record_id), self.original)
+                saved = dao.load_battle_inferred_target_snapshot(self.record_id)
+                self.assertIsNone(BattleInferredTargetSnapshotService.restore(saved))
+        for key, value in (('payload_schema_version', 2), ('static_dataset_id', 'other'),
+                           ('static_schema_version', 999), ('inference_status', 'unresolved')):
+            self.assertFalse(BattleInferredTargetSnapshotService.is_readable_row(
+                {**row, key: value}, static_dataset_id='fixture-dataset', static_schema_version=31))
+
     def test_bad_identity_version_or_payload_rejected(self):
         for key, value in [('battle_record_id', self.record_id + 1), ('payload_schema_version', 2),
                            ('static_dataset_id', 'other'), ('algorithm_version', 'other'),
@@ -77,8 +99,8 @@ class NativeBattleSnapshotPersistenceTests(unittest.TestCase):
                 decode_derived_snapshot(row, battle_record_id=self.record_id, dataset_version='fixture-dataset')
         row = deepcopy(self.row)
         row['inferred_payload']['extra'] = 1
-        with self.assertRaises(NativeAnalysisError):
-            decode_derived_snapshot(row, battle_record_id=self.record_id, dataset_version='fixture-dataset')
+        checked = decode_derived_snapshot(row, battle_record_id=self.record_id, dataset_version='fixture-dataset')
+        self.assertEqual(1, checked['inferred_payload']['extra'])
 
     def test_user_confirmation_supersedes_pending_inference(self):
         with UserDataDao(self.dependencies.user_database_path, account_id='fixture') as dao:

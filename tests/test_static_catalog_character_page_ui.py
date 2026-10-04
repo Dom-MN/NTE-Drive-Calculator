@@ -57,15 +57,16 @@ class _TerminologySource:
                     else "formal_localization"
                 ),
             )
-        if (entity_kind, stable_id, context) == (
-            "item", "gold", "progression_cost",
-        ):
+        if (entity_kind, stable_id, context) in {
+            ("item", "gold", "progression_cost"),
+            ("item", "Gold", "progression_cost"),
+        }:
             return LocalizedTermRecord(
                 entity_kind="item",
-                canonical_id="Fons",
-                names={"zh-CN": "方斯"},
-                text_table="/Game/Text/ST_Item.ST_Item",
-                text_key="item_Fons_name",
+                canonical_id="Gold",
+                names={"zh-CN": "甲硬币"},
+                text_table="/Game/Text/ST_Ui.ST_Ui",
+                text_key="gold_name",
             )
         progression_names = {
             "Fons": "方斯",
@@ -118,6 +119,7 @@ class _ReleaseSource:
     _A_PERMANENT = {1008, 1019, 1020, 1021, 1033, 1070}
     _S_PERMANENT = {1003, 1023, 1025, 1039, 1054, 1055}
     _FREE = {1046, 1051, 1073}
+    _UNDATED_LIMITED = {1042, 1057}
 
     def list_catalog_character_release_annotations(self):
         rows = []
@@ -125,6 +127,7 @@ class _ReleaseSource:
             self._A_PERMANENT
             | self._S_PERMANENT
             | self._FREE
+            | self._UNDATED_LIMITED
             | set(self._DATES)
         ):
             if character_id in self._A_PERMANENT:
@@ -141,11 +144,13 @@ class _ReleaseSource:
                 "quality_source_kind": "reviewed_fallback",
                 "acquisition_type": acquisition_type,
                 "acquisition_source_kind": "official",
-                "mainland_release_date": self._DATES.get(
-                    character_id,
-                    "2026-04-23",
+                "mainland_release_date": (
+                    None if character_id in self._UNDATED_LIMITED
+                    else self._DATES.get(character_id, "2026-04-23")
                 ),
-                "release_source_kind": "official",
+                "release_source_kind": (
+                    None if character_id in self._UNDATED_LIMITED else "official"
+                ),
                 "evidence_keys": (f"evidence_{character_id}",),
             })
         return rows
@@ -169,7 +174,7 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
         self.page = build_character_catalog_page(
             service=self.service,
             release_metadata_service=self.release_service,
-            game_ui_asset_root=PROJECT_ROOT / "assets" / "game_ui",
+            game_ui_asset_root=PROJECT_ROOT / "data" / "role_catalog" / "game_ui",
             terminology_service=self.terminology,
         )
         self.page.resize(1280, 900)
@@ -184,9 +189,9 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
     def test_gallery_uses_character_cards_and_no_tables(self) -> None:
         cards = self.page.findChildren(CharacterGalleryCard)
 
-        self.assertEqual(22, len(cards))
+        self.assertEqual(24, len(cards))
         self.assertEqual([], self.page.findChildren(QTableWidget))
-        self.assertIn("22 位角色", self.page.result_count.text())
+        self.assertIn("24 位角色", self.page.result_count.text())
         self.assertIsNone(self.page.findChild(QFrame, "characterGalleryHero"))
         self.assertNotIn(1056, self.page._cards)
         self.assertNotIn(1091, self.page._cards)
@@ -250,7 +255,7 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
         facets["S 级"].click()
         facets["限定"].click()
         self.app.processEvents()
-        self.assertEqual(8, len(self.page._visible_ids))
+        self.assertEqual(10, len(self.page._visible_ids))
         self.assertTrue(all(
             self.release_service.metadata(character_id).acquisition_type
             == "limited"
@@ -304,14 +309,14 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
         self.app.processEvents()
         self.assertFalse(self.page.filter_body.isVisible())
 
-    def test_scheduled_card_leads_the_shared_responsive_grid(self) -> None:
+    def test_released_cards_share_the_responsive_grid(self) -> None:
         visible_text = "\n".join(
             label.text() for label in self.page.gallery_host.findChildren(QLabel)
         )
         self.assertNotIn("待上线预告", visible_text)
         self.assertNotIn("已上线角色", visible_text)
         self.assertNotIn("预告角色独立展示", visible_text)
-        self.assertTrue(self.page._cards[1072].property("scheduledCharacter"))
+        self.assertFalse(self.page._cards[1072].property("scheduledCharacter"))
         self.assertFalse(self.page._cards[1036].property("scheduledCharacter"))
         scheduled_position = self.page.card_grid.getItemPosition(
             self.page.card_grid.indexOf(self.page._cards[1072])
@@ -319,36 +324,8 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
         active_position = self.page.card_grid.getItemPosition(
             self.page.card_grid.indexOf(self.page._cards[1036])
         )
-        self.assertEqual((0, 0), scheduled_position[:2])
-        self.assertEqual((0, 1), active_position[:2])
-
-    def test_scheduled_limited_character_uses_future_facing_copy(self) -> None:
-        limited = next(
-            button for button in self.page.acquisition_group.buttons()
-            if button.property("filterKey") == "limited"
-        )
-        scheduled = next(
-            button for button in self.page.availability_group.buttons()
-            if button.property("filterKey") == "scheduled"
-        )
-        limited.click()
-        scheduled.click()
-        self.app.processEvents()
-
-        self.assertEqual((1072,), self.page._visible_ids)
-        card_text = "\n".join(
-            label.text() for label in self.page._cards[1072].findChildren(QLabel)
-        )
-        self.assertIn("待上线", card_text)
-        self.assertIn("预计上线 2026-09-03", card_text)
-
-        self.page.open_character(1072)
-        self.app.processEvents()
-        detail_text = "\n".join(
-            label.text() for label in self.page.detail_view.findChildren(QLabel)
-        )
-        self.assertIn("限定 · 待上线", detail_text)
-        self.assertIn("预计上线 2026-09-03", detail_text)
+        self.assertEqual(scheduled_position[0], active_position[0])
+        self.assertEqual(scheduled_position[1] + 1, active_position[1])
 
     def test_gallery_defaults_to_newest_release_first(self) -> None:
         self.assertEqual(
@@ -359,7 +336,7 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
             tuple(sorted(
                 self.page._visible_ids,
                 key=lambda character_id: (
-                    self.release_service.metadata(character_id).release_date,
+                    self.release_service.metadata(character_id).release_date or "",
                     -character_id,
                 ),
                 reverse=True,
@@ -402,10 +379,14 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
         action_cards = self.page.detail_view.skill_view.findChildren(SkillActionCard)
         slots = [card.action.slot for card in action_cards]
         self.assertEqual(
-            ["A", "E", "Q", "QTE", "G", "PASSIVE", "PASSIVE"], slots,
+            [
+                "A", "E", "Q", "QTE", "G",
+                "PASSIVE", "PASSIVE", "PECULIARITY",
+            ],
+            slots,
         )
         passives = tuple(card for card in action_cards if card.action.passive is not None)
-        self.assertEqual(("暮落残阳", "殷红幻景"), tuple(
+        self.assertEqual(("暮落残阳", "殷红幻景", "谲影迷踪"), tuple(
             card.action.title for card in passives
         ))
         self.assertNotIn("闪避反击", slots)
@@ -442,7 +423,7 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
             item for item in self.service.list_characters(limit=200).items
             if item.classification != "combat_transformation"
         )
-        self.assertEqual(23, len(variants))
+        self.assertEqual(25, len(variants))
         self.assertTrue(all(
             self.page._asset_catalog.character_art(item.character_id) is not None
             for item in variants
@@ -481,7 +462,7 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
             )[0],
         )
 
-    def test_level_planner_summarizes_formal_books_breakthroughs_and_fons(self) -> None:
+    def test_level_planner_summarizes_formal_books_breakthroughs_and_gold(self) -> None:
         self.page.open_character(1075)
         growth = self.page.detail_view.growth_view
         growth.start_level.setCurrentIndex(4)
@@ -498,7 +479,7 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
         self.assertIn("失焦掠影 × 18", text)
         self.assertIn("晦暗掠影 × 15", text)
         self.assertIn("妄想彼端的一页 × 86", text)
-        self.assertIn("方斯 × 2,067,500", text)
+        self.assertIn("甲硬币 × 2,067,500", text)
         self.assertNotIn("活力", text)
         self.assertFalse(any(
             "计算" in button.text() or "活力" in button.text()
@@ -511,7 +492,7 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
         self.app.processEvents()
 
         text = training.result.text()
-        self.assertIn("方斯 × 437,000", text)
+        self.assertIn("甲硬币 × 437,000", text)
         self.assertIn("初次的期许 × 10", text)
         self.assertIn("模糊数符 × 10", text)
         self.assertIn("记忆的永恒 × 8", text)
@@ -673,7 +654,10 @@ class StaticCatalogCharacterPageUiTests(unittest.TestCase):
                 if card.action.character_id == 1036
             )
             slots = {card.action.slot for card in cards}
-            self.assertEqual({"A", "E", "Q", "QTE", "G", "PASSIVE"}, slots)
+            self.assertEqual(
+                {"A", "E", "Q", "QTE", "G", "PASSIVE", "PECULIARITY"},
+                slots,
+            )
             for card in cards:
                 self.assertGreater(card.width(), detail.skill_view.width() * 0.8)
             a_card = next(card for card in cards if card.action.slot == "A")

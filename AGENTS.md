@@ -1,251 +1,265 @@
-# NTE Drive Calc repository development contract
+# NTE Drive Calc: development agent contract
 
-This file keeps only the current product hard contracts, architectural boundaries and engineering
-gates. Feature detail is in `docs/features.md`, external capabilities in `docs/integrations.md`,
-unfinished capabilities in `docs/roadmap.md`, formulas and fields in `docs/reference/`, and
-real-hardware acceptance in `docs/validation/windows.md`. This file must stay publishable: never
-record an account, token, CDK, private address, real UID, absolute user path, complete packet capture,
-full OCR text, screenshot or unredacted log.
+This file is the set of cross-cutting hard boundaries — not a page guide, a version table or a todo
+list. On entering the repository, look at the current branch, `git status`, the actual code, the
+manifests and the database; never infer the implementation from conversation history, an old installer
+or a UI screenshot. This file must stay publishable: never record a real account or UID, a credential,
+a packet capture, raw screenshot/OCR text, an unredacted log, a private address or a local absolute
+path.
 
 > This is a **fork** of `hxwd94666/NTE-Drive-Calculator` that adds Simplified Chinese / English
-> localisation. Upstream declined the localisation, so the fork is maintained indefinitely. Section 11
-> defines how to take upstream changes; sections 1–10 mirror upstream's contract in English.
+> localisation. Upstream declined the localisation, so the fork is maintained indefinitely. Sections
+> 1–7 mirror upstream's contract in English; sections 8 and 9 are the fork's own.
 
-## 1. Source of truth and documentation maintenance
+## 1. Source of truth and documentation ownership
 
-On conflict, prefer in order: passing public behaviour tests and database constraints, this file, the
-architecture/feature/integration documents, public contracts, and the current UI. Unfinished
-capabilities go only in the roadmap; current capabilities only in the feature document; one fact keeps
-one authoritative location and every other document references it by link.
+On conflict, the strongest evidence is a passing public behaviour test, a database constraint or an
+official protocol; then this contract, then the owning domain document, and only last the UI's
+appearance. Versions, schema, capabilities and dataset identity take their numeric truth from the code,
+the manifests and the database — never copy a perishable number into this file. An existing cross-layer
+call is a legacy fact, not design permission for a new one.
 
-Updating a document means overwriting the relevant section: delete stale conclusions, duplicated
-explanations, phase-by-phase logs and completed plans, and never append a change-log style
-patch paragraph at the end. Documents must not become an archive for implementation detail,
-personal environments or test output.
-
-## 2. Development and definition of done
-
-Before starting, establish which data domain the inputs and outputs belong to, which account,
-generation, snapshot, static dataset, config version, `slot_id`, lock snapshot and cancellation token
-are frozen, and how failure rollback and external side-effect confirmation work. Product semantic
-changes are completed in this order:
-
-```text
-public behaviour tests → contract/docs → Domain/Service → DAO/Integration
-→ Controller/UI → migrate callers and delete the old entry point → targeted verification
-→ core/full plus static checks
-```
-
-Reproduce a defect before making the smallest business fix. Old and new semantics must not dual-read,
-dual-write or be branched in the UI for any length of time. A change to schema, payload, error codes or
-an external protocol must cover a new database, upgrading an old one, failure rollback and retry after
-repair. Done requires behaviour/lifecycle tests, current documentation, no new compatibility façade or
-cross-feature private call, and newly introduced failures reported separately from existing ones.
-
-## 3. Technical baseline and layering
-
-- Windows 10/11, Python 3.11, PySide6; entry point `main.py`, composition root `src/ui/app.py`.
-- Dependencies come only from `pyproject.toml` and `uv.lock`; the version only from
-  `src/app/version.py::__version__`.
-- Quality entry point is `tools/quality/run_tests.py`: `core` covers the critical boundaries, `full`
-  runs the complete discovery.
-
-```text
-UI Page/View → Controller → Application Service → Domain/Optimizer or DAO/Integration
-```
-
-UI owns only widgets and discardable display state; Controller owns only workers, cancellation and
-projection; Service freezes the request and orchestrates transactions; Domain/Optimizer perform
-immutable pure computation; DAO exclusively owns schema/SQL/transactions; Integration exclusively owns
-processes, files, protocols, OCR and input. Service, Domain, DAO and Integration must not import
-`src.features` or look up MainWindow. `AppContext`, `EquipmentPresentation` and the global hotkeys are
-created only in the composition root and injected explicitly.
-
-Cross-layer relationships always use the real `character_id`, `item_id`, `suit_id`, `shape_id`,
-`property_id`, equipment UID and `slot_id`; Chinese names and `slot_name` are display only. Navigation
-uses key/`parent_key`, never a page number or a scan of MainWindow fields to locate a feature.
-
-## 4. Context, async work and data domains
-
-`AppContext` is the single composition root for paths and account state: `ApplicationPaths` owns release
-resources and application paths, `AccountContext` owns the current account, and `generation` identifies
-the account generation. Account switching always follows: stop account tasks → replace the context and
-increment the generation → rebuild narrow services → clear page caches → resume the services allowed to
-run automatically.
-
-A long task freezes the account, generation, paths, snapshot, static dataset, config and target slot at
-creation; it re-checks them before callbacks and writes, and stale results are discarded silently.
-Cancellation only invalidates the current token; exit closes the owner through the public `close`/`stop`
-and never mutates worker private state.
-
-| Data domain | Path / responsibility |
+| Topic | Sole owning document |
 | --- | --- |
-| Release static | `data/game_static.sqlite3`; official catalogue, growth, skills, enemies, offline weights and graduation templates; read-only at runtime. |
-| Application global | `config/global_ui_preferences.json`, `config/workshop_weight_template.json`; theme, interface language and the public workshop template. |
-| Account private | `accounts/<account_id>/user_data.sqlite3`; snapshots, characters, preferences, slots, plans, locks, jobs, battle reports. |
-| Public shared | `data/app_shared.sqlite3`; legacy migration data only, never overriding official static facts. |
+| Layering, composition root, data domains, lifecycle, snapshots | `docs/architecture.md` |
+| Delivered user behaviour | `docs/features.md`, `docs/features/` |
+| Core, the analysis component, deployment, static builds and other external integrations | `docs/integrations.md` |
+| Work modes and capability authorisation | `docs/reference/work-modes.md` |
+| Formulas, catalogue fields, growth, battle-report formats and mechanisms | `docs/reference/`, indexed by `docs/README.md` |
+| Unfinished capabilities and unverified sources | `docs/roadmap.md`, `docs/roadmap/` |
+| Real Windows acceptance | `docs/validation/windows.md` |
 
-Read priority is the account's explicit config → data that permits sharing → release defaults. Theme and
-interface language are application-global; a new install defaults to the black theme, and only an
-explicit legacy theme is migrated. The current release static schema is v31, with code and candidate at
-v32; static and account migrations are append-only and a published migration never changes meaning.
+Editing a document means overwriting its owning section: delete stale conclusions, duplicated
+explanations and phase-by-phase logs. One fact keeps one authoritative statement and every other place
+links to it. Delivered behaviour belongs in features, pending work in the roadmap, and hard boundaries
+here. The repository keeps no separate release notes; the scope of a release is verified jointly by the
+version, the commits, the build inputs and the publishing platform's own information.
 
-An account export contains only the account's runtime data, the configuration it needs and the
-baseline screenshot: SQLite must be written into the archive through a consistent backup, and
-WAL/SHM sidecars, runtime logs and other temporary files must never be carried along. An import
-first validates the format version, member paths, duplicate members and the user database, then
-extracts into a staging area inside the accounts directory; replacing an account of the same name
-must switch atomically only after staging is complete, the index is writable and the database
-upgrade has succeeded. Any failure keeps the original account directory and the original index, and
-must never leave a half-imported account behind.
+## 2. Ownership, layering and account isolation
 
-## 5. Static database, snapshots and source capability
+This repository owns Calc's accounts, interface, configuration, calculation orchestration, process
+lifecycle, protocol adapters and presentation. Public capture fixes live in the public fork, and private
+analysis and dedicated components in their own integration repositories; here we only consume component
+bundles that carry a version, provenance, manifest and hash — never copied private source, never
+bypassing the official protocol. `nte-core.exe` and `nte-analysis-core.exe` have independent identities,
+capabilities and acceptance. The platform baseline is Windows 10/11, Python 3.11 and PySide6; the entry
+point is `main.py`, the composition root is `src/ui/app.py`, and dependencies come from
+`pyproject.toml` and `uv.lock`.
 
-The static database is only ever generated as a candidate under `build/` by `tools/game_data`. After
-post-processing such as graduation templates, only `tools/game_data/promote_static_release.py` may
-promote it, reading local configuration outside the repository and atomically verifying source hashes,
-schema/importer, foreign keys, integrity, and the database against the manifest; overwriting `data/`
-directly or bulk-copying unpacked Content is forbidden. An importer that changes normalised output must
-increment the importer version. Unconditional permanent Arc attributes are projected automatically from
-the real static relationships; conditional effects continue to use the combat state path.
+The intended dependency direction is
+`UI Page/View → Controller → Application Service → Domain/Optimizer or DAO/Integration`. UI holds only
+widgets and discardable display state; Controller holds workers, cancellation and narrow navigation;
+Service freezes the input and orchestrates transactions; Domain/Optimizer compute purely; DAO
+exclusively owns schema, SQL, migrations and consistent backups; Integration exclusively owns external
+processes, files, protocols, OCR, input and probing. Shared context, equipment presentation, hotkeys and
+the native session are injected explicitly by the composition root. New code adds no service locator, no
+dynamic attachment to MainWindow, no cross-feature private call and no lasting old/new dual entry point.
+Official IDs, equipment UIDs and `slot_id` are the cross-layer identity; names, nicknames and
+`slot_name` are display only. Navigation uses key/`parent_key`.
 
-Inventory snapshots are immutable and the current pointer only points at a complete stable snapshot.
-Downstream work resolves `snapshot_id` once at the start and does not follow the latest value while
-running; a plan is always read against its own `source_snapshot_id`. The stabiliser judges stability by a
-complete content fingerprint plus a quiet window and does not retain the historical maximum count. A
-runtime delta may only overlay the state of UIDs already known in a native full snapshot; a partial event
-must not add items, replace the set or advance the pointer.
+| Data domain | Ownership and read rules |
+| --- | --- |
+| `data/game_static.sqlite3` | The main release static; read-only at runtime, owning the complete model calculation needs plus graduation templates |
+| `data/role_catalog/` | Standalone `role_page`/`reference` catalogue entries and images; usable for display, read-only browsing and the growth tool, but never a substitute for the full database's character direct damage, equipment scoring, Rust allocation or battle-report input |
+| `config/` | Local theme, work mode, plugin and environment preferences; never carried by an account import or export |
+| `accounts/<account_id>/user_data.sqlite3` | The current account's snapshots, characters, weights, plans, locks, jobs and battle reports; reached only through the current account context |
+| `data/app_shared.sqlite3` | Only the legacy migration data the contract explicitly allows; never overrides official static facts or an account's explicit settings |
+| `build/` and temporary directories | Rebuildable output; never a runtime source of truth, account data or release data |
 
-Source capability is decided through the public helper: `nte_core` provides real UIDs, character
-instances and reliable equipment state; a vision source supports analysis and regular mouse assembly but
-must not enter fast assembly, fake reliable character ownership, or read or modify discard and lock
-state.
+Read priority is the account's explicit configuration → shared data the contract permits → release
+defaults. `AppContext.generation` is the account generation. Switching accounts first blocks new
+operations and stops the old owners, then replaces the context and advances the generation, rebuilds the
+narrow services, clears page caches, and finally resumes only the automatic services explicitly allowed.
+Every long task freezes the account, generation, paths, static dataset, inventory `snapshot_id`,
+configuration version, target `slot_id`, locks and cancellation token; it re-checks them before
+callbacks, preview saves, database writes and external commands, and discards stale results.
+Cancellation invalidates only that token, and an owner winds down through the public `close`/`stop`;
+exit and mode downgrade first revoke permission for new side effects, then finish within a bound.
 
-## 6. Calculation, characters and loadouts
+Schema and static importer migrations are append-only; a published migration never changes meaning or is
+reordered. A change to schema, payload, protocol or error codes must cover a new database, upgrading an
+old one, failure rollback and retry, and must not leave a lasting dual read. Multi-table writes go in one
+transaction; JSON is replaced atomically through a temporary file in the same directory; a live SQLite
+database is only ever copied through a consistent backup, never by copying an active WAL/SHM. An account
+export carries only that account's runtime data and the necessary configuration it is allowed — never
+another account, logs, caches, captures or credentials. An import validates format, paths, duplicate
+members, total size and the user database first, then stages inside the accounts directory, migrates and
+switches atomically; a failure keeps the original account, index and session. Deleting, overwriting and
+cleaning act on official identity and ownership, never widening scope by display name or extension.
 
-A calculation freezes the account, generation, snapshot, static dataset, character order/equal-priority
-groups, target slot, locks, character configuration and the combination cap, and produces an
-immutable
-`WeightedAllocationPreview`. Saving consumes only that preview and re-checks the frozen boundaries
-before saving, never reading "the latest state" to fill gaps. Candidate construction removes locked real
-UIDs first; sets, main stats, rarity and the blacklist use one shared contract; real UIDs already
-assigned to an earlier character do not enter later candidates. Virtual placeholders score 0 and can be
-neither locked nor fast-assembled. Character drag ordering and the `=`/`>` semantics are defined by the
-shared priority-group tests and must not be rewritten in the UI.
+## 3. Source capability, sync and inventory integrity
 
-The only allocation strategy is character priority; a historical `global_optimal` setting is folded
-into `role_priority` by account migration, and no UI, dispatch, DAO validation or runtime
-compatibility entry point may be kept for it. The combination cap is an account-level allocation
-setting, defaulting to 500 with a minimum of 1 and no product maximum; it bounds how many blueprint
-combinations one priority group explores and does not change the scoring formula. F12 cancellation
-must run through blueprint enumeration, the equal-score reservation branch and result submission, and
-a cancelled result must never be saved or overwrite an existing plan.
+Offline, low-risk, high-risk and development are locally confirmed modes; a combo-box draft does not take
+effect, and a downgrade revokes side effects first. A first run or an upgraded old configuration defaults
+automatic sync to off; before enabling it, check read-only, enable when the conditions hold, and
+otherwise offer the matching entry point for handling the problem. Automatic sync only starts and stops
+inventory/character listening — it never also starts battle reports, assembly, discard, lock or plugins,
+and stopping the listener does not stop an authorised manual battle report, manual character sync or
+component management. A high-risk action requires all of: a confirmed mode, no safe pause in effect,
+component identity and protocol, that business being ready, and this run's own input evidence. A path, a
+file, a process, a connection, a handshake, a declared capability and business readiness never
+substitute for one another; waiting, unknown, missing a condition, failed and complete are never written
+interchangeably. The details are in `docs/reference/work-modes.md`.
 
-Strictly equal-scoring candidates of a higher-priority character defer their final ownership; the
-unit of reservation is one earlier blueprint slot, recording its character, type, slot and strictly
-equivalent candidates. One UID may be consumed only once across all characters and slots; pooling by
-drive type is only a filtering and matching performance optimisation and must not break
-cross-character global uniqueness or a character's blueprint completeness. An equal-priority group is
-allocated jointly by the real scores within the group first, and only then establishes its
-reservations as a whole.
+The official inventory's current pointer only ever points at a complete, stable, immutable snapshot. A
+candidate must be checked for source, official identity, page/item counts, UID and character
+relationships, content fingerprint and a quiet window; it is never completed from a historical maximum
+count, a default zero, an older snapshot or a different source. `unknown`, `partial`, `complete=false`,
+a missing page, a revision change or a field conflict all mean no commit. Downstream work resolves
+`snapshot_id` once at the start and every plan keeps its own `source_snapshot_id`; a runtime delta only
+changes the state of UIDs already known in a complete native snapshot, never adding to the set or
+advancing the pointer.
 
-A regular Top-K blueprint result is only used to detect reservation back-fill conflicts. Conflict
-recovery must first identify genuinely blocking drives through a maximum one-to-one matching over all
-active earlier slots; each round protects exactly one currently occupied reserved UID that actually
-increases the number of back-fills, chosen stably in ascending order of the earlier base score, and
-then re-evaluates. After protection only the affected types are re-filtered; the request-scoped
-complete legal ordering cache keyed by character / type / stat priority tier must skip protected,
-fixed and consumed UIDs and then top the Top-K back up, so protection never leaves fewer than K
-candidates. Progressive protection commits as soon as it forms a complete back-fillable plan, and an
-ordinary score difference must not enter full-inventory recovery.
+Source capability is decided by the public helper: native `nte_core` supplies official UIDs, character
+instances, equipment relationships, state and native writes only when the business capability and
+completeness evidence both hold; packet capture can supply a complete inventory and battle-report facts
+but never fakes native character instances, equipment writes or DLL readiness; a vision source supports
+analysis, appraisal and ordinary mouse assembly, and while its state is unknown it performs no
+lock/discard and no fast assembly. A historical snapshot, a battle-report frozen subset, a
+graduation-template assumption and a user edit copy are none of them the current complete inventory.
+Re-syncing keeps the saved inventory and plans and discards only uncommitted candidates; not logged in,
+waiting for the game and initialising are waiting, while protocol and integrity errors are failures.
 
-Progressive protection commits as soon as it forms a complete back-fillable plan. Only when the
-progressive stage cannot form a complete blueprint, finds no genuine blocker, or exhausts protection
-does the current group plus every earlier reserved slot go into a final one-to-one recovery; a
-reservation-only UID must not become a new candidate for the current slot. Every path must re-check
-shape, set, locks, UID uniqueness, reservation consumability, cartridge uniqueness, the CRIT
-cap/minimum, stat priority and the blacklist; any failure only marks the current character/group
-`valid=False` and must not interrupt the remaining characters' calculation.
+Character sync reuses the existing game-data session and only overwrites the permanent fields this run
+supports and has confirmed; a missing character, an unknown field, a trial/temporary character and a
+relationship conflict all keep the old value. An old Arc is cleared only on an explicit "no Arc
+equipped"; skills match on the official SkillID; and an awakening level bonus is never written back into
+the base level. A failing field group is skipped; an incomplete read, a cancellation, a stale generation
+or a write failure means this run commits nothing at all and never alters a historical battle report.
+The details are in `docs/features.md`.
 
-The only source of the NTE Workshop weight equipment formulas is `ScoringEngine.calculate_drive_score`
-and `ScoringEngine.calculate_cartridge_score`. Calculation, in-game loadouts, card display, rewind and
-official character base scoring may only compute through that engine or a formula-free adapter over it,
-and must never copy the formula. A saved plan's complete `assignment_scores` is the frozen fact behind
-single-item cards, grades, cumulative scores and replacement deltas; only an older plan missing that
-field may be recomputed through the same engine. The replacement dialog may sort and display by the
-current character's direct-damage margin weights, but a saved plan must write frozen per-item scores
-under the same workshop scoring contract.
+## 4. Calculation, characters and external side effects
 
-Official characters default to the static graduation template, with explicit account configuration
-taking precedence. The effective character panel uniformly consumes level/ascension, Arc
-level/ascension, unconditional permanent attributes, affinity 10, furniture bonuses and specific
-awakening and skill levels. Base CRIT Rate is 5% and base CRIT DMG is 54%; the character CRIT cap
-subtracts the signature weapon, unconditional Arc CRIT and affinity CRIT, and a manual cap may only
-tighten it. Conditional Arc effects do not enter the permanent panel, the graduation rate or allocation scoring.
+A calculation freezes the account, generation, complete inventory, main static dataset, character
+order/equal-priority groups, effective panel, target slot, locks, configuration and the combination
+budget, and produces an immutable preview. Saving consumes only that preview and re-checks the
+boundaries, never filling gaps from "the latest state". The only allocation strategy is character
+priority; a real UID is never consumed twice across characters and slots, locked UIDs are excluded
+first, and a virtual placeholder scores zero. Cancellation runs through enumeration, recovery and
+submission, and a failure never overwrites an existing plan. Equipment base scoring goes only through
+`ScoringEngine.calculate_drive_score` / `calculate_cartridge_score` or a formula-free adapter over them;
+the per-item `assignment_scores` is a plan's frozen fact, recomputed through the same engine only when an
+older plan lacks it. Conditional Arc effects do not enter the permanent panel; the shared character panel
+uniformly handles level/ascension, Arc, affinity, furniture, awakenings, skills and the CRIT boundaries.
+`slot_id` is the stable identity across a character's several plans, and a locked plan must not be
+deleted, overwritten, archived or lend out its UIDs; a Calc plan lock is not the game's lock RPC.
+Graduation rates and formula conventions are in `docs/features.md` and `docs/reference/`.
 
-`slot_id` is the stable identity of one character's several plans and `slot_name` is display only. The
-current slot plan is saved against its own source snapshot; only different characters' current slots
-referencing the same real UID is a conflict. A lock is an account-scoped plan lock, not the game's lock
-RPC; a locked plan must not be deleted, overwritten, archived, or lend out its UIDs.
-`EquipmentPresentation` is the single shared display component for equipment cards, scores, gains and
-differences.
+External writes (warehouse state, fast or in-game assembly, rewind and so on) follow "plan → freeze →
+dispatch → confirm afterwards". The plan carries the subject, the expected state, the source and the
+idempotency boundary; before dispatch it re-checks the account generation, snapshot, capability, game
+context and cancellation. Only a busy state that definitely did not dispatch may be retried, within a
+bound; a timeout or an unknown stops, and an action that may already have run is never re-sent. An
+accepted RPC, a button state and a live process are none of them business success — success is confirmed
+by a new complete snapshot or an official scoped event. A failure keeps the old persistent facts and
+releases temporary files, input state, leases and workers. A vision scan commits a complete result in one
+transaction, and cancellation, a count anomaly or an input failure leaves nothing half-finished; the
+global stop key is responsible for releasing game input. Fast assembly uses only official native UIDs,
+character instances and saved slots; vision assembly uses only the vision projection.
 
-## 7. Scanning, warehouse, assembly and rewind
+The growth calculator reads frozen static catalogue data and the page's draft, and never writes back to
+the character profile, the inventory or a stamina estimate. Total materials, what is already held,
+crafting and confirmed dungeon stamina are expressed separately; only confirmed same-family materials
+combine 3:1 upwards, experience materials are not converted, Fons is not a stamina target, and missing
+drop evidence stays unknown. See `docs/features/tools-and-catalog.md` and
+`docs/reference/progression-stamina-calculator.md`.
 
-The warehouse reads a pinned snapshot; a state operation builds a plan first, the Integration executes
-it, and a later full snapshot or an official scoped event confirms it. A vision scan commits only a
-complete result in one transaction; while that state is unknown, the discard/lock controls must be
-disabled rather than guess a default. Cancellation, an exception or a count mismatch commits nothing
-half-finished. Scanning, appraisal, rewind and automatic assembly all use the application-level stop
-key, and every stop path must release input state.
+Raw battle-report capture saves only the summary, record, axis, per-hit data and explicit observations
+Core actually provided; it never guesses crits, buffs, teams, targets or the scene from an aggregate, and
+the raw facts are immutable. Settlement freezes this match's character and equipment subset, carries no
+full inventory, and does not follow later configuration changes. An edit copy serves only that match's
+replay and counterfactuals and never changes measured damage, DPS or the timeline; derived results carry
+an algorithm version, static identity, confidence and provenance, and unknown is never disguised as zero.
+Battle-report page analysis goes only through the standalone `nte-analysis-core.exe` read-only interface,
+and a missing manifest, hash, protocol, version or page capability means no fallback to reading the
+database from Python; requests and caches bind to the account generation and the frozen input. See
+`docs/features/battle-report.md`.
 
-Fast assembly consumes only native real UIDs, character instances and saved slots; in-game automatic
-assembly may consume the vision projection. Both freeze their context and token and block account
-switching while running. Rewind recommendation reads only the pinned inventory, the selected characters'
-current saved plans and their frozen per-item scores; only an explicit "generate recommendation" solves,
-using the score shortfall and the user's chosen balanced/focused strategy; rarity and the eight-slot
-plan are frozen before execution.
+## 5. Components, static builds and releases
 
-## 8. Battle reports
+Npcap, Core, the analysis component, the DLL/Loader, OCR and game input are managed by Integration.
+Promoting a component records its upstream version, commit, licence and SHA-256; the DLL, Loader,
+scripts, resources and protocol are one set of inputs and are never replaced piecemeal. A delivery
+contains no private source, PDB, account, credential, capture or sensitive log. The game path must be a
+verified absolute path to `HTGame.exe`, and automatic discovery saves only a single valid candidate; the
+game running, an unknown path, a file in use or insufficient permission is waiting or failure, and the
+game is never force-closed. Deployment and cleanup judge by the exact file, the owning directory, the
+official record, whole-bundle identity, write integrity and the target being unchanged for the duration;
+a manual cleanup missing its record file still requires a hash match against a verified component, and
+unknown files and links are kept. A stale old path is handled from its original record, the Loader winds
+down independently, and the registry serves only limited discovery and cleanup of already-registered old
+workspaces. The details live only in `docs/reference/game-component-bundle.md`.
 
-Battle-report capture saves only the Core's summary, record, axis and raw per-hit data; it must never
-guess crits, buffs/debuffs, shields, healing, the complete team, enemy instances or the scene from an
-aggregate summary. Battle-report page analysis goes only through the standalone analysis component's
-direct database read interface; without that capability, or on a version mismatch, it must not fall
-back to reading the database from Python. When capture ends it materialises a copy once from the then-latest complete native
-inventory and effective character growth, and does not read the active loadout. Without a complete native
-inventory it freezes the assumed cartridges/drives and the calculation panel from the release's
-graduation template, labelled "graduation template assumption"; character growth still prefers
-explicit account configuration. Assumed equipment serves the battle-report calculation only, never
-fabricates a native inventory or real UIDs, and a later sync does not replace the frozen assumption.
-The original character/equipment snapshot is immutable; a battle-report edit copy is a single-match account-private
-copy whose equipment override copies the complete calculated equipment and keeps no active pointer. The
-copy only takes part in fixed-axis per-hit damage replay and counterfactual margin calculation, and never
-rewrites the measured damage, DPS, timeline or original facts on the battle-report main page.
+The main static database is built only as a candidate under `build/` by `tools/game_data/`, through
+normalisation, post-processing and validation, and is promoted only by `promote_static_release.py` after
+it verifies provenance, schema/importer, hashes, foreign keys, integrity and the manifest; never
+overwrite `data/` directly and never treat unpacked Content as a normalised result, and a semantic change
+increments the importer. When combat sources are insufficient, a standalone `role_page` or `reference`
+catalogue may be built, recording provenance and hash per file; that standalone directory may serve
+display and growth but must never fill in fields the main database's calculation or battle reports are
+missing. Catalogue entries are promoted as a set and old previews are recomputed when the dataset
+changes. Static compression is proven table by table to be logically equivalent, inside an isolated
+candidate only; installer resource de-duplication applies only to byte-identical catalogue images; and
+runtime pruning follows an exact manifest plus a packaging smoke test. A build, a component promotion, an
+installer, real-hardware acceptance and a release are distinct states and never substitute for one
+another.
 
-Environment inference, user-confirmed environment, enemy profiling, buff auditing and margin calculation
-are versioned derived results and must stay separate from the Core's original facts and confidence. A
-confirmed environment stores the player-facing Chinese environment name; the original class path may
-serve only as an internal matching field or diagnostic and must never be a main-interface label. Unknown
-must never be disguised as zero, a multiplier of one, or a complete gain. A capture stop exceeding 12
-seconds must abort that Core run, discard unfinished staging and enter error; an empty battle report must
-not wait indefinitely for a final axis. While battle reports are still iterating, a failing
-battle-report regression must be listed separately and never rewritten as a general pass.
+## 6. UI, logging and observability
 
-## 9. External integrations, UI, localisation and logging
+A new dialog is bounded by `src.app.window_geometry` to the current screen's available area and centred
+relative to its owner, covering mixed DPI. An important prompt reads "state → cause → next step"; a
+problem offers only the matching entry point for handling it, a ready state is not pushed with heavy
+guidance, and synonymous buttons and piled-up diagnostics in the body are avoided. A warning defaults to
+cancel and uses the system alert sound; colours, disabled/selected/focus states and widget operability
+are checked in all three themes. A status label belongs only to the operation's owner. User-facing text
+distinguishes waiting, missing a condition, failed, saved, deployed and confirmed afterwards; "not
+detected" is never written as "missing", and an accepted RPC is never written as "complete". Diagnostic
+detail and structured logs keep the troubleshooting evidence rather than dumping a raw exception into the
+user's prose. The rules are in `docs/reference/logging-events.md`.
 
-nte-core, the standalone analysis component, Npcap, mods, OCR, mouse/gamepad, binaries and game input
-are Integrations. Before promoting a third-party component, record the upstream version, commit,
-licence and SHA-256 and complete protocol, packaging and real Windows verification; local binaries in
-the root directory are never committed. The analysis component must ship with `nte-analysis-core.exe`,
-`component.json` and its licence; the manifest hash, engine version `0.3.0` and the `battle_page_v1`
-capability together form the minimum compatibility contract for the battle-report page.
+Logs record lifecycle, frozen-identity categories, state transitions, error codes and durations first.
+Local fault diagnosis may keep the file paths, exception types and call sites it needs, and that is not a
+licence to record an account display name, a complete UID list, a complete RPC/payload, OCR, a
+screenshot, raw per-hit data, authentication material or a complete damage table. File paths help a user
+troubleshoot, but copying or sending a log onward should prompt a check first. The persistent log belongs
+to the current account and switching accounts ends the old session; the verbose log carries its own
+timestamp. Logs, screenshots and captures are not a source of account truth and never enter the default
+export or a release artefact.
 
-New dialogs use `src.app.window_geometry`, bounded by the current screen's available area and centred
-relative to the owner/screen, covering mixed DPI; custom colours, selected states and widget states must
-work in the original, black and white themes alike. Logs record lifecycle and diagnostics per layer and
-never record a complete RPC, UID list, account display name, absolute path, full OCR text, screenshot,
-CDK, token or recoverable payload.
+## 7. Development order and completion gates
+
+Before starting, establish the input/output data domain, the source capability, the frozen identities,
+the external side effects, failure rollback and the verification evidence. Reproduce a defect first and
+fix the smallest business cause; a product semantic change proceeds as "public behaviour tests →
+contract/docs → Domain/Service → DAO/Integration → Controller/UI → close off the old entry point →
+targeted verification → core/full plus static checks". A pure documentation task does not take the
+opportunity to change production code. Look at `git status` before moving files, and protect other
+people's uncommitted work.
+
+A new or modified Python file under `src/`, `tools/` or `tests/` must not exceed 800 lines; an existing
+oversized file may only be split or shrunk when touched. A new Python file's first line is a Chinese
+summary comment; a new `type: ignore` carries the error code and a reason. Ruff `E9/F63/F7/F821/F401` is
+a hard gate, and a new dependency updates `pyproject.toml` and `uv.lock` together. The quality entry
+point is `tools/quality/run_tests.py`, where `core` covers the critical boundaries and `full` is the
+complete discovery; long-lived behaviour tests verify identity, integrity, concurrent cancellation,
+after-the-fact confirmation, account isolation, visible semantics and operability, and never pin colours,
+pixels or private widgets. A stale test is rewritten or deleted rather than kept alive by a compatibility
+shim for a retired entry point. By default do not compile and do not run tests; with the user's explicit
+authorisation, run only what was authorised, distinguishing targeted checks, core/full, static checks,
+packaging and real Windows acceptance. Separate new failures from existing ones, from optional-component
+causes and from environment causes, and never mask a defect by deleting or skipping a test.
+
+Never commit the account database, WAL/SHM, logs, screenshots, PCAP, OCR temporary files,
+build/installer output, a local SDK or a dump. Committing, pushing, releasing, building an installer,
+deploying an external component and operating the real game each need explicit authorisation. The release
+preparation entry point `tools/release/prepare_release.py` only performs local checks and prints the
+manual commands for a maintainer; before an official release, verify the version, dataset, component
+manifest, upgrade and rollback, a clean install, all three themes, account switching, both kinds of sync,
+calculation/save/assembly, deployment and cleanup, and a real Windows smoke test. A release build refuses
+a missing or incompatible analysis component, and a capability not verified on real hardware must never
+be marked stable.
+
+## 8. Localisation
 
 All new or modified UI copy goes through `src/i18n`, distinguishing two kinds of text:
 
@@ -258,6 +272,10 @@ All new or modified UI copy goes through `src/i18n`, distinguishing two kinds of
   name is substituted only when it is about to be written into a widget, while weights, scoring, sorting,
   filter keys and state checks keep using the Chinese key. The percent suffix is derived from the Chinese
   key, never by testing whether the display name contains `%`.
+- **Long-form game text** uses `display_text(text_table, text_key)`, which resolves the string-table key
+  the static database stores against `locales/gametext.en.json`. That catalogue is generated by
+  `tools/game_data/build_game_text_locale.py` from a locres export, so skill names, skill descriptions
+  and awakening text need no hand translation and a newly released character arrives on its own.
 - Fields for which nte-core already supplies `names`/`suit_names` (`en`/`ja`/`zh_cn`) use
   `display_localized()` instead of a glossary entry.
 
@@ -287,34 +305,16 @@ activated while `src/ui/app.py` is imported, so module-level copy must preserve 
 English singular forms use a sibling key `"<source>::one::<field>"` with the field named, so a second
 integer in the same sentence cannot trigger it. Details are in `docs/reference/localization.md`.
 
-## 10. Code, test and release gates
+Localisation gates, on top of section 7:
 
-- A new or modified Python file under `src/`, `tools/` or `tests/` must not exceed 800 lines; an existing
-  oversized file may only be split or shrunk when touched.
-- A new Python file's first line must be a Chinese summary comment; a new `type: ignore` must carry the
-  error code and a reason.
-- Ruff `E9/F63/F7/F821/F401` is a hard gate; a new dependency updates `pyproject.toml` and `uv.lock`
-  together.
-- New UI copy must pass `tests.test_i18n` — `test_every_tr_key_resolves` fails on a `tr()` key missing
-  from `locales/en.json` — and `python tools/quality/i18n_coverage.py --scope ui`, which finds Chinese
-  handed to a widget that was never wrapped at all. The test suite cannot see the latter.
-- A new game term in `locales/glossary.en.json` must be checked against the game's own string tables
-  with `python tools/quality/verify_terms.py --locres <export>`. The export is game content and is never
-  committed, so this is a manual check rather than a gate; nothing else can tell a coined name from a
-  real one.
-- Do not add `setattr(MainWindow, ...)`, `globals()` dynamic exports, a service locator, cross-feature
-  private calls or page-index navigation.
-- Never commit the account database, WAL/SHM, logs, screenshots, PCAP, OCR temporary files,
-  build/installer output, local SDK/dumps or unaudited binaries.
+- `tests.test_i18n` — `test_every_tr_key_resolves` fails on a `tr()` key missing from `locales/en.json`.
+- `python tools/quality/i18n_coverage.py --scope ui` finds Chinese handed to a widget that was never
+  wrapped at all. The test suite cannot see that.
+- A new game term in `locales/glossary.en.json` is checked with
+  `python tools/quality/verify_terms.py --locres <export>`. The export is game content and is never
+  committed, so this is a manual check; nothing else can tell a coined name from a real one.
 
-Before a release, at minimum complete: static checks, `core`, `full`, packaging-input review, the
-upgrade/rollback path, a clean install with theme default verification, account switching, inventory
-sync, and a real smoke test of the key calculation/save/assembly paths. The release build and the
-installer must reject a standalone analysis component that is missing, mismatched, or lacks the
-battle-report page capability. A known failure must have clear
-ownership and a user-visible boundary; an unverified feature must never be marked stable.
-
-## 11. Upstream synchronisation
+## 9. Upstream synchronisation
 
 This fork adds localisation on top of `hxwd94666/NTE-Drive-Calculator`. Upstream declined the change, so
 the divergence is permanent and must be managed rather than resolved.
@@ -338,8 +338,9 @@ conflicts every time; merging resolves them once. Keep `git config --global rere
 resolution is recorded and replayed the next time the same conflict appears.
 
 Expect conflicts and budget for them. 96% of the files this fork modifies are files upstream actively
-edits. The 2.2.0 sync — 45 upstream commits — produced 27 conflicting files across 81 hunks. Almost every
-hunk has the same shape, upstream having changed a line the fork had wrapped:
+edits, and the cost grows with the release: 2.2.0 produced 27 conflicting files across 81 hunks, 2.2.1
+produced 12 across 22, and 2.3.0 produced 63 across 171. Almost every hunk has the same shape, upstream
+having changed a line the fork had wrapped:
 
 ```text
 ours   (the fork): setText(tr("⏳  扫描中... ({key} 停止)", key=...))
@@ -347,31 +348,34 @@ theirs (upstream): setText("⏳  扫描中... (F12 停止)")
 ```
 
 Resolve by taking upstream's text and re-applying the `tr()` wrapper, then adding the new Chinese source
-string to `locales/en.json`. Watch for a `tr(` opener that lives outside the conflict hunk: discarding
-our side leaves its closing parenthesis behind, which `compileall` catches but `git` does not.
+string to `locales/en.json`. Resolve **hunk by hunk**, never with `git checkout --theirs`: that replaces
+the whole file and silently drops the fork's localisation in every region that merged cleanly. In 2.3.0
+the difference was 1306 lost translator calls versus 353.
 
-After every sync, run the gates in section 10 **and**:
+Three failure modes recur and none of them is caught by `git`:
 
-```bash
-python tools/quality/i18n_coverage.py --scope ui
-```
+- **A dropped import.** Upstream's hunk replaces the import line and the fork's `from src.i18n import …`
+  goes with it, while the usages elsewhere in the file merged cleanly. Audit every conflicted file for a
+  translator used but not imported; in 2.3.0 that was 8 files.
+- **An orphaned parenthesis.** A `tr(` opener living outside the conflict hunk leaves its closing
+  parenthesis behind when our side is discarded. `compileall` catches it; `ast.parse` does not.
+- **A broken fork-only invariant.** 2.3.0's hunk for `equipment_presentation.py` dropped `main_key` but
+  kept the line deriving the percent suffix from it — the section 8 rule, silently undone.
 
-The test suite fails when a `tr()` key is missing from the catalogue, but it cannot fail on Chinese that
-upstream added and nobody wrapped — that just renders untranslated. `i18n_coverage.py` is what finds it.
+After every sync, run the gates in section 7 **and** `i18n_coverage.py --scope ui`.
 
-A clean report is not proof of coverage. The scan follows a Chinese literal only while it is a direct
-argument of a known sink, and three shapes escape that, all of them found in shipped code rather than
-by the gate:
+A clean coverage report is not proof. The scan follows a Chinese literal only while it is a direct
+argument of a known sink, and three shapes escape it, all of them found in shipped code rather than by
+the gate:
 
 - **Display metadata.** The copy is a field of a frozen dataclass — `NavItem`, `CatalogSection`,
   `CatalogField` — and only reaches a widget pages later. The sidebar labels sat untranslated this way
   for two releases. Either register the constructor in `UI_SINKS`, or translate at the render site,
   which also works for a value that came out of the static database.
-- **An unregistered sink.** `QProgressDialog`'s first two arguments are its label and cancel button;
-  it was simply not in `UI_SINKS`. When a widget renders text, check it is listed.
+- **An unregistered sink.** `QProgressDialog`'s first two arguments are its label and cancel button; it
+  was simply not in `UI_SINKS`. When a widget renders text, check it is listed.
 - **A string assembled into a variable** by an f-string or concatenation before `setToolTip` or
-  `setText` sees it. Roughly 310 fragments remain in this shape, mostly the battle-report detail
-  tooltips in `src/features/battle_report` and their supporting services. No static analysis sees them.
+  `setText` sees it. No static analysis sees these.
 
 So after the coverage run, read the diff for Chinese that upstream added, rather than trusting a zero.
 
@@ -381,6 +385,7 @@ Two follow-on costs arrive with every sync and are tracked separately from the m
 - `docs/en/` mirrors only the Chinese documents that existed when it was written; upstream's new
   documents stay unmirrored until someone translates them.
 
-`AGENTS.md` is maintained in English, so upstream's edits to it always conflict as whole sections and
-need re-translating rather than merging. That is a deliberate trade: the file is read constantly by the
-fork's maintainers and merged a few times a year.
+`AGENTS.md` is maintained in English, so upstream's edits to it conflict as whole sections and need
+re-translating rather than merging. 2.3.0 rewrote the file outright — 11 sections collapsed to 7 — and
+the English version was re-translated from scratch with sections 8 and 9 re-attached. That is the
+deliberate trade: the file is read constantly by the fork's maintainers and merged a few times a year.

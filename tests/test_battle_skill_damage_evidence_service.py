@@ -163,6 +163,7 @@ class BattleSkillDamageEvidenceServiceTests(unittest.TestCase):
                 "skill_level": 1,
             }],
             "profile": {
+                "awakening_level": 3,
                 "awakening_selection_initialized": True,
                 "selected_awaken_effect_ids": [
                     "Effect1", "Effect2", "Effect3", "Effect4",

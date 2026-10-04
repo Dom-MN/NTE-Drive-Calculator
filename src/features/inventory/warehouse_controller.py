@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from src.features.input_operation_entry import request_input_entry, show_input_unavailable
 from typing import Any
 
 from PySide6.QtCore import QModelIndex, Qt
@@ -157,9 +158,7 @@ def _page_warehouse(self):
     ):
         button.setObjectName("btnAction")
         button.setEnabled(False)
-        button.clicked.connect(
-            lambda _checked=False, target=target_state: self._set_warehouse_selected_state(target)
-        )
+        button.clicked.connect(lambda _checked=False, target=target_state: self._set_warehouse_selected_state(target) )
         title_row.addWidget(button)
     title_row.addStretch()
     self.warehouse_manage_btn = QPushButton(tr("管理"))
@@ -219,6 +218,11 @@ def _page_warehouse(self):
         themed_style("#warehouseView{background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:8px}")
     )
     layout.addWidget(self.warehouse_view, 1)
+    self.warehouse_source_notice = QLabel()
+    self.warehouse_source_notice.setWordWrap(True)
+    self.warehouse_source_notice.setStyleSheet(themed_style("color:#d29922;padding:4px 8px"))
+    self.warehouse_source_notice.hide()
+    layout.addWidget(self.warehouse_source_notice)
     self.warehouse_hint = QLabel(tr("仓库将在打开此页面时读取最新稳定背包快照。"))
     self.warehouse_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
     self.warehouse_hint.setStyleSheet(themed_style("color:#8b949e;padding:8px"))
@@ -232,9 +236,7 @@ def _page_warehouse(self):
     self._warehouse_deferred_snapshot_id = None
     self._warehouse_filter_spec = WarehouseFilterSpec()
     self.warehouse_filter_drawer = WarehouseFilterDrawer(page)
-    self.warehouse_filter_drawer.applied.connect(
-        lambda spec: _on_warehouse_filter_applied(self, spec)
-    )
+    self.warehouse_filter_drawer.applied.connect(lambda spec: _on_warehouse_filter_applied(self, spec) )
     return page
 
 
@@ -297,8 +299,10 @@ def _on_warehouse_loaded(self, token, result):
     )
     self._apply_warehouse_filters()
     if is_visual_inventory_source(self._warehouse_source):
-        self.warehouse_hint.setText(tr("当前为全量扫描库存：等级、锁定/弃置状态和已装备角色无法识别；鉴定与对比仍可使用。"))
-        self.warehouse_hint.show()
+        self.warehouse_source_notice.setText(tr("视觉扫描库存：无法读取等级、锁定/弃置和已装备角色；鉴定与对比仍可用。") )
+        self.warehouse_source_notice.show()
+    else:
+        self.warehouse_source_notice.hide()
 
 
 def _on_warehouse_load_error(self, token, error):
@@ -307,7 +311,8 @@ def _on_warehouse_load_error(self, token, error):
     self._warehouse_all_items = []
     self.warehouse_model.set_items([])
     self.warehouse_summary.setText(tr("读取失败"))
-    self.warehouse_hint.setText(tr("仓库读取失败：{error}", error=error))
+    self.warehouse_source_notice.hide()
+    self.warehouse_hint.setText(f"仓库读取失败：{error}")
     self.warehouse_hint.show()
     logger.error(f"读取仓库稳定快照失败: {error}")
 
@@ -322,19 +327,17 @@ def _apply_warehouse_filters(self):
     )
     self.warehouse_model.set_items(filtered)
     total = len(getattr(self, "_warehouse_all_items", []))
-    self.warehouse_summary.setText(
-        tr("显示 {shown} / {total} 件", shown=len(filtered), total=total)
-    )
-    active_count = getattr(
-        self, "_warehouse_filter_spec", WarehouseFilterSpec()
-    ).active_group_count
+    self.warehouse_summary.setText(tr("显示 {shown} / {total} 件", shown=len(filtered), total=total) )
+    active_count = getattr(self, "_warehouse_filter_spec", WarehouseFilterSpec() ).active_group_count
     self.warehouse_filter_btn.setText(
         tr("筛选 ({count})", count=active_count) if active_count else tr("筛选")
     )
     if filtered:
         self.warehouse_hint.hide()
     else:
-        self.warehouse_hint.setText(tr("当前筛选条件下没有装备。请先完成背包同步，或调整筛选条件。"))
+        self.warehouse_hint.setText(
+            "背包为空，请先完成同步。" if total == 0 else "没有符合当前筛选条件的装备。"
+        )
         self.warehouse_hint.show()
 
 
@@ -411,6 +414,8 @@ def _set_warehouse_selected_state(
     target_state: str,
 ) -> None:
     """Stage the requested state for all selected virtual cards locally."""
+    if not request_input_entry(self, "native_equipment", "仓库锁定与弃置"):
+        return
     if target_state not in {"normal", "locked", "discarded"}:
         return
     indexes = self.warehouse_view.selectionModel().selectedIndexes()
@@ -458,6 +463,8 @@ def _toggle_warehouse_item_state(
     target_state: str,
 ) -> None:
     """Stage a single card's lock/discard icon action without changing game state yet."""
+    if not request_input_entry(self, "native_equipment", "仓库锁定与弃置"):
+        return
     item = (
         index.data(Qt.ItemDataRole.UserRole)
         if index is not None
@@ -488,6 +495,8 @@ def _toggle_warehouse_item_state(
 
 
 def _save_warehouse_state_changes(self):
+    if not request_input_entry(self, "native_equipment", "保存仓库状态"):
+        return
     """Validate manual card edits against the fixed snapshot, then write via nte-core."""
     pending = dict(getattr(self, "_warehouse_pending_state_changes", {}))
     snapshot_id = getattr(self, "_warehouse_snapshot_id", None)
@@ -506,7 +515,7 @@ def _save_warehouse_state_changes(self):
         return
     sync_service = getattr(self, "_inventory_sync_service", None)
     if sync_service is None or not sync_service.is_running:
-        QMessageBox.warning(self, tr("无法保存仓库状态"), tr("请先在工作台启动背包同步，并等待状态显示为稳定监听。"))
+        show_input_unavailable(self, "保存仓库状态", "游戏装备连接尚未就绪，请查看检测详情；需部署组件时先完全退出游戏，部署完成后再启动并进入游戏场景。")
         return
     service = WarehouseStateManagementService(
         self.app_context.account.user_database_path,
@@ -577,6 +586,8 @@ def _on_warehouse_manual_plan_ready(self, plan):
 
 def _open_warehouse_state_manager(self):
     """Open the existing rule editor, then apply its result through nte-core."""
+    if not request_input_entry(self, "native_equipment", "仓库状态管理"):
+        return
     active_worker = getattr(self, "_warehouse_state_worker", None)
     if active_worker is not None and active_worker.isRunning():
         return
@@ -591,7 +602,10 @@ def _open_warehouse_state_manager(self):
         account.user_config_dir,
         self.app_context.paths.config_dir,
         user_database_path=account.user_database_path,
-        window_title=tr("仓库弃置/锁定管理"),
+        static_database_path=self.app_context.paths.equipment_allocation_database_path,
+        asset_root=self.app_context.paths.equipment_allocation_asset_root,
+        window_title="仓库弃置/锁定管理",
+        show_server_region_option=False,
     ):
         return
     config = load_scan_post_action_config(
@@ -604,12 +618,13 @@ def _open_warehouse_state_manager(self):
         return
     sync_service = getattr(self, "_inventory_sync_service", None)
     if sync_service is None or not sync_service.is_running:
-        QMessageBox.warning(self, tr("无法管理仓库"), tr("请先在工作台启动背包同步，并等待状态显示为稳定监听。"))
+        show_input_unavailable(self, "仓库状态管理", "游戏装备连接尚未就绪，请查看检测详情；需部署组件时先完全退出游戏，部署完成后再启动并进入游戏场景。")
         return
     service = WarehouseStateManagementService(
         account.user_database_path,
         sync_service,
         config_dir=self.app_context.paths.config_dir,
+        static_database_path=self.app_context.paths.equipment_allocation_database_path,
         operation_context=OperationContext.create(
             "warehouse",
             account_id=account.active_account_id,
@@ -711,14 +726,11 @@ def _on_warehouse_state_applied(self, result):
         discard_clear=summary["discard_clear_count"], lock_clear=summary["lock_clear_count"],
     )
     if getattr(result, "inventory_reduction_observed", False):
-        result_message += tr(
-            "\n\n检测到库存减少；如游戏内未分解库存，请重新在游戏登录页面背包同步。"
+        result_message += (
+            "\n\n检测到库存减少；如游戏内未分解库存，请在工作台点击“重启同步”，等待完整背包读取完成。"
         )
     if getattr(result, "verified", False) and not getattr(result, "inventory_reduction_observed", False):
-        result_message += tr(
-            "\n\n已通过游戏返回的新稳定快照 #{snapshot} 确认，仓库将自动刷新。",
-            snapshot=after_snapshot_id,
-        )
+        result_message += tr("\n\n已通过游戏返回的新稳定快照 #{snapshot} 确认，仓库将自动刷新。", snapshot=after_snapshot_id)
         QMessageBox.information(
             self,
             tr("仓库状态已确认"),
@@ -764,8 +776,7 @@ def _on_warehouse_state_applied(self, result):
     }
     self._apply_warehouse_filters()
     self.warehouse_hint.setText(
-        tr("修改已提交，当前页面暂按核心组件接受结果显示；"
-        "收到后续稳定快照时将自动刷新。")
+        tr("修改已提交，当前页面暂按核心组件接受结果显示；" "收到后续稳定快照时将自动刷新。")
     )
     self.warehouse_hint.show()
 

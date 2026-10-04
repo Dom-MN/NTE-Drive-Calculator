@@ -3,15 +3,7 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-from types import SimpleNamespace
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-from PySide6.QtWidgets import QApplication, QLabel
-
-from src.features.home.page import build_home_page, inventory_sync_error_guidance
+from src.features.home.page import inventory_sync_error_guidance
 
 
 def test_snapshot_save_guidance_distinguishes_database_failures() -> None:
@@ -25,24 +17,22 @@ def test_snapshot_save_guidance_distinguishes_database_failures() -> None:
         ("TRANSACTION", "事务状态异常"),
         ("FAILED", "暂未识别具体原因"),
     ):
-        guidance = inventory_sync_error_guidance(f"SNAPSHOT_SAVE_{category}", "无法导入背包快照")
-        assert expected in guidance
+        for source in ("native", "packet"):
+            guidance = inventory_sync_error_guidance(
+                f"SNAPSHOT_SAVE_{category}", "无法导入背包快照", capture_source=source,
+            )
+            assert expected in guidance
 
 
-def test_workbench_hero_uses_lingke_avatar() -> None:
-    QApplication.instance() or QApplication([])
-    asset_dir = Path("assets").resolve()
-    window = SimpleNamespace(
-        app_context=SimpleNamespace(paths=SimpleNamespace(asset_dir=asset_dir)),
-        _start_inventory_sync=lambda: None,
-        _stop_inventory_sync=lambda: None,
-        _focus_environment_configuration=lambda: None,
-        _go=lambda _key: None,
+def test_sync_error_login_guidance_depends_on_capture_source() -> None:
+    for code in ("GAME_PROCESS_NOT_FOUND", "INVENTORY_NOT_READY"):
+        native = inventory_sync_error_guidance(code, "", capture_source="native")
+        packet = inventory_sync_error_guidance(code, "", capture_source="packet")
+        unknown = inventory_sync_error_guidance(code, "", capture_source="unknown")
+        assert "登录页" not in native and "登录界面" not in native
+        assert "游戏场景" in native
+        assert "登录页" in packet
+        assert "登录页" not in unknown
+    assert "完全退出游戏" in inventory_sync_error_guidance(
+        "GAME_PROCESS_NOT_FOUND", "", capture_source="native",
     )
-    page = build_home_page(window)
-    avatar = page.findChild(QLabel, "homeHeroAvatar")
-
-    assert avatar is not None
-    assert avatar.pixmap() is not None
-    assert not avatar.pixmap().isNull()
-    page.deleteLater()

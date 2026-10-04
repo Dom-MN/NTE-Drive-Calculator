@@ -7,6 +7,13 @@ folders. MainWindow still owns all callbacks.
 
 from __future__ import annotations
 
+from src.i18n import (
+    DEFAULT_LANGUAGE,
+    LANGUAGE_LABELS,
+    available_languages,
+    tr,
+)
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,16 +33,11 @@ from PySide6.QtWidgets import (
     QKeySequenceEdit,
 )
 
+from src.features.settings.work_mode_card import build_work_mode_card
 from src.app.constants import NETDISK_DOWNLOAD_LINKS
 from src.app.context import AppContext
 from src.app.theme import THEME_LABELS, themed_style
-from src.i18n import (
-    DEFAULT_LANGUAGE,
-    LANGUAGE_LABELS,
-    available_languages,
-    tr,
-)
-from src.ui.widgets import NoWheelComboBox, NoWheelDoubleSpinBox, NoWheelSpinBox
+from src.ui.widgets import NoWheelComboBox
 
 
 def _normalize_netdisk_links(netdisk_links=None):
@@ -72,14 +74,14 @@ def refresh_account_scoped_settings(window) -> None:
     if game_edit is not None:
         game_edit.blockSignals(True)
         game_edit.setText(
-            str(preferences.get("equipment_plugin_game_executable") or "")
+            window.work_mode_service.settings.game_executable
         )
         game_edit.blockSignals(False)
     method_combo = getattr(window, "_equipment_plugin_loading_method_combo", None)
     if method_combo is not None:
         method_combo.blockSignals(True)
         method_index = method_combo.findData(
-            preferences.get("equipment_plugin_loading_method") or "proxy"
+            window.work_mode_service.deployment_record.get("loading_method") or "native-capture"
         )
         method_combo.setCurrentIndex(max(0, method_index))
         method_combo.blockSignals(False)
@@ -112,12 +114,9 @@ def _settings_paths(context: AppContext) -> SettingsPaths:
     )
 
 
-def _build_sync_card(window):
-    card = window._card(tr("背包同步"))
-    description = QLabel(
-        tr("流式同步会在背包内容连续数秒没有变化后写入 SQLite，并继续后台监听。"
-        "原始诊断文件默认关闭。")
-    )
+def _build_capture_diagnostics_card(window):
+    card = window._card("采集排错")
+    description = QLabel("仅用于采集排错；设置将在下次连接或同步时生效。")
     description.setWordWrap(True)
     description.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
     card.layout().addWidget(description)
@@ -128,60 +127,39 @@ def _build_sync_card(window):
     settings = settings_reader() if callable(settings_reader) else {}
     if not settings:
         raise RuntimeError("无法读取静态数据库中的设置默认值。")
-    window._sync_inventory_method_combo = NoWheelComboBox()
-    window._sync_inventory_method_combo.addItem(tr("本地核心组件流式同步"), "nte_core")
-    window._sync_inventory_method_combo.addItem(tr("手柄扫描"), "gamepad")
-    inventory_index = window._sync_inventory_method_combo.findData(
-        settings["inventory_sync_method"]
-    )
-    window._sync_inventory_method_combo.setCurrentIndex(max(0, inventory_index))
-    form.addRow(tr("背包获取方式:"), window._sync_inventory_method_combo)
-
-    window._sync_settle_spin = NoWheelDoubleSpinBox()
-    window._sync_settle_spin.setRange(1.0, 30.0)
-    window._sync_settle_spin.setDecimals(1)
-    window._sync_settle_spin.setSingleStep(0.5)
-    window._sync_settle_spin.setSuffix(tr(" 秒"))
-    window._sync_settle_spin.setValue(float(settings["inventory_settle_seconds"]))
-    form.addRow(tr("内容稳定等待:"), window._sync_settle_spin)
-
-    window._snapshot_retention_spin = NoWheelSpinBox()
-    window._snapshot_retention_spin.setRange(1, 365)
-    window._snapshot_retention_spin.setValue(
-        int(settings["inventory_snapshot_retention_count"])
-    )
-    window._snapshot_retention_spin.setSuffix(tr(" 份"))
-    window._snapshot_retention_spin.setToolTip(
-        tr("始终保留当前快照和已保存装配方案引用的快照。")
-    )
-    form.addRow(tr("历史快照保留:"), window._snapshot_retention_spin)
-
     window._sync_capture_device_edit = QLineEdit()
-    window._sync_capture_device_edit.setPlaceholderText(tr("特殊情况所需，请勿随意填写此空"))
+    window._sync_capture_device_edit.setPlaceholderText("仅在自动选择网卡失败时填写")
     window._sync_capture_device_edit.setText(settings.get("capture_device_id") or "")
-    form.addRow(tr("抓取网卡:"), window._sync_capture_device_edit)
 
-    window._sync_auto_start_toggle = QCheckBox(tr("软件启动后自动在后台等待背包"))
-    window._sync_auto_start_toggle.setChecked(
-        bool(settings["auto_start_inventory_sync"])
-    )
-    form.addRow(tr("自动启动:"), window._sync_auto_start_toggle)
+    def resize_capture_device_edit(text: str) -> None:
+        content = str(text or window._sync_capture_device_edit.placeholderText())
+        text_width = window._sync_capture_device_edit.fontMetrics().horizontalAdvance(content)
+        window._sync_capture_device_edit.setFixedWidth(
+            max(360, min(680, text_width + 36))
+        )
 
-    window._sync_raw_capture_toggle = QCheckBox(
-        tr("保存原始抓包（.pcapng，排错时才开启）")
-    )
+    resize_capture_device_edit(window._sync_capture_device_edit.text())
+    window._sync_capture_device_edit.textChanged.connect(resize_capture_device_edit)
+    form.addRow("抓取网卡:", window._sync_capture_device_edit)
+    save_handler = getattr(window, "_save_capture_diagnostics", None)
+
+    def save_capture_diagnostics() -> None:
+        if callable(save_handler):
+            save_handler()
+
+    window._sync_capture_device_edit.editingFinished.connect(save_capture_diagnostics)
+
+    window._sync_raw_capture_toggle = QCheckBox("保存原始采集数据（排错）")
     window._sync_raw_capture_toggle.setChecked(
         bool(settings["raw_capture_enabled"])
     )
     window._sync_raw_capture_toggle.setToolTip(
-        tr("背包同步和战报采集都会按各自启动时的设置保存原始包；"
-           "文件仅保存到当前账号的 logs/nte_core/raw_capture。"
-           "采集结束后自动保留最近 5 份，并优先将历史文件压至 512 MiB；"
-           "正在写入和最新的一份不会被删除。")
+        "排错时开启；数据保存在当前账号日志目录并自动轮换，可能占用较多磁盘空间。"
     )
     raw_capture_row = QHBoxLayout()
     raw_capture_row.addWidget(window._sync_raw_capture_toggle)
-    raw_capture_open_button = QPushButton(tr("打开抓包目录"))
+    raw_capture_open_button = QPushButton("打开原始数据目录")
+    window._sync_raw_capture_open_button = raw_capture_open_button
     raw_capture_open_handler = getattr(window, "_open_raw_capture_directory", None)
     if callable(raw_capture_open_handler):
         raw_capture_open_button.clicked.connect(raw_capture_open_handler)
@@ -189,51 +167,26 @@ def _build_sync_card(window):
         raw_capture_open_button.setEnabled(False)
     raw_capture_row.addWidget(raw_capture_open_button)
     raw_capture_row.addStretch()
-    form.addRow(tr("诊断抓包:"), raw_capture_row)
-    card.layout().addLayout(form)
+    def save_raw_capture_diagnostics(enabled: bool) -> None:
+        window.work_mode_controller.set_raw_capture_draft(enabled)
+        if window._sync_raw_capture_toggle.isChecked() == enabled:
+            save_capture_diagnostics()
 
-    save_button = QPushButton(tr("保存同步设置"))
-    save_button.setObjectName("btnPrimary")
-    save_handler = getattr(window, "_save_sync_settings", None)
-    if callable(save_handler):
-        save_button.clicked.connect(save_handler)
-    else:
-        save_button.setEnabled(False)
-        save_button.setToolTip(tr("当前页面宿主未启用 SQLite 同步设置"))
-    prune_button = QPushButton(tr("清理历史快照"))
-    prune_button.setObjectName("btnDanger")
-    prune_handler = getattr(window, "_prune_inventory_snapshots", None)
-    if callable(prune_handler):
-        prune_button.clicked.connect(prune_handler)
-    else:
-        prune_button.setEnabled(False)
-        prune_button.setToolTip(tr("当前页面宿主未启用 SQLite 快照维护"))
-    window._prune_snapshots_button = prune_button
-    actions = QHBoxLayout()
-    actions.addWidget(save_button)
-    actions.addWidget(prune_button)
-    actions.addStretch()
-    card.layout().addLayout(actions)
+    window._sync_raw_capture_toggle.clicked.connect(save_raw_capture_diagnostics)
+    form.addRow("采集排错:", raw_capture_row)
+    card.layout().addLayout(form)
     return card
 
 
 def _build_environment_card(window):
     card = window._card(tr("环境配置"))
     window._environment_configuration_card = card
-    npcap_title = QLabel(tr("Npcap · 背包同步必需"))
+    npcap_title = QLabel("Npcap · 数据同步、战报采集")
     npcap_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(npcap_title)
-    npcap_description = QLabel(
-        tr("Npcap 抓包用于识别背包；虽有一定风险，但低于视觉扫描快照，建议优先使用。")
-    )
-    npcap_description.setTextFormat(Qt.RichText)
-    npcap_description.setWordWrap(False)
-    npcap_description.setStyleSheet(
-        themed_style("color:#8b949e;font-size:12px")
-    )
-    card.layout().addWidget(npcap_description)
     npcap_row = QHBoxLayout()
-    npcap_install_button = QPushButton(tr("下载 Npcap 1.88"))
+    npcap_install_button = QPushButton("下载 Npcap 1.88")
+    window._npcap_install_button = npcap_install_button
     npcap_install_button.clicked.connect(window._open_npcap_download)
     npcap_row.addWidget(npcap_install_button)
     npcap_status_button = QPushButton(tr("检测 Npcap 状态"))
@@ -245,14 +198,12 @@ def _build_environment_card(window):
     npcap_row.addStretch()
     card.layout().addLayout(npcap_row)
 
-    equipment_title = QLabel(tr("装备插件 · 极速装配必需"))
+    equipment_title = QLabel("游戏内组件 · 极速装配、弃置锁定、插件、功能强化")
     equipment_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(equipment_title)
     equipment_description = QLabel(
-        tr("<b>简单原理：</b>默认把 dwmapi.dll 放入游戏目录，由游戏代理加载；"
-           "少数环境不加载代理 DLL 时，可显式改用管理员 Mod Loader。"
-           "<br><span style='color:#d29922'><b>风险提示：</b>该功能会介入游戏进程，但不会直接篡改"
-           "游戏数据；仍可能触发游戏保护，产生兼容问题或账号风险。</span>")
+        "<span style='color:#d29922'><b>风险提示：</b>组件会加载到游戏中，"
+        "可能触发游戏保护或兼容问题。</span>"
     )
     equipment_description.setTextFormat(Qt.RichText)
     equipment_description.setWordWrap(True)
@@ -263,16 +214,14 @@ def _build_environment_card(window):
     form = QFormLayout()
     window._equipment_plugin_loading_method_combo = NoWheelComboBox()
     window._equipment_plugin_loading_method_combo.addItem(
-        tr("代理 DLL（推荐）"), "proxy"
+        "D3D 采集代理", "native-capture"
     )
     window._equipment_plugin_loading_method_combo.addItem(
-        tr("Mod Loader（备用）"), "loader"
+        "原生 Loader（备用）", "loader"
     )
     loading_method = str(
-        (getattr(window, "_ui_preferences", {}) or {}).get(
-            "equipment_plugin_loading_method"
-        )
-        or "proxy"
+        window.work_mode_service.deployment_record.get("loading_method")
+        or "native-capture"
     )
     method_index = window._equipment_plugin_loading_method_combo.findData(
         loading_method
@@ -280,6 +229,7 @@ def _build_environment_card(window):
     window._equipment_plugin_loading_method_combo.setCurrentIndex(
         max(0, method_index)
     )
+    window._equipment_plugin_loading_method_combo.setFixedWidth(180)
     window._equipment_plugin_loading_method_combo.currentIndexChanged.connect(
         window._equipment_plugin_loading_method_changed
     )
@@ -288,13 +238,9 @@ def _build_environment_card(window):
     window._equipment_plugin_game_executable_edit.setPlaceholderText(
         tr("可手动粘贴 HTGame.exe 的完整文件地址")
     )
-    window._equipment_plugin_game_executable_edit.setText(
-        str(
-            (getattr(window, "_ui_preferences", {}) or {}).get(
-                "equipment_plugin_game_executable"
-            )
-            or ""
-        )
+    window._equipment_plugin_game_executable_edit.setText(window.work_mode_service.settings.game_executable)
+    window._equipment_plugin_game_executable_edit.editingFinished.connect(
+        lambda: window.work_mode_service.set_game_executable(window._equipment_plugin_game_executable_edit.text().strip())
     )
     window._equipment_plugin_game_executable_edit.textChanged.connect(
         lambda _text: window._refresh_equipment_plugin_status()
@@ -312,35 +258,13 @@ def _build_environment_card(window):
     form.addRow(tr("游戏主程序:"), game_row)
     card.layout().addLayout(form)
 
-    consent_row = QHBoxLayout()
-    window._equipment_plugin_consent = QCheckBox(
-        tr("我已阅读并理解上述风险，仍自愿使用装备插件并承担相应风险")
-    )
-    window._equipment_plugin_consent.setStyleSheet(
-        themed_style("color:#d29922;font-weight:600")
-    )
-    window._equipment_plugin_consent.setChecked(
-        bool(
-            (getattr(window, "_ui_preferences", {}) or {}).get(
-                "equipment_plugin_risk_acknowledged", False
-            )
-        )
-    )
-    window._equipment_plugin_consent.toggled.connect(
-        window._equipment_plugin_risk_acknowledgement_changed
-    )
-    consent_row.addWidget(window._equipment_plugin_consent)
-    window._dwmapi_diagnostic_button = QPushButton(tr("诊断 dwmapi"))
-    window._dwmapi_diagnostic_button.clicked.connect(window._diagnose_dwmapi)
-    consent_row.addWidget(window._dwmapi_diagnostic_button)
-    consent_row.addStretch()
-    card.layout().addLayout(consent_row)
     window._equipment_plugin_status_label = QLabel()
-    window._equipment_plugin_status_label.setWordWrap(True)
+    window._equipment_plugin_status_label.setWordWrap(False)
     window._equipment_plugin_status_label.setStyleSheet(
         themed_style("color:#8b949e;font-size:12px")
     )
     card.layout().addWidget(window._equipment_plugin_status_label)
+
     actions = QHBoxLayout()
     window._equipment_plugin_primary_button = QPushButton(tr("部署代理 DLL"))
     window._equipment_plugin_primary_button.setObjectName("btnPrimary")
@@ -348,7 +272,7 @@ def _build_environment_card(window):
         window._activate_equipment_plugin_loading_method
     )
     actions.addWidget(window._equipment_plugin_primary_button)
-    window._equipment_plugin_stop_button = QPushButton(tr("还原游戏目录"))
+    window._equipment_plugin_stop_button = QPushButton("清理游戏目录")
     window._equipment_plugin_stop_button.setObjectName("btnDanger")
     window._equipment_plugin_stop_button.clicked.connect(
         window._deactivate_equipment_plugin_loading_method
@@ -386,7 +310,10 @@ def build_settings_page(
     layout.setContentsMargins(20, 16, 20, 16)
     layout.setSpacing(16)
 
-    log_card = window._card(tr("工具设置"))
+    mode_card = build_work_mode_card(window)
+    layout.addWidget(mode_card)
+
+    log_card = window._card("工具设置")
     log_row = QHBoxLayout()
     log_row.addWidget(QLabel(tr("实时日志输出:")))
     log_toggle = QCheckBox(tr("启用运行日志"))
@@ -487,7 +414,7 @@ def build_settings_page(
     log_card.layout().addLayout(language_row)
     layout.addWidget(log_card)
 
-    sync_card = _build_sync_card(window)
+    sync_card = _build_capture_diagnostics_card(window)
     plugin_card = _build_environment_card(window)
     hotkey_card = window._card(tr("快捷键绑定"))
 
@@ -725,4 +652,12 @@ def build_settings_page(
     layout.addWidget(thanks_card)
 
     layout.addStretch()
+    window.work_mode_controller.attach_settings_targets(
+        scroll=scroll, mode_card=mode_card, component_card=plugin_card,
+        component_focus=window._equipment_plugin_primary_button,
+        game_path_focus=window._equipment_plugin_game_executable_edit,
+        loading_method_focus=window._equipment_plugin_loading_method_combo,
+        npcap_focus=window._npcap_install_button,
+        core_focus=window._nte_core_diagnostic_button,
+    )
     return scroll

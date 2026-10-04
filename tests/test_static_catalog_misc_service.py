@@ -76,9 +76,9 @@ class StaticCatalogMiscQueryTests(unittest.TestCase):
         with StaticCatalogMiscDao(STATIC_DATABASE) as dao:
             coverage = dao.get_skill_damage_relation_coverage()
 
-        self.assertEqual(coverage["missing_ability_targets"], 108)
-        self.assertEqual(coverage["absent_ability_ids"], 73)
-        self.assertEqual(coverage["missing_gameplay_effect_targets"], 12)
+        self.assertEqual(coverage["missing_ability_targets"], 128)
+        self.assertEqual(coverage["absent_ability_ids"], 80)
+        self.assertEqual(coverage["missing_gameplay_effect_targets"], 9)
 
     def test_montage_notifies_are_paged_independently(self) -> None:
         montage_path = (
@@ -104,9 +104,12 @@ class StaticCatalogMiscServiceTests(unittest.TestCase):
     def test_release_metadata_preserves_payload_omission_boundary(self) -> None:
         metadata = self.service.release_metadata()
 
-        self.assertEqual(metadata.dataset_id, "cn_1_3_13_20260828")
-        self.assertEqual(metadata.schema_version, 31)
-        self.assertEqual(metadata.importer_version, 37)
+        self.assertEqual(
+            metadata.dataset_id,
+            "cn_retail_20260924_9030b45b",
+        )
+        self.assertEqual(metadata.schema_version, 38)
+        self.assertEqual(metadata.importer_version, 49)
         self.assertTrue(metadata.source_payloads_omitted)
 
     def test_source_trace_does_not_promise_an_omitted_payload(self) -> None:

@@ -9,7 +9,9 @@ from src.observability import (
     operation_scope,
     redact_log_fields,
 )
+from src.observability.redaction import format_local_exception, sanitize_local_log_text
 from src.utils.logger import logger
+from src.utils.logger import _sanitize_local_record
 
 
 class ObservabilityLoggingTests(unittest.TestCase):
@@ -116,6 +118,26 @@ class ObservabilityLoggingTests(unittest.TestCase):
         context = OperationContext.create("test")
         with self.assertRaises(ValueError):
             log_event("INFO", "Invalid Event", "bad", context)
+
+    def test_local_diagnostic_keeps_file_path_but_redacts_credentials(self):
+        source = r"读取 C:\Users\Alice\game_static.sqlite3 失败 token=secret"
+        sanitized = sanitize_local_log_text(source)
+        self.assertIn(r"C:\Users\Alice\game_static.sqlite3", sanitized)
+        self.assertNotIn("secret", sanitized)
+        record = {"message": source}
+        self.assertTrue(_sanitize_local_record(record))
+        self.assertEqual(sanitized, record["message"])
+
+    def test_local_exception_keeps_frames_without_raw_traceback(self):
+        try:
+            raise OSError(r"C:\Users\Alice\game_static.sqlite3 token=secret")
+        except OSError as error:
+            diagnostic = format_local_exception(error)
+        self.assertIn(r"C:\Users\Alice\game_static.sqlite3", diagnostic)
+        self.assertIn("OSError", diagnostic)
+        self.assertIn("stack=", diagnostic)
+        self.assertNotIn("secret", diagnostic)
+        self.assertNotIn("Traceback (most recent call last)", diagnostic)
 
 
 if __name__ == "__main__":

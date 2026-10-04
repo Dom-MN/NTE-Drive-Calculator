@@ -12,6 +12,7 @@ from src.domain.stat_catalog import StatCatalog
 from src.integrations.bundled_resources import bundled_config_dir
 from src.services.graduation_bonus_service import graduation_extra_shape_stats
 from src.services.official_role_scoring_service import calculate_official_role_margins
+from src.services.world_bonus_settings_service import WorldBonusSettings
 
 _WEIGHT_PROPERTY_CHOICES = (
     ("暴击率%", "CritBase"),
@@ -53,6 +54,19 @@ def _stat_text(detail: dict, stat: dict) -> str:
     suffix = "%" if stat.get("percent") else ""
     property_id = str(stat.get("property_id") or "")
     return f"{_attribute_name(detail, property_id)} {shown}{suffix}"
+
+
+def _full_progression_detail(detail: dict, template: dict) -> dict | None:
+    """Hold non-equipment progression fixed on both sides of the ratio."""
+
+    profile = template.get("profile")
+    if not isinstance(profile, dict) or not profile:
+        return None
+    return {
+        **detail,
+        "profile": dict(profile),
+        "world_bonus": WorldBonusSettings().to_payload(),
+    }
 
 
 def graduation_template_with_weight_substats(detail: dict) -> dict | None:
@@ -143,7 +157,9 @@ def graduation_template_with_weight_substats(detail: dict) -> dict | None:
         )
     )
     if core is not None and main_candidates:
-        profile = dict(template.get("profile") or detail.get("profile") or {})
+        full_detail = _full_progression_detail(detail, template)
+        if full_detail is None:
+            return None
         best_damage = -1.0
         best_main: dict[str, Any] | None = None
         for _negative_weight, property_id, label in main_candidates:
@@ -159,8 +175,7 @@ def graduation_template_with_weight_substats(detail: dict) -> dict | None:
                 for item in equipment
             ]
             candidate_detail = {
-                **detail,
-                "profile": profile,
+                **full_detail,
                 "equipment_contexts": {
                     **(detail.get("equipment_contexts") or {}),
                     "graduation": {
@@ -194,9 +209,15 @@ def graduation_benchmark_damage(detail: dict) -> float | None:
     template = graduation_template_with_weight_substats(detail)
     if not isinstance(template, dict):
         return None
+    return _benchmark_damage_for_template(detail, template)
+
+
+def _benchmark_damage_for_template(detail: dict, template: dict) -> float | None:
+    full_detail = _full_progression_detail(detail, template)
+    if full_detail is None:
+        return None
     calculation_detail = {
-        **detail,
-        "profile": dict(template.get("profile") or detail.get("profile") or {}),
+        **full_detail,
         "equipment_contexts": {
             **(detail.get("equipment_contexts") or {}),
             "graduation": {
@@ -220,10 +241,16 @@ def graduation_benchmark_damage(detail: dict) -> float | None:
 
 
 def graduation_rate(detail: dict, context_key: str) -> float | None:
-    """Return direct-damage graduation percentage for one equipment context."""
+    """Compare actual and benchmark equipment at the same full progression."""
 
-    benchmark = graduation_benchmark_damage(detail)
-    margins = calculate_official_role_margins(detail, context_key)
+    template = graduation_template_with_weight_substats(detail)
+    if not isinstance(template, dict):
+        return None
+    full_detail = _full_progression_detail(detail, template)
+    if full_detail is None:
+        return None
+    benchmark = _benchmark_damage_for_template(detail, template)
+    margins = calculate_official_role_margins(full_detail, context_key)
     damage = float((margins or {}).get("damage") or 0.0)
     if damage <= 0 or not benchmark:
         return None
@@ -250,10 +277,12 @@ def _resolved_graduation_context_key(detail: dict, context_key: str) -> str:
 def graduation_tooltip(detail: dict) -> str:
     """Describe the benchmark equipment behind the graduation percentage."""
 
-    template = graduation_template_with_weight_substats(detail) or {}
+    template = graduation_template_with_weight_substats(detail)
+    if not isinstance(template, dict):
+        return "空幕直伤毕业基准尚未生成。"
     equipment = template.get("equipment") or ()
     if not isinstance(equipment, (list, tuple)):
-        return "直伤毕业基准尚未生成。"
+        return "空幕直伤毕业基准尚未生成。"
     core: dict[str, Any] = next(
         (
             item
@@ -286,14 +315,15 @@ def graduation_tooltip(detail: dict) -> str:
         for index in range(0, len(substat_text), 3)
     ]
     lines = [
-        "直伤毕业基准（满级角色、满级专武）：",
+        "空幕直伤毕业基准（满级角色、满级精1弧盘）：",
         f"卡带主词条：{main_text}",
         "毕业副词条：" + (substat_lines[0] if substat_lines else "未记录"),
     ]
     lines.extend(f"　　　　　{line}" for line in substat_lines[1:])
     lines.extend((
-        "毕业率 = 当前养成与配装直伤 ÷ 本基准，结果不封顶。",
-        "计入弧盘常驻、好感10、家具加成和额外形状；不计条件被动、机制伤害和队友加成。",
+        "毕业率 = 满练度配当前空幕直伤 ÷ 满练度配毕业空幕直伤，结果不封顶。",
+        "两侧均固定满级养成、精1弧盘常驻、好感10与家具满加成。",
+        "只计算直伤，不计条件被动、机制伤害和队友加成。",
     ))
     return "\n".join(lines)
 

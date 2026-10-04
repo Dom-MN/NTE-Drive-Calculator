@@ -7,7 +7,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import sqlite3
 import subprocess
 import sys
@@ -29,6 +28,11 @@ from tools.game_data.promote_static_release import (
 )
 from src.app.version import __version__
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
+from src.integrations.game_component_bundle import inspect_game_component_bundle
+from src.integrations.nte_core import NteCoreClient
+from src.integrations.ocr_model_resources import validate_packaged_ocr_models
+from tools.release.game_component_bundle_build import source_component_manifest, validate_packaged_component_bundle
+from tools.release.native_component_bundle_build import native_component_build_inputs
 
 build_cli.configure_utf8_console()
 
@@ -37,48 +41,15 @@ INSTALLER_NAME = f"NTE_Drive_Calc_Setup_{__version__}.exe"
 INSTALLER_PATH = ROOT / "installer" / "output" / INSTALLER_NAME
 STATIC_DATABASE = ROOT / "data" / "game_static.sqlite3"
 STATIC_MANIFEST = ROOT / "data" / "manifest.json"
-GAME_UI_ASSET_ROOT = ROOT / "assets" / "game_ui"
+GAME_UI_ASSET_ROOT = ROOT / "data" / "role_catalog" / "game_ui"
 GAME_UI_ASSET_MANIFEST = GAME_UI_ASSET_ROOT / "manifest.json"
 APP_INTERNAL = ROOT / "dist" / "NTE_Drive_Calc" / "_internal"
 BUNDLED_STATIC_DATABASE = APP_INTERNAL / "data" / "game_static.sqlite3"
 BUNDLED_STATIC_MANIFEST = APP_INTERNAL / "data" / "manifest.json"
-BUNDLED_GAME_UI_ASSET_ROOT = APP_INTERNAL / "assets" / "game_ui"
+BUNDLED_GAME_UI_ASSET_ROOT = APP_INTERNAL / "data" / "role_catalog" / "game_ui"
 BUNDLED_GAME_UI_ASSET_MANIFEST = BUNDLED_GAME_UI_ASSET_ROOT / "manifest.json"
 LOCAL_CONFIG_ENV = "NTE_LOCAL_CONFIG"
-COMPONENTS = (
-    (
-        ROOT / "third_party" / "nte-core" / "bin" / "nte-core.exe",
-        ROOT / "third_party" / "nte-core" / "COMPONENT.md",
-        "当前本机二进制 SHA-256",
-    ),
-    (
-        ROOT / "third_party" / "mods-plugin" / "bin" / "dwmapi.dll",
-        ROOT / "third_party" / "mods-plugin" / "COMPONENT.md",
-        "`bin/dwmapi.dll` SHA-256",
-    ),
-    (
-        ROOT / "third_party" / "mod-loader" / "bin" / "nte-mod-loader.exe",
-        ROOT / "third_party" / "mod-loader" / "COMPONENT.md",
-        "`bin/nte-mod-loader.exe` SHA-256",
-    ),
-)
-REQUIRED_COMPONENT_FILES = (
-    ROOT / "NOTICE",
-    ROOT / "third_party" / "nte-core" / "LICENSE",
-    ROOT / "third_party" / "nte-core" / "SOURCE.md",
-    ROOT / "third_party" / "mods-plugin" / "LICENSE",
-    ROOT / "third_party" / "mods-plugin" / "SOURCE.md",
-    ROOT / "third_party" / "mods-plugin" / "workspace" / "nte-mods.enabled",
-    ROOT / "third_party" / "mods-plugin" / "workspace" / "nte-mods" / "equipment.nte",
-    ROOT / "third_party" / "mods-plugin" / "workspace" / "nte-mods" / "combat-clock.nte",
-    ROOT / "third_party" / "mod-loader" / "LICENSE",
-    ROOT / "third_party" / "mod-loader" / "SOURCE.md",
-    ROOT / "third_party" / "mod-loader" / "THIRD_PARTY_LICENSES.md",
-    ROOT / "third_party" / "mod-loader" / "licenses" / "MinHook-LICENSE.txt",
-    ROOT / "third_party" / "mod-loader" / "licenses" / "ManualMap-LICENSE.txt",
-)
-
-
+REQUIRED_CORE_CAPABILITIES = frozenset({"capture_wait_v1", "buff_snapshot_v1"})
 def run(command: Sequence[str]) -> None:
     """在仓库根目录执行命令，失败时立即终止准备流程。"""
 
@@ -284,7 +255,8 @@ def validate_packaged_release_artifacts(
         BUNDLED_GAME_UI_ASSET_MANIFEST,
     )
     if sha256(BUNDLED_GAME_UI_ASSET_MANIFEST) != sha256(GAME_UI_ASSET_MANIFEST):
-        raise RuntimeError("安装包输入目录中的游戏 UI 资源 manifest 与 assets/ 不一致")
+        raise RuntimeError("安装包输入目录中的游戏 UI 资源 manifest 与 data/role_catalog/game_ui 不一致")
+    validate_packaged_ocr_models(APP_INTERNAL)
 
 
 def validate_static_dataset_against_local_config(
@@ -307,34 +279,28 @@ def validate_static_dataset_against_local_config(
     print(f"[通过] 本机静态数据配置：dataset={expected}")
 
 
-def _recorded_hash(record: Path, label: str) -> str:
-    text = record.read_text(encoding="utf-8")
-    match = re.search(
-        rf"^-\s*{re.escape(label)}：`?([A-Fa-f0-9]{{64}})`?\s*$",
-        text,
-        flags=re.MULTILINE,
-    )
-    if match is None:
-        raise RuntimeError(f"{record} 未记录 {label}")
-    return match.group(1).upper()
-
-
 def validate_components() -> None:
     """校验随包组件、脚本、来源说明和许可证。"""
+    bundle = inspect_game_component_bundle(ROOT)
+    if not bundle.ready:
+        raise RuntimeError("源码组件整包清单未通过校验：" + "；".join(bundle.issues))
+    if not (ROOT / "NOTICE").is_file():
+        raise RuntimeError("缺少应用第三方声明 NOTICE。")
+    native_component_build_inputs(ROOT)
+    core = ROOT / bundle.roles["core"]
+    standalone = ROOT / "third_party" / "nte-core" / "bin" / "nte-core.exe"
+    if not standalone.is_file() or sha256(standalone) != sha256(core):
+        raise RuntimeError("独立 Core 与原生组件整包 Core 字节不一致。")
+    validate_core_capabilities(core)
 
-    missing = [path for path in REQUIRED_COMPONENT_FILES if not path.is_file()]
+
+def validate_core_capabilities(core: Path) -> None:
+    """实际握手防止同版本 Core 更新时静默丢失既有能力。"""
+    with NteCoreClient(executable=core, required_source="packet") as client:
+        capabilities = set(client.hello_result["capabilities"])
+    missing = REQUIRED_CORE_CAPABILITIES - capabilities
     if missing:
-        formatted = "\n".join(f"- {path.relative_to(ROOT)}" for path in missing)
-        raise RuntimeError(f"第三方组件记录不完整：\n{formatted}")
-
-    for binary, record, label in COMPONENTS:
-        if not binary.is_file():
-            raise RuntimeError(f"缺少发行组件：{binary.relative_to(ROOT)}")
-        expected = _recorded_hash(record, label)
-        actual = sha256(binary)
-        if actual != expected:
-            raise RuntimeError(f"{binary.relative_to(ROOT)} SHA-256 不匹配：记录={expected}，实际={actual}")
-        print(f"[通过] {binary.relative_to(ROOT)}：{actual}")
+        raise RuntimeError("Core 握手缺少发行所需能力：" + "、".join(sorted(missing)))
 
 
 def write_checksum(path: Path) -> Path:
@@ -346,7 +312,7 @@ def write_checksum(path: Path) -> Path:
     return checksum_path
 
 
-def print_manual_commands(tag: str, installer: Path, notes_file: Path) -> None:
+def print_manual_commands(tag: str, installer: Path) -> None:
     relative_installer = installer.relative_to(ROOT)
     relative_checksum = installer.with_suffix(installer.suffix + ".sha256").relative_to(ROOT)
     print("\n本地准备完成。确认产物后，由维护者手工执行：")
@@ -355,7 +321,7 @@ def print_manual_commands(tag: str, installer: Path, notes_file: Path) -> None:
     print(
         "gh release create "
         f'{tag} "{relative_installer}" "{relative_checksum}" '
-        f'--title {tag} --notes-file "{notes_file}"'
+        f"--title {tag}"
     )
     print("Mirror 的分发与下载风险由 Mirror 发布链负责，本工具不会上传 Mirror。")
 
@@ -363,12 +329,6 @@ def print_manual_commands(tag: str, installer: Path, notes_file: Path) -> None:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", default=__version__, help="必须与应用版本完全一致。")
-    parser.add_argument(
-        "--notes-file",
-        type=Path,
-        default=Path("RELEASE_NOTES.md"),
-        help="仅用于输出 gh release create 命令；本工具不读取或上传它。",
-    )
     parser.add_argument(
         "--allow-dirty",
         action="store_true",
@@ -416,6 +376,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             static_summary,
             args.local_config,
         )
+        validate_components()
         if not args.skip_tests:
             run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-q"])
         run(
@@ -431,7 +392,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "tools",
             ]
         )
-        validate_components()
         if not args.skip_build:
             build_command = [
                 sys.executable,
@@ -442,15 +402,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             run(build_command)
         if not INSTALLER_PATH.is_file():
             raise RuntimeError(f"找不到安装包：{INSTALLER_PATH}")
+        validate_packaged_component_bundle(
+            APP_INTERNAL, source_manifest_path=source_component_manifest(ROOT),
+        )
         validate_packaged_release_artifacts(
             allow_size_warning=args.allow_size_warning,
         )
         checksum_path = write_checksum(INSTALLER_PATH)
         print(f"[通过] 安装包：{INSTALLER_PATH}")
         print(f"[通过] SHA-256：{checksum_path}")
-        print_manual_commands(args.tag, INSTALLER_PATH, args.notes_file)
+        print_manual_commands(args.tag, INSTALLER_PATH)
         return 0
-    except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"[失败] {exc}", file=sys.stderr)
         return 1
 

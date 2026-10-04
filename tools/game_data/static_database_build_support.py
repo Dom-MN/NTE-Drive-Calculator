@@ -77,9 +77,15 @@ SCHEMA_PATHS = (
     PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "030_game_static_progression_catalog.sql",
     PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "031_game_static_character_progression.sql",
     PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "032_game_static_fork_permanent_property.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "033_game_static_dataset_scope.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "034_game_static_reference_catalog.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "035_game_static_catalog_passives.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "036_game_static_fork_exp_material.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "037_game_static_season_evidence.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "038_game_static_analysis_projection.sql",
 )
-SCHEMA_VERSION = 32
-IMPORTER_VERSION = 40
+SCHEMA_VERSION = 38
+IMPORTER_VERSION = 49
 
 TABLE_PATHS = {
     "character": "DataTable/Character/DT_Character.json",
@@ -201,6 +207,8 @@ STRING_TABLE_SOURCE_BY_PACKAGE = {
 }
 
 PROPERTY_ASSET_SOURCES = frozenset({
+    "lottery_heiyu",
+    "lottery_mingyin",
     "lottery_permanent",
     "lottery_nanali",
     "lottery_xun",
@@ -294,10 +302,14 @@ def write_static_manifest(
                 "SELECT COUNT(*) FROM source_row WHERE payload_json IS NOT NULL"
             ).fetchone()[0]
         )
+        scope_row = connection.execute("SELECT scope FROM dataset_scope").fetchone() if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name = 'dataset_scope'"
+        ).fetchone() else None
     if dataset is None or schema is None or schema[0] is None:
         raise RuntimeError(f"静态数据库缺少发行清单所需元数据：{database}")
     manifest = {
         "format_version": 1,
+        "catalog_scope": str(scope_row[0]) if scope_row else "game",
         "database": {
             "filename": database.name,
             "dataset_id": str(dataset[0]),
@@ -308,7 +320,8 @@ def write_static_manifest(
             "source_payloads_omitted": payload_count == 0,
         },
         "build_tool": {
-            "path": "tools/game_data/build_static_database.py",
+            "path": ("tools/game_data/build_reference_catalog.py" if scope_row and scope_row[0] == "reference" else "tools/game_data/build_role_catalog.py" if scope_row and scope_row[0] == "role_page"
+                     else "tools/game_data/build_static_database.py"),
             "importer_version": int(dataset[1]),
         },
     }

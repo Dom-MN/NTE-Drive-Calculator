@@ -8,6 +8,7 @@ viewport, which keeps a 2,000-item inventory responsive.
 
 from __future__ import annotations
 
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -34,6 +35,7 @@ from src.services.warehouse_visual_catalog import (
     representative_module_item_id,
 )
 from src.ui.equipment_state_icons import paint_warehouse_lock_button
+from src.ui.role_portrait import custom_role_portrait
 
 
 _STAT_LABELS = {
@@ -81,11 +83,33 @@ def configure_warehouse_view_template_roots(
     )
     _TEMPLATE_ROOTS = roots or (bundled_config_dir() / "templates",)
     if asset_root is not None:
-        _ASSET_ROOT = Path(asset_root).resolve() / "game_ui"
+        _ASSET_ROOT = Path(asset_root).resolve()
+    _role_avatar_index.cache_clear()
     _legacy_character_avatar.cache_clear()
+    _equipment_item_pixmap.cache_clear()
 
 
-@lru_cache(maxsize=96)
+@lru_cache(maxsize=16)
+def _role_avatar_index(role_root_str: str) -> tuple[dict[str, Path], list[tuple[str, Path]]]:
+    """Index role avatar PNGs in memory to eliminate runtime filesystem scans."""
+    role_root = Path(role_root_str)
+    if not role_root.is_dir():
+        return {}, []
+    exact_map: dict[str, Path] = {}
+    normalized_list: list[tuple[str, Path]] = []
+    try:
+        for entry in os.scandir(role_root):
+            if entry.is_file() and entry.name.lower().endswith(".png"):
+                path = Path(entry.path)
+                exact_map[path.stem] = path
+                normalized = normalize_role_avatar_name(path.stem)
+                normalized_list.append((normalized, path))
+    except OSError:
+        pass
+    return exact_map, normalized_list
+
+
+@lru_cache(maxsize=512)
 def _legacy_character_avatar(character_name: str) -> QPixmap:
     """Use the shipped config/templates/roles portrait, tolerating decorative aliases."""
     if not character_name:
@@ -94,24 +118,24 @@ def _legacy_character_avatar(character_name: str) -> QPixmap:
     normalized_name = normalize_role_avatar_name(avatar_name)
     for root in _template_root_candidates():
         role_root = root / "roles"
-        direct_path = role_root / f"{avatar_name}.png"
-        if direct_path.is_file():
-            return QPixmap(str(direct_path))
+        exact_map, normalized_list = _role_avatar_index(str(role_root))
+        if avatar_name in exact_map:
+            return _equipment_item_pixmap(str(exact_map[avatar_name]))
         candidates = [
-            path for path in role_root.glob("*.png")
-        if normalize_role_avatar_name(path.stem) == normalized_name
+            path for norm, path in normalized_list
+            if norm == normalized_name
         ]
         if len(candidates) == 1:
-            return QPixmap(str(candidates[0]))
+            return _equipment_item_pixmap(str(candidates[0]))
         fuzzy_candidates = [
-            path for path in role_root.glob("*.png")
+            path for norm, path in normalized_list
             if normalized_name and (
-            normalize_role_avatar_name(path.stem).startswith(normalized_name)
-            or normalized_name.startswith(normalize_role_avatar_name(path.stem))
+                norm.startswith(normalized_name)
+                or normalized_name.startswith(norm)
             )
         ]
         if len(fuzzy_candidates) == 1:
-            return QPixmap(str(fuzzy_candidates[0]))
+            return _equipment_item_pixmap(str(fuzzy_candidates[0]))
     return QPixmap()
 
 
@@ -136,11 +160,10 @@ def _localized(value: Any, fallback: str) -> str:
 
 
 def _display_suit_name(value: str, names: Any = None) -> str:
-    """Remove only the decorative full-width title brackets from card tape names.
+    """Strip the decorative title brackets, after translating the bracketed name.
 
-    The game data's own localized name wins when nte-core supplied one. Otherwise
-    the glossary is keyed on the bracketed name the game ships, so translation
-    happens before the brackets are stripped.
+    nte-core's own localized name wins; the glossary is keyed on the bracketed
+    form the game ships, so translation happens before stripping.
     """
     text = str(value or "").strip()
     localized = display_localized(names, "")
@@ -188,12 +211,9 @@ def _drive_type_label(shape: str) -> str:
 def _stat_view(stat: Mapping[str, Any], *, main: bool = False) -> dict[str, Any]:
     """Prepare one stat for aligned card rendering while keeping its original value."""
     property_id = str(stat.get("property_id") or "")
-    # nte-core carries the localized stat name; fall back to the glossary for
-    # vision-sourced rows, which only ever have Chinese.
-    label = display_localized(
-        stat.get("names"),
-        _localized(stat.get("names"), _STAT_LABELS.get(property_id, property_id or "未知属性")),
-    )
+    # nte-core carries the localized stat name; vision rows fall back to glossary.
+    _fallback = _localized(stat.get("names"), _STAT_LABELS.get(property_id, property_id or "未知属性"))
+    label = display_localized(stat.get("names"), _fallback)
     value = float(stat.get("value", 0.0) or 0.0)
     if stat.get("percent"):
         value_text = f"+{value * 100:g}%"
@@ -251,15 +271,12 @@ def warehouse_core_pixmap(suit_id: Any, quality: str = "Gold") -> QPixmap:
     and quality, so those are enough to choose the matching official card
     artwork for every visual scan/parse route.
     """
-    item_id = representative_core_item_id(
-        str(suit_id or ""),
-        _quality_key(quality),
-    )
+    item_id = representative_core_item_id(str(suit_id or ""), _quality_key(quality))
     path = _equipment_item_icon("core", item_id)
     return _equipment_item_pixmap(str(path or ""))
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=16)
 def _asset_catalog(asset_root: str) -> GameUiAssetCatalog:
     return GameUiAssetCatalog(asset_root)
 
@@ -293,10 +310,7 @@ def _warehouse_item_icon(
         return icon
     # A core from an OCR/gamepad snapshot has no official item ID by design.
     # Do not let the caller's generic H_3 fallback render it as a drive.
-    fallback_item_id = representative_core_item_id(
-        str(row.get("suit_id") or ""),
-        _quality_key(row.get("quality")),
-    )
+    fallback_item_id = representative_core_item_id(str(row.get("suit_id") or ""), _quality_key(row.get("quality")))
     return _equipment_item_icon("core", fallback_item_id, asset_root=asset_root)
 
 
@@ -329,10 +343,21 @@ def _character_icon(
     return _asset_catalog(str(root.expanduser().resolve())).character_icon(normalized_id)
 
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=2048)
 def _equipment_item_pixmap(path_text: str) -> QPixmap:
     path = Path(path_text)
     return QPixmap(str(path)) if path.is_file() else QPixmap()
+
+
+def _equipped_owner_portrait(item: Mapping[str, Any], device_pixel_ratio: float = 1.0) -> QPixmap:
+    """Keep temporary custom ownership distinct from official game ownership."""
+
+    if item.get("equipped_character_is_custom"):
+        return custom_role_portrait(36, device_pixel_ratio)
+    avatar = _equipment_item_pixmap(str(item.get("equipped_character_icon_path") or ""))
+    if avatar.isNull():
+        avatar = _legacy_character_avatar(str(item.get("equipped_character_name") or ""))
+    return avatar
 
 
 def warehouse_item_view(
@@ -343,9 +368,7 @@ def warehouse_item_view(
 ) -> dict[str, Any]:
     """Turn one official SQLite item into the compact card data used by the view."""
     source = str(source or "")
-    level_known = bool(
-        row.get("level_known", not is_visual_inventory_source(source))
-    )
+    level_known = bool(row.get("level_known", not is_visual_inventory_source(source)) )
     # Equipped/locked/discarded state is authoritative only in a packet-capture
     # snapshot.  Saved calculator plans are deliberately not projected onto
     # warehouse cards, and vision/gamepad rows cannot claim game state.
@@ -411,11 +434,10 @@ def warehouse_item_view(
         "equipped": equipped,
         "equipped_character_id": equipped_character_id,
         "equipped_character_name": equipped_character_name,
+        "equipped_character_is_custom": equipped and bool(row.get("equipped_character_is_custom")),
         "equipped_character_icon_path": (
             row.get("equipped_character_icon_path")
-            or _character_icon(
-                equipped_character_id, asset_root=asset_root,
-            )
+            or _character_icon(equipped_character_id, asset_root=asset_root)
         ),
         "virtual": bool(row.get("virtual")),
         "locked": state_known and bool(row.get("locked")),
@@ -725,9 +747,7 @@ class WarehouseCardDelegate(QStyledItemDelegate):
         icon_rect = QRect(left, top, 44, 44)
         placeholder = _equipment_item_pixmap(str(item.get("item_icon_path") or ""))
         if placeholder.isNull() and item.get("kind") == "core":
-            placeholder = warehouse_core_pixmap(
-                item.get("suit_id"), str(item.get("quality") or "gold"),
-            )
+            placeholder = warehouse_core_pixmap(item.get("suit_id"), str(item.get("quality") or "gold"))
         if placeholder.isNull() and item.get("kind") != "core":
             placeholder = warehouse_shape_pixmap(
                 str(item.get("shape") or "H_3"),
@@ -759,13 +779,10 @@ class WarehouseCardDelegate(QStyledItemDelegate):
             # Packet snapshots contain an official character ID.  Prefer its
             # packaged portrait; the legacy display-name lookup misses newer
             # or renamed roles and left equipped items with no image.
-            avatar = _equipment_item_pixmap(
-                str(item.get("equipped_character_icon_path") or "")
+            avatar = _equipped_owner_portrait(
+                item,
+                option.widget.devicePixelRatioF() if option.widget is not None else 1.0,
             )
-            if avatar.isNull():
-                avatar = _legacy_character_avatar(
-                    str(item.get("equipped_character_name") or "")
-                )
             if not avatar.isNull():
                 painter.drawPixmap(avatar_rect, avatar)
             else:

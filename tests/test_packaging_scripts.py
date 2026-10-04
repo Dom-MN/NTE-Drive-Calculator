@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import build_installer
 from src.app.constants import APP_VERSION
+from src.integrations.game_component_bundle import inspect_game_component_bundle
 
 
 class PackagingScriptTests(unittest.TestCase):
@@ -72,111 +73,68 @@ class PackagingScriptTests(unittest.TestCase):
         self.assertIn("game_static.previous.sqlite3", text)
         self.assertIn("FileCopy(OldStaticDatabase, MigrationBackup, False)", text)
 
+    def test_installer_overwrites_core_even_when_version_text_is_unchanged(self):
+        build_installer._write_iss(APP_VERSION, build_installer.VIGEM_BUNDLE_EXE, True)
+        text = build_installer.ISS_PATH.read_text(encoding="utf-8-sig")
+        self.assertIn('DestDir: "{app}\\_internal"; Flags: ignoreversion recursesubdirs', text)
+        self.assertIn('CloseApplicationsFilter=NTE_Drive_Calc.exe,nte-mod-loader.exe,nte-core.exe', text)
+
     def test_installer_rejects_bundle_missing_runtime_data_files(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            app_exe = root / "NTE_Drive_Calc.exe"
-            internal = root / "_internal"
-            core = internal / "nte-core.exe"
-            analysis_core = internal / "nte-analysis-core.exe"
-            analysis_manifest = internal / "analysis-core-meta/component.json"
-            mods_plugin = internal / "dwmapi.dll"
-            mod_loader = internal / "nte-mod-loader.exe"
-            mod_set = internal / "plugins/nte-mods.enabled"
-            equipment_mod = internal / "plugins/nte-mods/equipment.nte"
-            combat_clock_mod = internal / "plugins/nte-mods/combat-clock.nte"
-            schema = internal / "src/storage/sqlite/schema/001_user_data.sql"
-            static_database = internal / "data/game_static.sqlite3"
-            static_manifest = internal / "data/manifest.json"
-            shared_database_seed = internal / "data/app_shared.sqlite3"
-            shape_bonus_baseline = (
-                internal / "data/migrations/shape_bonus_defaults_2.0.2.json"
+        from contextlib import ExitStack
+        from tests.test_native_component_bundle_build import native_source, prepare
+
+        with tempfile.TemporaryDirectory() as temporary, ExitStack() as stack:
+            root, _manifest, _payload = native_source(Path(temporary))
+            bundle = prepare(root)
+            internal = bundle.resource_root
+            stack.enter_context(patch.object(build_installer, "ROOT", root))
+            stack.enter_context(patch.object(build_installer, "APP_INTERNAL", internal))
+            required = {
+                "APP_EXE": root / "NTE_Drive_Calc.exe",
+                "APP_NTE_CORE": internal / "nte-core.exe",
+                "APP_ANALYSIS_CORE": internal / "nte-analysis-core.exe",
+                "APP_ANALYSIS_CORE_MANIFEST": internal / "analysis-core-meta/component.json",
+                "APP_USER_SCHEMA": internal / "src/storage/sqlite/schema/001_user_data.sql",
+                "APP_STATIC_DATABASE": internal / "data/game_static.sqlite3",
+                "APP_STATIC_MANIFEST": internal / "data/manifest.json",
+                "APP_SHARED_DATABASE_SEED": internal / "data/app_shared.sqlite3",
+                "APP_SHAPE_BONUS_BASELINE": internal / "data/migrations/shape_bonus_defaults_2.0.2.json",
+            }
+            for field, path in required.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()  # Preserve the synthetic component bytes and manifest hashes.
+                stack.enter_context(patch.object(build_installer, field, path))
+            stack.enter_context(
+                patch.object(build_installer, "validate_packaged_ocr_models")
             )
-            app_exe.touch()
-            core.parent.mkdir(parents=True)
-            core.touch()
-            analysis_core.touch()
-            analysis_manifest.parent.mkdir(parents=True)
-            analysis_manifest.touch()
-            mods_plugin.touch()
-            mod_loader.touch()
-            mod_set.parent.mkdir(parents=True)
-            mod_set.touch()
-            equipment_mod.parent.mkdir(parents=True)
-            equipment_mod.touch()
-            combat_clock_mod.touch()
-            schema.parent.mkdir(parents=True)
-            schema.touch()
-            static_database.parent.mkdir(parents=True)
-            static_database.touch()
-            static_manifest.touch()
-            shared_database_seed.touch()
-            shape_bonus_baseline.parent.mkdir(parents=True)
-            shape_bonus_baseline.touch()
-
-            with (
-                patch.object(build_installer, "APP_EXE", app_exe),
-                patch.object(build_installer, "APP_INTERNAL", internal),
-                patch.object(build_installer, "APP_NTE_CORE", core),
-                patch.object(build_installer, "APP_ANALYSIS_CORE", analysis_core),
-                patch.object(
-                    build_installer,
-                    "APP_ANALYSIS_CORE_MANIFEST",
-                    analysis_manifest,
-                ),
-                patch.object(build_installer, "APP_MODS_PLUGIN", mods_plugin),
-                patch.object(build_installer, "APP_MOD_LOADER", mod_loader),
-                patch.object(build_installer, "APP_MOD_SET", mod_set),
-                patch.object(build_installer, "APP_EQUIPMENT_MOD", equipment_mod),
-                patch.object(build_installer, "APP_COMBAT_CLOCK_MOD", combat_clock_mod),
-                patch.object(build_installer, "APP_USER_SCHEMA", schema),
-                patch.object(build_installer, "APP_STATIC_DATABASE", static_database),
-                patch.object(build_installer, "APP_STATIC_MANIFEST", static_manifest),
-                patch.object(
-                    build_installer,
-                    "APP_SHARED_DATABASE_SEED",
-                    shared_database_seed,
-                ),
-                patch.object(
-                    build_installer,
-                    "APP_SHAPE_BONUS_BASELINE",
-                    shape_bonus_baseline,
-                ),
-            ):
+            build_installer._validate_app_bundle()
+            for field, message in (("APP_STATIC_DATABASE", "静态数据库"), ("APP_NTE_CORE", "nte-core")):
+                path = required[field]
+                contents = path.read_bytes()
+                path.unlink()
+                with self.assertRaisesRegex(RuntimeError, message):
+                    build_installer._validate_app_bundle()
+                path.write_bytes(contents)
                 build_installer._validate_app_bundle()
-                static_database.unlink()
-                with self.assertRaisesRegex(RuntimeError, "静态数据库"):
-                    build_installer._validate_app_bundle()
-                static_database.touch()
-                core.unlink()
-                with self.assertRaisesRegex(RuntimeError, "nte-core"):
-                    build_installer._validate_app_bundle()
 
-    def test_pyinstaller_collects_core_schema_and_required_static_database(self):
+    def test_pyinstaller_collects_component_bundle_schema_and_static_database(self):
         source = Path("build_exe.py").read_text(encoding="utf-8")
 
-        self.assertIn('NTE_CORE_ENV = "NTE_CORE_EXE"', source)
-        self.assertIn('THIRD_PARTY_DIR / "nte-core" / "bin" / "nte-core.exe"', source)
+        self.assertIn(
+            "from tools.release.native_component_bundle_build import "
+            "native_component_build_inputs",
+            source,
+        )
+        self.assertIn("component_bundle = prepare_component_bundle(", source)
+        self.assertIn("inputs=native_component_build_inputs(ROOT)", source)
+        self.assertIn("_append_add_data(component_bundle.manifest_path, \".\")", source)
+        self.assertIn(
+            'validate_packaged_component_bundle(output / "_internal")',
+            source,
+        )
         self.assertIn('ANALYSIS_CORE_PATH = THIRD_PARTY_DIR / "analysis-core"', source)
         self.assertIn('"battle_page_v1" not in capabilities', source)
-        self.assertIn('MODS_PLUGIN_ENV = "NTE_MODS_PLUGIN_DLL"', source)
-        self.assertIn('MOD_LOADER_ENV = "NTE_MOD_LOADER_EXE"', source)
-        self.assertIn('LEGACY_EQUIPMENT_PLUGIN_ENV = "NTE_EQUIPMENT_PLUGIN_DLL"', source)
-        self.assertIn('THIRD_PARTY_DIR / "mods-plugin" / "bin" / "dwmapi.dll"', source)
-        self.assertIn(
-            'MOD_LOADER_PATH = THIRD_PARTY_DIR / "mod-loader" '
-            '/ "bin" / "nte-mod-loader.exe"',
-            source,
-        )
-        self.assertIn(
-            'MODS_PLUGIN_WORKSPACE_DIR = THIRD_PARTY_DIR / "mods-plugin" '
-            '/ "workspace"',
-            source,
-        )
-        self.assertIn('_append_add_data(MODS_PLUGIN_WORKSPACE_DIR, "plugins")', source)
         self.assertIn('_append_add_data(SQLITE_SCHEMA_DIR, "src/storage/sqlite/schema")', source)
-        self.assertIn('_append_add_binary(nte_core_path, ".")', source)
-        self.assertIn('_append_add_binary(mod_loader_path, ".")', source)
         self.assertIn('"SOURCE.md"', source)
         self.assertIn('ROOT / "NOTICE"', source)
         self.assertIn('STATIC_DATABASE_PATH = ROOT / "data" / "game_static.sqlite3"', source)
@@ -212,6 +170,18 @@ class PackagingScriptTests(unittest.TestCase):
             with self.subTest(hidden_import=hidden_import):
                 self.assertIn(hidden_import, build_source)
 
+    def test_rapidocr_models_are_bundled_once_and_validated(self):
+        build_source = Path("build_exe.py").read_text(encoding="utf-8")
+        installer_source = Path("build_installer.py").read_text(encoding="utf-8")
+        release_source = Path("tools/release/prepare_release.py").read_text(encoding="utf-8")
+
+        self.assertIn('excludes=["models/*"]', build_source)
+        self.assertIn('"assets/ocr/models"', build_source)
+        self.assertIn("build_source_ocr_models().values()", build_source)
+        self.assertIn("validate_packaged_ocr_models", build_source)
+        self.assertIn("validate_packaged_ocr_models(APP_INTERNAL)", installer_source)
+        self.assertIn("validate_packaged_ocr_models(APP_INTERNAL)", release_source)
+
     def test_windows_validator_is_not_part_of_runtime_packaging(self):
         packaging_sources = (
             Path("build_exe.py").read_text(encoding="utf-8"),
@@ -228,32 +198,34 @@ class PackagingScriptTests(unittest.TestCase):
         self.assertIn('THIRD_PARTY_DIR / "vigembus" / "bin"', source)
         self.assertIn("LEGACY_VIGEM_BUNDLE_EXE", source)
 
-    def test_committed_nte_core_binary_has_redistribution_records(self):
-        component_dir = Path("third_party/nte-core")
+    def test_committed_native_bundle_has_verified_files_and_redistribution_records(self):
+        inspection = inspect_game_component_bundle(Path.cwd())
 
-        self.assertTrue((component_dir / "bin" / "nte-core.exe").is_file())
-        self.assertTrue((component_dir / "LICENSE").is_file())
-        self.assertTrue((component_dir / "SOURCE.md").is_file())
-
-        mods_component_dir = Path("third_party/mods-plugin")
-        self.assertTrue((mods_component_dir / "bin" / "dwmapi.dll").is_file())
-        self.assertTrue((mods_component_dir / "workspace" / "nte-mods.enabled").is_file())
-        self.assertTrue((mods_component_dir / "workspace" / "nte-mods" / "equipment.nte").is_file())
-        self.assertTrue((mods_component_dir / "workspace" / "nte-mods" / "combat-clock.nte").is_file())
-        self.assertTrue((mods_component_dir / "LICENSE").is_file())
-        self.assertTrue((mods_component_dir / "SOURCE.md").is_file())
-
-        loader_component_dir = Path("third_party/mod-loader")
-        self.assertTrue((loader_component_dir / "bin" / "nte-mod-loader.exe").is_file())
-        self.assertTrue((loader_component_dir / "LICENSE").is_file())
-        self.assertTrue((loader_component_dir / "SOURCE.md").is_file())
-        self.assertTrue((loader_component_dir / "THIRD_PARTY_LICENSES.md").is_file())
-        self.assertTrue(
-            (loader_component_dir / "licenses" / "MinHook-LICENSE.txt").is_file()
+        self.assertTrue(inspection.ready, inspection.issues)
+        self.assertEqual("native-capture-v1", inspection.layout)
+        self.assertEqual(
+            "third_party/native-capture/capture/d3d12.dll",
+            inspection.roles["host"],
         )
-        self.assertTrue(
-            (loader_component_dir / "licenses" / "ManualMap-LICENSE.txt").is_file()
+        self.assertEqual(
+            "third_party/native-capture/capture/NTE_Capture.dll",
+            inspection.roles["capture_plugin"],
         )
+        self.assertEqual(
+            "third_party/native-capture/core/nte-core.exe",
+            inspection.roles["core"],
+        )
+        for role in (
+            "capture_license",
+            "capture_source",
+            "core_license",
+            "core_source",
+            "loader_license",
+            "loader_source",
+        ):
+            with self.subTest(role=role):
+                self.assertIn(role, inspection.roles)
+                self.assertTrue(Path(inspection.roles[role]).is_file())
 
 if __name__ == "__main__":
     unittest.main()

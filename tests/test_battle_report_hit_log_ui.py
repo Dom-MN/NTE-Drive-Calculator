@@ -42,6 +42,7 @@ class BattleReportHitLogUiTests(unittest.TestCase):
         view._analysis = SimpleNamespace(
             hits=(hit,),
             hit_replays=(),
+            hit_replay_model_version="",
             battle_start_us=0,
             time_stop_intervals=(),
             buff_intervals=(),
@@ -68,6 +69,7 @@ class BattleReportHitLogUiTests(unittest.TestCase):
         view._analysis = SimpleNamespace(
             hits=(hit,),
             hit_replays=(replay,),
+            hit_replay_model_version="test-v1",
             battle_start_us=0,
             time_stop_intervals=(),
             buff_intervals=(),
@@ -78,7 +80,7 @@ class BattleReportHitLogUiTests(unittest.TestCase):
         self.assertTrue(view.log_dialog.isVisible())
         self.assertEqual(10, view.log_table.columnCount())
         self.assertEqual("22 / -8.33%", view.log_table.item(0, 7).text())
-        self.assertEqual("未暴击", view.log_table.item(0, 8).text())
+        self.assertEqual("未暴击（推断，高）", view.log_table.item(0, 8).text())
         self.assertEqual("查看", view.log_table.item(0, 9).text())
         view.log_dialog.hide()
 

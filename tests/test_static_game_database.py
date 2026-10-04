@@ -542,7 +542,7 @@ class StaticGameDatabaseTests(unittest.TestCase):
             connection.close()
 
         self.assertEqual(0, payload_count)
-        self.assertEqual(31, schema_version)
+        self.assertEqual(38, schema_version)
         self.assertGreater(character_count, 0)
         self.assertEqual(source_row_count, source_hash_count)
         # The role-template DAO adds official ID 1051 as the default avatar
@@ -572,6 +572,11 @@ class StaticGameDatabaseTests(unittest.TestCase):
 
         self.assertEqual(
             [
+                ("Abyss_10", "星明如昼", "whole_battle_qte", "DamageUpGeneralBase", 0.3, None, None, 1),
+                ("Abyss_10", "星明如昼", "observed_recipient_effect", "AtkUp", 0.25, 15.0, None, 1),
+                ("Abyss_11", "薄暮冥冥", "observed_recipient_effect", "DamageUpGeneralBase", 0.4, 12.0, None, 1),
+                ("Abyss_12", "百川归海", "whole_battle", "DamageUpLakshanaBase", 0.45, None, None, 1),
+                ("Abyss_12", "百川归海", "whole_battle", "DamageUpPsycheBase", 0.45, None, None, 1),
                 ("Abyss_8", "炽火灼痕", "corruption_damage_stack", "CritDamageBase", 0.06, 6.0, 1.0, 8),
                 ("Abyss_8", "炽火灼痕", "while_target_toppled", "DamageUpGeneralBase", 0.25, None, None, 1),
                 ("Abyss_9", "飘摇残响", "whole_battle", "DamageUpNatureBase", 0.45, None, None, 1),
@@ -676,7 +681,7 @@ class StaticGameDatabaseTests(unittest.TestCase):
         self.assertEqual(54, counts["feast_option"])
         self.assertEqual(7, counts["divination_buff"])
         self.assertEqual(7, counts["clone_activity_category"])
-        self.assertEqual(56, counts["clone_activity"])
+        self.assertEqual(60, counts["clone_activity"])
         self.assertGreater(counts["clone_activity_difficulty"], 0)
         self.assertGreater(counts["clone_spawn_member"], 0)
         self.assertGreater(counts["monster_template_binding"], 0)

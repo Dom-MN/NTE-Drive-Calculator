@@ -17,7 +17,7 @@ from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST = Path(__file__).with_name("ui_asset_manifest.json")
-DEFAULT_OUTPUT = PROJECT_ROOT / "assets" / "game_ui"
+DEFAULT_OUTPUT = PROJECT_ROOT / "build" / "game_ui"
 CONTENT_ROOT_ENV = "NTE_OFFICIAL_CONTENT_ROOT"
 STATIC_DATABASE_ENV = "NTE_GAME_STATIC_DB"
 MANIFEST_ENV = "NTE_UI_ASSET_MANIFEST"
@@ -36,6 +36,13 @@ _DATABASE_GROUPS = {
         "fork_id",
         "SELECT fork_id, icon_path FROM fork_item ORDER BY fork_id",
         "forks/{identity}.png",
+        128,
+    ),
+    "progression_items": (
+        "item_id",
+        """SELECT item_id, icon_path FROM progression_item
+           WHERE icon_path IS NOT NULL ORDER BY item_id""",
+        "materials/{identity}.png",
         128,
     ),
 }

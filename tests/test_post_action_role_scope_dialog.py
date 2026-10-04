@@ -16,6 +16,7 @@ from src.features.scanning.post_action_dialog import (
     ScanPostActionDialog,
     _load_role_options,
 )
+from src.domain.post_actions import default_post_action_config
 
 
 class PostActionRoleScopeDialogTests(unittest.TestCase):
@@ -31,7 +32,7 @@ class PostActionRoleScopeDialogTests(unittest.TestCase):
             self.assertTrue(avatar.save(avatar_path))
             dialog = RoleScopeDialog(
                 None,
-                [(1003, "早雾", avatar_path), (1004, "安魂曲", avatar_path)],
+                [(1003, "早雾", avatar_path, False), (1004, "安魂曲", avatar_path, False)],
                 [],
             )
             self.assertEqual("已选0名", dialog.count_label.text())
@@ -44,14 +45,17 @@ class PostActionRoleScopeDialogTests(unittest.TestCase):
             self.assertTrue(
                 all(card not in QApplication.topLevelWidgets() for card, _character_id, _name in dialog.role_cards)
             )
+            cards_by_id = {character_id: card for card, character_id, _name in dialog.role_cards}
+            self.assertEqual([1004, 1003], [character_id for _, character_id, _ in dialog.role_cards])
 
             dialog.search_edit.setText("zaowu")
             self.app.processEvents()
 
-            self.assertFalse(dialog.role_cards[0][0].isHidden())
-            self.assertTrue(dialog.role_cards[1][0].isHidden())
-            dialog.role_cards[0][0].click()
-            self.assertTrue(dialog.role_cards[0][0].isChecked())
+            self.assertFalse(cards_by_id[1003].isHidden())
+            self.assertTrue(cards_by_id[1004].isHidden())
+            cards_by_id[1003].click()
+            self.assertTrue(cards_by_id[1003].isChecked())
+            self.assertEqual([1003], dialog.selected_character_ids())
             self.assertEqual("已选1名", dialog.count_label.text())
             dialog.close()
 
@@ -65,17 +69,51 @@ class PostActionRoleScopeDialogTests(unittest.TestCase):
         self.assertEqual("开启中", enabled.text())
         self.assertEqual("关闭中", disabled.text())
 
-    def test_custom_role_is_rendered_as_a_text_only_card(self):
-        dialog = RoleScopeDialog(None, [(900001, "自建角色", "")], [900001])
+    def test_warehouse_context_hides_region_option_without_resetting_it(self):
+        config = default_post_action_config()
+        config["server_region"] = "hmt"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch(
+                    "src.features.scanning.post_action_dialog.load_scan_post_action_config",
+                    return_value=config,
+                ),
+                patch(
+                    "src.features.scanning.post_action_dialog._load_drive_shape_options",
+                    return_value=[],
+                ),
+                patch(
+                    "src.features.scanning.post_action_dialog._load_set_name_options",
+                    return_value=[],
+                ),
+                patch(
+                    "src.features.scanning.post_action_dialog._load_role_options",
+                    return_value=[],
+                ),
+            ):
+                dialog = ScanPostActionDialog(
+                    None,
+                    Path(temp_dir),
+                    Path(temp_dir),
+                    show_server_region_option=False,
+                )
+
+        self.assertTrue(dialog.hmt_region_check.isHidden())
+        self.assertEqual("hmt", dialog._collect_config()["server_region"])
+        dialog.close()
+
+    def test_custom_role_uses_question_mark_portrait(self):
+        dialog = RoleScopeDialog(None, [(900001, "自建角色", "", True)], [900001])
         card, character_id, role_name = dialog.role_cards[0]
         self.assertEqual(900001, character_id)
         self.assertEqual("自建角色", role_name)
-        self.assertEqual(Qt.ToolButtonTextOnly, card.toolButtonStyle())
-        self.assertTrue(card.icon().isNull())
+        self.assertEqual(Qt.ToolButtonTextUnderIcon, card.toolButtonStyle())
+        self.assertFalse(card.icon().isNull())
+        self.assertEqual(116, card.height())
         self.assertEqual("已选1名", dialog.count_label.text())
         dialog.close()
 
-    def test_role_options_include_account_custom_roles_without_an_avatar(self):
+    def test_role_options_identify_account_custom_roles_for_portrait(self):
         class StaticDao:
             def __init__(self, *_args):
                 pass
@@ -87,7 +125,10 @@ class PostActionRoleScopeDialogTests(unittest.TestCase):
                 return False
 
             def list_role_template_characters(self):
-                return [{"character_id": 1004, "name_zh": "安魂曲"}]
+                return [
+                    {"character_id": 1042, "name_zh": "黑羽"},
+                    {"character_id": 1004, "name_zh": "安魂曲"},
+                ]
 
         class UserDao:
             def __init__(self, *_args):
@@ -112,7 +153,11 @@ class PostActionRoleScopeDialogTests(unittest.TestCase):
             ):
                 catalog.return_value.character_icon.return_value = None
                 self.assertEqual(
-                    [(1004, "安魂曲", ""), (9001, "自建角色", "")],
+                    [
+                        (1004, "安魂曲", "", False),
+                        (1042, "黑羽", "", False),
+                        (9001, "自建角色", "", True),
+                    ],
                     _load_role_options(database_path),
                 )
 

@@ -29,7 +29,7 @@ python tools/game_data/catalog_characters.py `
 
 分类规则位于 `character_overrides.json`。它只补充特殊形态和玩法配置的分类，不提供游戏名称，也不决定角色是否存在。
 
-## 构建静态 SQLite v30
+## 构建完整静态 SQLite
 
 ```powershell
 python tools/game_data/build_static_database.py `
@@ -104,6 +104,20 @@ JSON/Markdown 报告与 manifest；`--finalize-only` 只更新候选证据，`--
 `data/game_static.sqlite3` 和 `data/manifest.json`。
 晋升失败、正式库仍被占用或最终报告与实际 SHA 不一致时，本次刷新未完成，不得提交旧 `data` 文件。
 
+旧发行数据集的甲硬币误映射是一次受基线哈希约束的定点数据修复：
+`repair_published_gold_catalog.py` 只在已知旧库与官方掉落组/序列共同证明的范围内制作候选，
+将养成成本和 145 条 `droplist_gold` 付费产出修为 `Gold`，保留玛门 `drop_fons1` 的 `Fons`。
+独立 `reference` 图鉴旧包另由 `repair_reference_gold_catalog.py` 在已核对基线哈希及同一正式掉落闭包下
+定点修复，补齐当前静态 schema，并以整包图片清单和专用 provenance 进入相同晋升入口。
+两者均不编辑账号库，也不改写 `source_file/source_row` 原始来源事实；候选包含原库备份、SQL 差异、
+逐表核验记录及回滚脚本。`promote_static_release.py` 对其专用 provenance 复核所有其他表不变后，
+才按常规候选流程最终化、只读预检和成对晋升；此例外不替代后续完整来源更新。
+
+后续正常更新独立 `reference` 图鉴时，`build_reference_catalog.py` 和 `promote_static_release.py`
+均会执行 `reference_progression_currency.py` 的正式身份门禁；候选需同时保留甲硬币、方斯的
+不同本地化名称、`gold → Gold` 成本别名、角色/弧盘养成成本和甲硬币副本产出。
+门禁不固定旧数据集的 145 条行数，来源身份变化应先核对正式证据并更新长期行为测试。
+
 角色额外形状不从上一发行库继承。构建器直接关联官方
 `DT_Character.ElementData.EquipmentSlotID`、`DT_CharacterEquipmentSlotsData.ModifyPropID` 与
 `DT_EquipmentModifySlotsEffect.ModifyData`，按逻辑角色写入形状格数和每件匹配驱动提供的属性值。角色变体
@@ -177,7 +191,7 @@ schema v24 从 `DT_CombatAwardQuest` 中带有效大陆服开始/结束时间的
 schema v30 导入角色发行排期、品质、正式卡池成员关系、公共本地化术语和可确定的养成副本掉落投影；
 schema v31 新增 `DT_CharacterUpgradeDataTable` 的人物逐级经验、角色养成包档案、
 `DT_CharacterBreakthroughDataTable` 的结构化突破阶段/成本，以及 `DT_ItemConfig` 中角色经验书的经验值与
-使用成本。`gold` 只在养成成本语境规范为 Fons；构建器对正式包 ID 使用大小写无关的唯一连接，冲突或未知
+使用成本。`gold` 只在养成成本语境精确规范为 Gold/甲硬币；构建器对正式包 ID 使用大小写无关的唯一连接，冲突或未知
 引用继续失败。
 
 规范化导入器不再次读取 Blueprint JSON，
@@ -189,6 +203,30 @@ schema v31 新增 `DT_CharacterUpgradeDataTable` 的人物逐级经验、角色�
 `DT_MonsterPackData`，不能按文件名或前缀推断场景。
 
 新 SQLite DAO、角色页和 nte-core 同步链路只使用当前发行静态库与原始游戏/nte-core ID，不经过旧格式转换。
+
+## 构建独立角色目录与图鉴
+
+来源只有角色/弧盘表和 UI、缺少完整战斗资产时，使用独立构建入口。`$roleConfig` 必须是仓库外本机配置，
+包含该版本的 `official_content_root`、`dataset_id`、`as_of`；不要修改旧战报库对应的本机配置。
+
+```powershell
+$roleSettings = Get-Content -Raw -Encoding UTF8 $roleConfig | ConvertFrom-Json
+$roleCandidate = "build/role_catalog_candidate"
+python tools/game_data/build_role_catalog.py --source $roleSettings.official_content_root --candidate-dir $roleCandidate --dataset-id $roleSettings.dataset_id --as-of $roleSettings.as_of
+python tools/game_data/build_role_catalog_assets.py --source $roleSettings.official_content_root --database "$roleCandidate/game_static.sqlite3" --output "$roleCandidate/game_ui"
+python tools/game_data/promote_static_release.py --candidate-dir $roleCandidate --local-config $roleConfig --finalize-only
+python tools/game_data/promote_static_release.py --candidate-dir $roleCandidate --local-config $roleConfig --verify-only
+python tools/game_data/promote_static_release.py --candidate-dir $roleCandidate --local-config $roleConfig --target-dir data/role_catalog
+```
+
+图片清单绑定数据库 SHA-256，重新构建数据库后也必须重新生成图片清单。候选的
+`report/role_catalog_scope.json` 记录缺失能力和排除条目；报告及来源原文不进入发行包。
+需要同时更新游戏资料库时，改用 `build_reference_catalog.py`（同样接受 `--source`、`--candidate-dir`、
+`--dataset-id`、`--as-of`），以及 `build_reference_catalog_assets.py --source ... --candidate-dir ...`。
+图鉴用途为 `reference`，仍晋升到独立目录。来源按指定版本优先、缺文件再使用本机正式服定向导出的顺序准备，
+保留逐文件来源与哈希清单；不要全量解包。图鉴的赛季元数据不依赖限时任务，缺排期仍展示正式名称和规则，
+不写入战报 Buff 组件表。资料不足的战斗机制继续使用原完整游戏库。
+完整隔离、晋升回滚和读取规则见 [集成文档](../../docs/integrations.md#4-静态数据与资源)。
 
 ## 查询静态数据库
 

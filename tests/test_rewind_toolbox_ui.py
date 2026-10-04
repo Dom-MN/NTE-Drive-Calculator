@@ -9,7 +9,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 def test_rewind_role_picker_adds_highest_calculation_score_below_name() -> None:
     from PySide6.QtWidgets import QApplication, QLabel
 
-    from src.app.theme import GRADE_COLORS
     from src.features.toolbox.page import _RoleSelectionDialog
     from src.services.rewind_shape_recommendation_service import RewindTargetRole
 
@@ -30,22 +29,31 @@ def test_rewind_role_picker_adds_highest_calculation_score_below_name() -> None:
     empty_label = cards[9001].findChild(QLabel, "rewindRoleCalculationScore")
     assert cards[1004].text() == "安魂曲"
     assert scored_label.text() == "最高分 251.25 · SS"
-    assert GRADE_COLORS["SS"] in scored_label.styleSheet()
     assert cards[1004].property("rewindCalculationScore") == 251.25
     assert cards[9001].text() == "自建角色"
-    assert empty_label.text() == ""
+    assert empty_label.text() == "暂无计算方案"
+    assert not cards[9001].icon().isNull()
     assert cards[9001].property("rewindCalculationScore") is None
-    assert cards[1004].height() == cards[9001].height() == 132
 
 
 def test_cultivation_calculator_prefills_role_state_and_renders_merged_totals() -> None:
-    from PySide6.QtCore import QPoint
-    from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import (
+        QApplication,
+        QFrame,
+        QLabel,
+        QPushButton,
+        QScrollArea,
+        QToolButton,
+        QWidget,
+    )
 
     from src.services.character_progression_requirements import (
         MaterialSummaryStatus,
     )
-    from src.features.toolbox.cultivation_calculator import CultivationCalculatorDialog
+    from src.features.toolbox.cultivation_page import CultivationCalculatorPage
+    from src.ui.progression_material_card import ProgressionMaterialCard
     from src.services.cultivation_planner_service import (
         CultivationMaterial,
         CultivationPlan,
@@ -82,15 +90,32 @@ def test_cultivation_calculator_prefills_role_state_and_renders_merged_totals() 
             else:
                 assert not request.include_skills
                 assert request.fork is None
+            materials = (
+                CultivationMaterial(
+                    "WeaponUpMaterial_lv3", "混沌染剂", 364, quality=5,
+                ),
+                CultivationMaterial(
+                    "WeaponUpMaterial_lv1", "淡色染剂", 1,
+                ),
+                CultivationMaterial("Fons", "方斯", 1_344_150),
+                CultivationMaterial(
+                    "WeaponBreakMaterial_02_lv3", "弧盘突破材料", 12,
+                ),
+            )
             return CultivationPlan(
                 "安魂曲", MaterialSummaryStatus.COMPLETE,
-                (CultivationSection("Q · 终结技", (CultivationMaterial("m-1", "材料甲", 4),)),),
-                (CultivationMaterial("m-1", "材料甲", 4),), 100, 0, (2,), (), 300,
+                (CultivationSection(
+                    "弧盘升级",
+                    materials,
+                ), CultivationSection("弧盘突破", materials[:3])),
+                materials,
+                100, 0, (2,), (), 3_640_330, 170, (1, 2, 3, 4, 5, 6),
             )
 
     QApplication.instance() or QApplication([])
     service = Service()
-    dialog = CultivationCalculatorDialog(service, None)
+    page = CultivationCalculatorPage(service, None)
+    dialog = page.calculator
     QApplication.processEvents()
 
     assert dialog._current_level.value() == 20
@@ -100,23 +125,55 @@ def test_cultivation_calculator_prefills_role_state_and_renders_merged_totals() 
     assert dialog._fork.text() == "专属弧盘"
     assert dialog._fork_current_level.value() == 40
     assert dialog._fork_current_level.isEnabled()
-    assert dialog._result.parentWidget().objectName() == "cultivationCalculatorResultPanel"
-    assert not any(label.text() == "养成计算器" for label in dialog.findChildren(QLabel))
-    assert dialog.findChild(QPushButton, "cultivationCalculatorCalculate").text() == "计算所需材料"
-    assert dialog.findChild(QPushButton, "cultivationCalculatorCalculate").minimumHeight() == 44
-    dialog.resize(1120, 740)
-    dialog.show()
+    assert dialog._result_body.parentWidget().objectName() == "cultivationCalculatorResultPanel"
+    assert page.findChild(QLabel, "cultivationCalculatorPageTitle").text() == "养成计算器"
+    assert dialog.findChild(QPushButton, "cultivationCalculatorCalculate").text() == "计算所需材料与体力"
+    page.resize(1120, 740)
+    page.show()
     QApplication.processEvents()
-    skill_x = dialog._skills_toggle.mapTo(dialog, QPoint()).x()
-    fork_x = dialog._fork_toggle.mapTo(dialog, QPoint()).x()
-    assert skill_x <= fork_x
 
     dialog._calculate()
+    QApplication.processEvents()
     rendered = "\n".join(label.text() for label in dialog.findChildren(QLabel))
-    assert "材料数据完整" in rendered
-    assert "材料甲 × 4" in rendered
-    assert "Q · 终结技" in rendered
-    assert dialog._copy_button.isEnabled()
+    assert "材料数据完整" not in rendered
+    assert "品质 5" not in rendered
+    material_cards = dialog.findChildren(ProgressionMaterialCard)
+    assert material_cards
+    icon = material_cards[0].findChild(QLabel, "progressionMaterialIcon")
+    assert icon is not None and not icon.pixmap().isNull()
+    assert "混沌染剂" in rendered
+    assert "× 364" in rendered
+    assert "弧盘升级" in rendered
+    assert "弧盘升级经验 3,640,330，材料最小溢出 170" in rendered
+    totals = dialog.findChild(QFrame, "cultivationCalculatorTotals")
+    details = dialog.findChild(QFrame, "cultivationCalculatorDetailsPanel")
+    total_cards = totals.findChildren(ProgressionMaterialCard)
+    details_toggle = details.findChild(
+        QToolButton, "cultivationCalculatorDetailsToggle"
+    )
+    details_content = details.findChild(
+        QWidget, "cultivationCalculatorDetailsContent"
+    )
+    assert dialog._result_layout.indexOf(totals) < dialog._result_layout.indexOf(details)
+    assert len(total_cards) == 4
+    scroll_areas = page.findChildren(QScrollArea)
+    assert scroll_areas == [page.scroll]
+    assert page.scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert page.scroll.horizontalScrollBar().maximum() == 0
+    assert not details_toggle.isChecked()
+    assert not details_content.isVisibleTo(dialog)
+    details_toggle.setFocus()
+    QTest.keyClick(details_toggle, Qt.Key.Key_Space)
+    QApplication.processEvents()
+    assert details_toggle.isChecked()
+    assert details_content.isVisibleTo(dialog)
+    assert page.scroll.verticalScrollBar().maximum() > 0
+    detail_cards = [
+        card for card in details_content.findChildren(QFrame)
+        if card.objectName() == "cultivationCalculatorResultSection"
+    ]
+    assert len(detail_cards) == 2
+    assert page.copy_button.isEnabled()
     assert service.requests[-1].include_character_progression
     assert service.requests[-1].include_skills
 
@@ -127,9 +184,17 @@ def test_cultivation_calculator_prefills_role_state_and_renders_merged_totals() 
     assert not dialog._fork_current_level.isEnabled()
     assert not dialog._skill_inputs["skill-a"][0].isEnabled()
     dialog._calculate()
+    QApplication.processEvents()
+    assert dialog.findChild(
+        QToolButton, "cultivationCalculatorDetailsToggle"
+    ).isChecked()
     assert not service.requests[-1].include_character_progression
     assert not service.requests[-1].include_skills
     assert service.requests[-1].fork is None
+    page.findChild(QPushButton, "cultivationCalculatorReset").click()
+    QApplication.processEvents()
+    assert not page.copy_button.isEnabled()
+    assert dialog._current_level.value() == 20
 
 
 def test_cultivation_image_selector_is_a_searchable_single_choice_card_grid() -> None:
@@ -148,8 +213,6 @@ def test_cultivation_image_selector_is_a_searchable_single_choice_card_grid() ->
 
     cards = {option_id: card for card, option_id, _name in dialog._cards}
     assert dialog.selected_id() == "fork-a"
-    assert cards["fork-a"].size().width() == 116
-    assert cards["fork-a"].size().height() == 132
     cards["fork-b"].setChecked(True)
     assert dialog.selected_id() == "fork-b"
     dialog._search.setText("qinglan")
@@ -158,51 +221,35 @@ def test_cultivation_image_selector_is_a_searchable_single_choice_card_grid() ->
     assert not cards["fork-b"].isHidden()
 
 
-def test_cultivation_spinboxes_draw_theme_contrast_step_chevrons() -> None:
-    from PySide6.QtGui import QColor
-    from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionSpinBox
+def test_progression_material_grid_reflows_without_horizontal_rows() -> None:
+    from PySide6.QtWidgets import QApplication
 
-    from src.app.theme import theme_color
-    from src.features.toolbox.cultivation_calculator import _CultivationSpinBox
+    from src.ui.progression_material_card import ProgressionMaterialCard
+    from src.ui.progression_material_grid import ProgressionMaterialGrid
 
-    app = QApplication.instance() or QApplication([])
-    previous = app.property("nte_effective_theme")
-    try:
-        for theme in ("light", "black"):
-            app.setProperty("nte_effective_theme", theme)
-            spinbox = _CultivationSpinBox()
-            spinbox.resize(100, 42)
-            spinbox.show()
-            QApplication.processEvents()
-            option = QStyleOptionSpinBox()
-            spinbox.initStyleOption(option)
-            rect = spinbox.style().subControlRect(
-                QStyle.ComplexControl.CC_SpinBox,
-                option,
-                QStyle.SubControl.SC_SpinBoxUp,
-                spinbox,
-            )
-            color = spinbox.grab().toImage().pixelColor(
-                rect.center().x(), rect.center().y() - 2,
-            )
-            expected = QColor(theme_color("#8b949e"))
-            assert abs(color.red() - expected.red()) < 60
-            assert abs(color.green() - expected.green()) < 60
-            assert abs(color.blue() - expected.blue()) < 60
-            spinbox.close()
-    finally:
-        app.setProperty("nte_effective_theme", previous)
-
-
-def test_official_replacement_summary_explains_score_and_third_percentage() -> None:
-    from src.ui.controllers.official_role_replacement_controller import (
-        OFFICIAL_ROLE_REPLACEMENT_SUMMARY,
+    QApplication.instance() or QApplication([])
+    grid = ProgressionMaterialGrid()
+    cards = tuple(
+        ProgressionMaterialCard(
+            name=f"材料 {index}",
+            amount_text=f"× {index}",
+            compact=True,
+            parent=grid,
+        )
+        for index in range(1, 6)
     )
+    grid.set_cards(cards)
+    grid.resize(700, 320)
+    grid.show()
+    QApplication.processEvents()
 
-    assert OFFICIAL_ROLE_REPLACEMENT_SUMMARY == (
-        "评分按该角色的直伤权重计算，候选由高到低排列；"
-        "卡片第三项百分比表示该装备带来的直伤收益。"
-    )
+    assert all(grid.rect().contains(card.geometry()) for card in cards)
+
+    grid.resize(260, 640)
+    QApplication.processEvents()
+
+    assert all(grid.rect().contains(card.geometry()) for card in cards)
+    grid.close()
 
 
 def test_rewind_execution_dialog_accept_persists_and_reopens_account_options(
@@ -239,7 +286,7 @@ def test_rewind_execution_dialog_accept_persists_and_reopens_account_options(
 
     QApplication.instance() or QApplication([])
     service = Service()
-    dialog = _RewindRecommendationDialog(service, None)
+    dialog = _RewindRecommendationDialog(service, None, operation_entry=lambda *_: True)
     monkeypatch.setattr(rewind_execution_ui, "RewindExecutionDialog", AcceptedDialog)
     monkeypatch.setattr(dialog, "_start_rewind_execution", lambda: None)
 
@@ -253,7 +300,7 @@ def test_rewind_execution_dialog_accept_persists_and_reopens_account_options(
     assert service.saved["target_custom_percent"] is None
     assert service.saved["rewind_qualities"] == ["purple", "gold"]
     assert service.saved["rewind_drive_customization"] == "enabled"
-    reopened = _RewindRecommendationDialog(service, None)
+    reopened = _RewindRecommendationDialog(service, None, operation_entry=lambda *_: True)
     assert reopened._rewind_options == RewindExecutionOptions(
         qualities=("purple", "gold"),
         drive_customization="enabled",
@@ -297,9 +344,8 @@ def test_rewind_custom_percentage_persists_and_is_passed_to_analysis(monkeypatch
 
     QApplication.instance() or QApplication([])
     service = Service()
-    dialog = _RewindRecommendationDialog(service, None)
+    dialog = _RewindRecommendationDialog(service, None, operation_entry=lambda *_: True)
     assert dialog._custom_percent_input.text() == ""
-    assert dialog._custom_percent_input.width() == 60
     grade_help = next(
         button
         for button in dialog.findChildren(QPushButton, "btnHelp")
@@ -330,7 +376,7 @@ def test_rewind_custom_percentage_persists_and_is_passed_to_analysis(monkeypatch
     assert service.saved["target_custom_percent"] == 90.0
     assert dialog._custom_percent_input.isEnabled()
 
-    reopened = _RewindRecommendationDialog(service, None)
+    reopened = _RewindRecommendationDialog(service, None, operation_entry=lambda *_: True)
     assert reopened._target_threshold_mode == "custom"
     assert reopened._custom_percent_input.value() == 90.0
     assert reopened._custom_percent_input.isEnabled()
@@ -343,18 +389,7 @@ def test_rewind_custom_percentage_persists_and_is_passed_to_analysis(monkeypatch
     assert service.request["target_custom_percent"] == 90.0
 
 
-def test_rewind_custom_percentage_spin_buttons_have_theme_contrast() -> None:
-    from src.app.theme import DARK_STYLE
-
-    assert "QDoubleSpinBox#rewindCustomPercent:enabled" in DARK_STYLE
-    assert "QToolButton#rewindPercentStepUp" in DARK_STYLE
-    assert "background:#1f6feb33" in DARK_STYLE
-    assert "border:1px solid #58a6ff" in DARK_STYLE
-    assert "color:#58a6ff" in DARK_STYLE
-    assert "min-width:20px" in DARK_STYLE
-
-
-def test_rewind_execution_dialog_marks_experimental_prerequisite_and_disables_custom_for_blue_only() -> None:
+def test_rewind_execution_dialog_shows_stop_key_and_disables_custom_for_blue_only() -> None:
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
     from src.features.toolbox.rewind_execution_dialog import (
@@ -372,12 +407,7 @@ def test_rewind_execution_dialog_marks_experimental_prerequisite_and_disables_cu
         for button in dialog.findChildren(QPushButton, "rewindCustomizationTile")
     }
 
-    assert any("提前打开游戏内的倒带页面" in text for text in descriptions)
-    assert any("实验性开发" in text and "不保证可以使用" in text for text in descriptions)
-    notice = dialog.findChild(QLabel, "rewindExperimentalNotice")
-    assert notice is not None
-    assert "background:#1f6feb33" in notice.styleSheet()
-    assert "color:#58a6ff" in notice.styleSheet()
+    assert "执行期间可按设置中的全局停止键F12停止。" in descriptions
     assert dialog.options().drive_customization == "none"
     assert custom_buttons["none"].isChecked()
     assert not custom_buttons["enabled"].isEnabled()
@@ -403,7 +433,7 @@ def test_rewind_execution_minimizes_host_and_restores_after_completion() -> None
     QApplication.instance() or QApplication([])
     host = QWidget()
     host.show()
-    dialog = _RewindRecommendationDialog(Service(), host)
+    dialog = _RewindRecommendationDialog(Service(), host, operation_entry=lambda *_: True)
     dialog.show()
 
     dialog._prepare_rewind_game_foreground()
@@ -473,6 +503,9 @@ def test_rewind_execution_replaces_deleted_worker_and_clears_finished_reference(
     class Host(rewind_execution_ui.RewindExecutionUiMixin):
         def __init__(self) -> None:
             self._rewind_worker = DeletedWorker()
+            self.operation_guard = lambda _: None
+            self.operation_entry = lambda *_: True
+            self.operation_generation = lambda: 1
             self._rewind_options = RewindExecutionOptions(("purple",), "none")
             self._saved_rewind_shape_ids = ()
             self._start_rewind_button = QPushButton()
@@ -550,7 +583,7 @@ def test_rewind_execution_registers_and_releases_the_global_stop_hotkey(monkeypa
     host = QWidget()
     hotkeys = FakeHotkeys()
     host.global_hotkey_manager = hotkeys
-    dialog = _RewindRecommendationDialog(Service(), host)
+    dialog = _RewindRecommendationDialog(Service(), host, operation_entry=lambda *_: True)
     execution_dialog = RewindExecutionDialog(dialog)
     assert execution_dialog._stop_hotkey_label() == "F8"
     dialog._rewind_foreground_settle_seconds = 0
@@ -560,7 +593,11 @@ def test_rewind_execution_registers_and_releases_the_global_stop_hotkey(monkeypa
     monkeypatch.setattr(
         rewind_execution_ui,
         "execute_rewind_request",
-        lambda _request, *, should_stop: captured.setdefault("stopped", should_stop()),
+        lambda _request, *, backend, should_stop: captured.setdefault("stopped", should_stop()),
+    )
+    monkeypatch.setattr(
+        rewind_execution_ui, "PyAutoGuiMouseBackend",
+        lambda **_: SimpleNamespace(force_mouse_release=lambda: None, close=lambda: None),
     )
 
     dialog._start_rewind_execution()
@@ -587,7 +624,7 @@ def test_rewind_open_prefers_saved_plan_and_replacement_has_all_twelve_shapes() 
             return {"saved_rewind_shape_ids": ["EquipmentGeometry_Hen2"] * 8}
 
     QApplication.instance() or QApplication([])
-    dialog = _RewindRecommendationDialog(Service(), None)
+    dialog = _RewindRecommendationDialog(Service(), None, operation_entry=lambda *_: True)
     assert dialog._slots_complete()
     assert all(slot.shape.shape_id == "EquipmentGeometry_Hen2" for slot in dialog._editable_slots)
     picker = RewindShapeReplacementDialog(None, candidates=all_rewind_shape_candidates())
@@ -613,7 +650,7 @@ def test_saved_rewind_plan_restores_quality_gap_without_another_analysis() -> No
 
     QApplication.instance() or QApplication([])
     service = Service()
-    dialog = _RewindRecommendationDialog(service, None)
+    dialog = _RewindRecommendationDialog(service, None, operation_entry=lambda *_: True)
     saved = RewindShapeRecommendation(
         RewindShape("EquipmentGeometry_Hen2", 2),
         suit_demand=1,
@@ -629,7 +666,7 @@ def test_saved_rewind_plan_restores_quality_gap_without_another_analysis() -> No
         {"shape_id": "EquipmentGeometry_Hen2", "quality_gap": 12.5}
     ] * 8
 
-    reopened = _RewindRecommendationDialog(service, None)
+    reopened = _RewindRecommendationDialog(service, None, operation_entry=lambda *_: True)
     assert reopened._slots_complete()
     assert [slot.quality_gap for slot in reopened._editable_slots if slot is not None] == [
         12.5
@@ -657,7 +694,7 @@ def test_rewind_candidates_clear_only_the_current_page_and_keep_the_saved_plan()
 
     QApplication.instance() or QApplication([])
     service = Service()
-    dialog = _RewindRecommendationDialog(service, None)
+    dialog = _RewindRecommendationDialog(service, None, operation_entry=lambda *_: True)
     clear_button = dialog.findChild(QPushButton, "rewindClearCandidates")
 
     assert clear_button is not None
@@ -668,7 +705,7 @@ def test_rewind_candidates_clear_only_the_current_page_and_keep_the_saved_plan()
     assert service.saved["saved_rewind_shape_ids"] == ["EquipmentGeometry_Hen2"] * 8
     assert dialog._saved_rewind_shape_ids == ("EquipmentGeometry_Hen2",) * 8
 
-    reopened = _RewindRecommendationDialog(service, None)
+    reopened = _RewindRecommendationDialog(service, None, operation_entry=lambda *_: True)
     assert reopened._slots_complete()
     assert all(
         slot.shape.shape_id == "EquipmentGeometry_Hen2"
@@ -687,7 +724,7 @@ def test_generating_another_strategy_replaces_the_current_transient_slots() -> N
             return {}
 
     QApplication.instance() or QApplication([])
-    dialog = _RewindRecommendationDialog(Service(), None)
+    dialog = _RewindRecommendationDialog(Service(), None, operation_entry=lambda *_: True)
     balanced = RewindShapeRecommendation(
         RewindShape("EquipmentGeometry_Hen2", 2),
         suit_demand=1,

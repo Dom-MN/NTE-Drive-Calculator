@@ -27,10 +27,7 @@ def build_marginal_benefit_sections(
     root: QVBoxLayout,
 ) -> tuple[QTableWidget, QLabel, QWidget, QTableWidget, QLabel]:
     core_card, core_layout = analysis_section("空幕主属性边际（金色候选）")
-    core_note = QLabel(
-        tr("识别当前任意品质空幕并固定套装与副词条，候选统一使用金色满级主属性；"
-        "“相对无主属性”用于统一比较，“替换当前”用于实际换装决策。")
-    )
+    core_note = QLabel(tr("候选按金色满级主属性比较；实际换装请看“替换当前”。"))
     _style_note(core_note)
     core_layout.addWidget(core_note)
     core_notice = QLabel(tr("等待后台计算…"))
@@ -62,10 +59,7 @@ def build_marginal_benefit_sections(
     fork_title.setObjectName("battleForkBenefitTitle")
     fork_title.setStyleSheet(themed_style("font-weight:bold;color:#58a6ff"))
     fork_layout.addWidget(fork_title)
-    fork_note = QLabel(
-        tr("A=无弧盘，B=仅恢复弧盘常驻面板，C=完整弧盘。"
-        "常驻=B-A，技能/机制=C-B，综合=C-A；团队 Buff 表仍作为机制明细，不与本表相加。")
-    )
+    fork_note = QLabel(tr("拆分弧盘常驻属性与技能机制收益；不要与团队 Buff 表重复相加。"))
     _style_note(fork_note)
     fork_layout.addWidget(fork_note)
     fork_notice = QLabel(tr("等待后台计算…"))
@@ -117,7 +111,14 @@ def _render_core(
     notice: QLabel,
     benefits: BattleMarginalBenefits,
 ) -> None:
-    rows = benefits.core_main_stats
+    rows = sorted(
+        benefits.core_main_stats,
+        key=lambda row: (
+            row.contribution.role_gain_percent is not None,
+            row.contribution.role_gain_percent or 0.0,
+        ),
+        reverse=True,
+    )
     table.setRowCount(len(rows))
     notice.setText(benefits.core_notice)
     notice.setVisible(bool(benefits.core_notice))
@@ -208,22 +209,23 @@ def _gain(status: QuantificationStatus, value: float | None) -> str:
         return "—"
     if status == "not_applicable":
         return "+0.00%"
-    text = f"{value:+.2f}%"
-    return f"{text}（部分）" if status == "partial" else text
+    return f"{value:+.2f}%"
 
 
-def _status(delta: BattleMarginalDelta) -> str:
+def _status(delta: BattleMarginalDelta, *, details: bool = False) -> str:
+    role = quantification_status_text(delta.role_status) if details or delta.role_status != "partial" else ""
+    team = quantification_status_text(delta.team_status) if details or delta.team_status != "partial" else ""
     return (
-        f"角色{quantification_status_text(delta.role_status)} "
+        f"角色{role} "
         f"{delta.role_coverage_percent:.1f}% / "
-        f"全队{quantification_status_text(delta.team_status)} "
+        f"全队{team} "
         f"{delta.team_coverage_percent:.1f}%"
     )
 
 
 def _delta_tooltip(label: str, delta: BattleMarginalDelta) -> str:
     gaps = "\n".join(f"- {line}" for line in delta.gap_explanations)
-    text = f"{label}：{_status(delta)}。"
+    text = f"{label}：{_status(delta, details=True)}。"
     return text if not gaps else f"{text}\n缺失依赖：\n{gaps}"
 
 

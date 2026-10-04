@@ -93,9 +93,20 @@ class NteAnalysisCoreClient:
             self.supports_battle_page
             and capabilities is not None and "battle_progress_v1" in capabilities
         )
+        self.supports_projection_evidence = (
+            capabilities is not None and "interned_buff_projection_v2" in capabilities
+        )
         self.supports_battle_page_identity = (
             self.supports_battle_page
             and capabilities is not None and "battle_page_identity_v1" in capabilities
+        )
+        self.supports_topple_composition = (
+            self.supports_battle_page
+            and capabilities is not None and "battle_topple_composition_v1" in capabilities
+        )
+        self.supports_allocation = (
+            engine_version == ENGINE_VERSION
+            and capabilities is not None and "allocation_v1" in capabilities
         )
         self.timeout = timeout
         self.cancelled = cancelled
@@ -237,6 +248,8 @@ class NteAnalysisCoreClient:
             raise NativeAnalysisError("独立分析核心版本不匹配")
         if self.supports_projection_plan and "buff_projection_plan_v1" not in value.get("capabilities", []):
             raise NativeAnalysisError("独立分析核心缺少批量候选投影能力")
+        if self.supports_projection_evidence and "interned_buff_projection_v2" not in value.get("capabilities", []):
+            raise NativeAnalysisError("独立分析核心缺少逐击状态证据投影能力")
         if self.supports_battle_compute and "battle_compute_v1" not in value.get("capabilities", []):
             raise NativeAnalysisError("独立分析核心缺少扩展战报计算能力")
         if self.supports_battle_progress and "battle_progress_v1" not in value.get("capabilities", []):
@@ -244,6 +257,28 @@ class NteAnalysisCoreClient:
         if self.supports_battle_page_identity and "battle_page_identity_v1" not in value.get("capabilities", []):
             raise NativeAnalysisError("独立分析核心缺少战报输入身份能力")
         return value
+
+    def allocate(
+        self, payload: Mapping[str, Any], *,
+        checkpoint: Callable[[], None] | None = None,
+    ) -> dict[str, Any]:
+        """Execute one frozen allocation without reading account files."""
+        self._checkpoint(checkpoint)
+        if not self.supports_allocation:
+            raise NativeAnalysisError("分析组件缺少空幕分配能力，请更新分析组件")
+        if payload.get("batch_kind") != "allocation_v1":
+            raise NativeAnalysisError("空幕分配请求类型无效")
+        encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False,
+                             separators=(",", ":")).encode("utf-8")
+        if len(encoded) > MAX_BYTES:
+            raise NativeAnalysisError("空幕分配输入超过大小限制")
+        response = _json_object(self._run(encoded, checkpoint=checkpoint))
+        if (response.get("batch_kind") != "allocation_v1"
+                or type(response.get("version")) is not int or response["version"] != 1
+                or not isinstance(response.get("plans"), dict)):
+            raise NativeAnalysisError("空幕分配响应协议不匹配")
+        self._checkpoint(checkpoint)
+        return response["plans"]
 
     def compute_batch(
         self, operation: str, inputs: Sequence[dict[str, Any]], *,
@@ -431,9 +466,10 @@ class NteAnalysisCoreClient:
         if not jobs:
             return ()
         started = time.perf_counter()
+        encoding = "interned_v2" if self.supports_projection_evidence else "interned_v1"
         wire = json.dumps({
             **payload, "schema_version": REQUEST_SCHEMA, "dataset_version": self.dataset_version,
-            "batch_kind": batch_kind, "result_encoding": "interned_v1",
+            "batch_kind": batch_kind, "result_encoding": encoding,
         }, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
         if len(wire) > MAX_BYTES:
             raise BuffProjectionBatchTooLarge("Buff 投影请求超过大小限制")
@@ -450,7 +486,7 @@ class NteAnalysisCoreClient:
                 or response.get("dataset_version") != self.dataset_version
                 or response.get("batch_kind") != batch_kind or "error" in response):
             raise NativeAnalysisError("Buff 投影响应版本或数据集不匹配")
-        if response.get("result_encoding") != "interned_v1":
+        if response.get("result_encoding") != encoding:
             raise NativeAnalysisError("Buff 投影响应编码不匹配")
         try:
             results = expand_projection_tables(response)
@@ -525,6 +561,10 @@ class NteAnalysisCoreClient:
                     or any(not isinstance(row.get(key), str) for key in ("interval_id", "buff_name"))
                     or not isinstance(row.get("status"), str)
                     or row["status"] not in {"applied", "not_applied", "unresolved"}
+                    or (row.get("observed_stacks") is not None and (
+                        type(row["observed_stacks"]) is not int or row["observed_stacks"] < 0))
+                    or not isinstance(row.get("state_confidence", ""), str)
+                    or row.get("state_confidence", "") not in {"", "未知", "未解析", "低", "中", "高"}
                     or not strings(row, "applied_property_ids") or not strings(row, "reasons")):
                 raise NativeAnalysisError("Buff 投影响应采用状态无效")
             if validated_decisions is not None:

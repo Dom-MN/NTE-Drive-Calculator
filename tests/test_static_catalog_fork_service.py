@@ -36,7 +36,7 @@ class StaticCatalogForkServiceTests(unittest.TestCase):
     def test_metadata_reports_release_provenance_and_importer_gaps(self) -> None:
         metadata = self.service.metadata()
 
-        self.assertEqual(metadata.schema_version, 31)
+        self.assertEqual(metadata.schema_version, 38)
         self.assertTrue(metadata.dataset_id)
         self.assertGreaterEqual(dict(metadata.counts)["fork_item"], 1)
         self.assertFalse(metadata.has_fork_skill_tables)
@@ -161,7 +161,8 @@ def _run_ui_contract() -> None:
     service = StaticCatalogForkService.from_database(STATIC_DATABASE)
     widget = ForkCatalogWidget(service)
     try:
-        assert widget.catalog_list.count() == 49
+        assert widget.catalog_list.count() == min(widget._page_size, 51)
+        assert "51 条" in widget.page_label.text()
         assert "dataset" in widget.metadata_label.text()
         assert widget.detail_tree.topLevelItemCount() > 0
 

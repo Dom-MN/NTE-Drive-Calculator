@@ -23,10 +23,13 @@ from tools.game_data.static_database_build_support import (
 from tools.game_data.static_database_character_progression_imports import (
     import_character_progression,
 )
+from tools.game_data.static_database_fork_progression_imports import (
+    fork_exp_material_spec,
+)
 
 
 _COST_TOKEN_ALIASES = {
-    ("gold", "progression_cost"): "Fons",
+    ("gold", "progression_cost"): "Gold",
 }
 
 _LIMITED_LOTTERY_SOURCES = (
@@ -121,7 +124,7 @@ def _character_exp_material_spec(
         raise StaticDatabaseError(f"角色经验材料 EXP 无效：{item_id}")
     costs = _parse_cost_string(element.get("CostGold"))
     if not costs:
-        raise StaticDatabaseError(f"角色经验材料缺少正式方斯消耗：{item_id}")
+        raise StaticDatabaseError(f"角色经验材料缺少正式甲硬币消耗：{item_id}")
     return experience, costs
 
 
@@ -133,6 +136,7 @@ class _ProgressionImportContext(Protocol):
 
 
 class ProgressionImportMixin(_ProgressionImportContext):
+    limited_lottery_sources = _LIMITED_LOTTERY_SOURCES
     def _import_progression_catalog(self) -> None:
         self._import_character_release_annotations()
         drop_results = self._resolve_clone_drop_groups()
@@ -140,6 +144,7 @@ class ProgressionImportMixin(_ProgressionImportContext):
         missing_names = self._import_progression_items(referenced_items)
         self._import_progression_aliases()
         self._import_character_progression()
+        self._import_fork_exp_materials()
         self._import_item_quality_terms()
         self._import_character_acquisition_terms()
         self._import_fork_lottery_campaigns()
@@ -229,7 +234,7 @@ class ProgressionImportMixin(_ProgressionImportContext):
             )
             memberships.add((character_id, "permanent"))
 
-        for source_name in _LIMITED_LOTTERY_SOURCES:
+        for source_name in self.limited_lottery_sources:
             properties = self.rows[source_name].get("Properties")
             if not isinstance(properties, dict):
                 raise StaticDatabaseError(f"限定角色 Lottery DataAsset 缺少 Properties：{source_name}")
@@ -407,12 +412,39 @@ class ProgressionImportMixin(_ProgressionImportContext):
                 self._canonical_item_id(token, "progression_cost")
                 for token, _quantity in costs
             )
+        item_ids.update(self._collect_fork_progression_item_ids())
         cost_tables = (
             ("character_breakthroughs", ("NeedItems", "NeedGolds")),
-            ("fork_breakthroughs", ("NeedItems", "NeedGolds")),
-            ("fork_stars", ("NeedGolds",)),
         )
         for table, fields in cost_tables:
+            for row in self.rows[table].values():
+                if not isinstance(row, dict):
+                    continue
+                for field in fields:
+                    for token, _quantity in _parse_cost_string(row.get(field)):
+                        item_ids.add(
+                            self._canonical_item_id(token, "progression_cost")
+                        )
+        return item_ids
+
+    def _collect_fork_progression_item_ids(self) -> set[str]:
+        item_ids = {"Fons", "Gold"}
+        for item_id, row in self.rows["item_catalog"].items():
+            specification = fork_exp_material_spec(
+                str(item_id), row, parse_cost_string=_parse_cost_string,
+            )
+            if specification is None:
+                continue
+            item_ids.add(str(item_id))
+            _experience, costs = specification
+            item_ids.update(
+                self._canonical_item_id(token, "progression_cost")
+                for token, _quantity in costs
+            )
+        for table, fields in (
+            ("fork_breakthroughs", ("NeedItems", "NeedGolds")),
+            ("fork_stars", ("NeedGolds",)),
+        ):
             for row in self.rows[table].values():
                 if not isinstance(row, dict):
                     continue
@@ -430,6 +462,28 @@ class ProgressionImportMixin(_ProgressionImportContext):
             parse_cost_string=_parse_cost_string,
             exp_material_spec=_character_exp_material_spec,
         )
+
+    def _import_fork_exp_materials(self) -> None:
+        for item_id, row in sorted(self.rows["item_catalog"].items()):
+            specification = fork_exp_material_spec(
+                str(item_id), row, parse_cost_string=_parse_cost_string,
+            )
+            if specification is None:
+                continue
+            experience, costs = specification
+            self.connection.execute(
+                "INSERT INTO fork_exp_material VALUES (?,?,?)",
+                (item_id, experience, self.source_row_id("item_catalog", item_id)),
+            )
+            for token, quantity in costs:
+                self.connection.execute(
+                    "INSERT INTO fork_exp_material_cost VALUES (?,?,?)",
+                    (
+                        item_id,
+                        self._canonical_item_id(token, "progression_cost"),
+                        quantity,
+                    ),
+                )
 
     def _import_progression_items(self, item_ids: set[str]) -> set[str]:
         catalogs = {
@@ -612,8 +666,8 @@ class ProgressionImportMixin(_ProgressionImportContext):
             for entry in self.rows["fork_lottery_data"]["1"].get("PoolIDMap", ())
             if isinstance(entry, dict) and optional_text(entry.get("Value"))
         )
-        if len(configured_pool_ids) != 8 or len(set(configured_pool_ids)) != 8:
-            raise StaticDatabaseError("弧盘限定卡池配置必须恰好包含 8 个 pool")
+        if not configured_pool_ids or len(set(configured_pool_ids)) != len(configured_pool_ids):
+            raise StaticDatabaseError("弧盘限定卡池配置不能为空或包含重复 pool")
         for release_ordinal, pool_id in enumerate(configured_pool_ids):
             row = self.rows["fork_lottery_pools"].get(pool_id)
             if not isinstance(row, dict):

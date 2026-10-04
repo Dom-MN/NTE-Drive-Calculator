@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import lzma
 import os
 import sqlite3
 import tempfile
@@ -16,6 +17,10 @@ from typing import Any
 from unittest.mock import patch
 
 from tools.game_data import promote_static_release as promotion
+from tools.game_data.storage_repack import (
+    create_repack_candidate,
+    validate_logical_equivalence,
+)
 from tools.game_data.promote_static_release import (
     DATABASE_HARD_LIMIT_BYTES,
     DATABASE_REPOSITORY_BUDGET_BYTES,
@@ -35,6 +40,66 @@ from tools.game_data.promote_static_release import (
 
 
 class StaticReleasePromotionTests(unittest.TestCase):
+    def test_storage_repack_preserves_every_row_and_promotes_as_one_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            baseline, config_path = self._create_candidate(root, "fixture-v1")
+            baseline_database = baseline / DATABASE_FILENAME
+            with closing(sqlite3.connect(baseline_database)) as connection:
+                connection.execute("CREATE TABLE padding (value TEXT NOT NULL)")
+                connection.executemany(
+                    "INSERT INTO padding VALUES (?)",
+                    [("x" * 2048,) for _ in range(1024)],
+                )
+                connection.execute("DELETE FROM padding WHERE rowid > 10")
+                connection.commit()
+            finalize_candidate(baseline, config_path)
+            old_hash = promotion.sha256(baseline_database)
+            repack = root / "repack"
+            create_repack_candidate(baseline, repack)
+            self.assertLess(
+                (repack / DATABASE_FILENAME).stat().st_size, baseline_database.stat().st_size
+            )
+            self.assertEqual(
+                10, validate_logical_equivalence(baseline_database, repack / DATABASE_FILENAME)["padding"]
+            )
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config.update(
+                storage_baseline_database_path=str(baseline_database),
+                storage_baseline_manifest_path=str(baseline / MANIFEST_FILENAME),
+            )
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            finalize_candidate(repack, config_path)
+            self.assertTrue(verify_candidate(repack, config_path)["verified"])
+            result = promote_candidate(repack, config_path, baseline)
+            self.assertEqual("fixture-v1", result["dataset_id"])
+            self.assertNotEqual(old_hash, promotion.sha256(baseline_database))
+            self.assertEqual(
+                promotion.sha256(baseline_database),
+                json.loads((baseline / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+                ["database"]["sha256"],
+            )
+
+    def test_storage_repack_rejects_changed_row(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            baseline, config_path = self._create_candidate(root, "fixture-v1")
+            with closing(sqlite3.connect(baseline / DATABASE_FILENAME)) as connection:
+                connection.execute("CREATE TABLE padding (value TEXT NOT NULL)")
+                connection.executemany(
+                    "INSERT INTO padding VALUES (?)", [("x" * 2048,) for _ in range(64)]
+                )
+                connection.execute("DELETE FROM padding WHERE rowid > 1")
+                connection.commit()
+            finalize_candidate(baseline, config_path)
+            repack = root / "repack"
+            create_repack_candidate(baseline, repack)
+            with closing(sqlite3.connect(repack / DATABASE_FILENAME)) as connection:
+                connection.execute("UPDATE padding SET value = 'changed'")
+                connection.commit()
+            with self.assertRaisesRegex(ValueError, "表内容变化"):
+                validate_logical_equivalence(baseline / DATABASE_FILENAME, repack / DATABASE_FILENAME)
+
     def test_size_policy_has_warning_repository_and_permanent_boundaries(self) -> None:
         validate_database_size(DATABASE_WARNING_BYTES - 1)
         with self.assertRaisesRegex(StaticReleasePromotionError, "默认阻断"):
@@ -94,7 +159,20 @@ class StaticReleasePromotionTests(unittest.TestCase):
                     payload_json TEXT,
                     content_sha256 TEXT NOT NULL
                 );
+                CREATE TABLE battle_analysis_catalog (
+                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                    format_version INTEGER NOT NULL CHECK (format_version = 1),
+                    codec TEXT NOT NULL CHECK (codec = 'xz-json'),
+                    decoded_bytes INTEGER NOT NULL CHECK (decoded_bytes > 0 AND decoded_bytes <= 67108864),
+                    decoded_sha256 TEXT NOT NULL CHECK (length(decoded_sha256) = 64),
+                    payload BLOB NOT NULL
+                );
                 """
+            )
+            analysis_raw = json.dumps({"target": {}, "axis": {}, "rules": {}}, separators=(",", ":")).encode("utf-8")
+            connection.execute(
+                "INSERT INTO battle_analysis_catalog VALUES (1, 1, 'xz-json', ?, ?, ?)",
+                (len(analysis_raw), hashlib.sha256(analysis_raw).hexdigest(), lzma.compress(analysis_raw)),
             )
             connection.execute(
                 "INSERT INTO dataset VALUES (?, ?, ?)",

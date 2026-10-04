@@ -41,7 +41,7 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
         for page in (by_ga, by_ge, by_buff, by_path):
             self.assertIn(1036, {item.character_id for item in page.items})
             self.assertTrue(page.dataset.dataset_id)
-            self.assertEqual(31, page.dataset.schema_version)
+            self.assertEqual(38, page.dataset.schema_version)
 
     def test_character_search_treats_sql_wildcards_as_literal_text(self) -> None:
         page = self.service.list_characters(query="%_", limit=200)
@@ -98,7 +98,7 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
                     next(
                         cost.quantity
                         for cost in material.costs
-                        if cost.item_id == "Fons"
+                        if cost.item_id == "Gold"
                     ),
                 )
                 for material in progression.experience_materials
@@ -110,7 +110,7 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
                 totals[cost.item_id] = totals.get(cost.item_id, 0) + cost.quantity
         self.assertEqual(
             {
-                "Fons": 525_000,
+                "Gold": 525_000,
                 "OrdinaryMonMaterial_02_lv1": 17,
                 "OrdinaryMonMaterial_02_lv2": 18,
                 "OrdinaryMonMaterial_02_lv3": 15,
@@ -145,10 +145,10 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
         self.assertEqual(2000.0, first_costs["gold"])
         self.assertEqual(2.0, first_costs["SkillUpMaterial_03_lv1"])
         self.assertEqual(
-            ("暮落残阳", "殷红幻景"),
+            ("暮落残阳", "殷红幻景", "谲影迷踪"),
             tuple(passive.name_zh for passive in detail.passives),
         )
-        self.assertEqual((2, 4), tuple(
+        self.assertEqual((2, 4, None), tuple(
             passive.unlock_stage for passive in detail.passives
         ))
         self.assertTrue(all(passive.descriptions for passive in detail.passives))
@@ -210,7 +210,7 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
             for item in melee.damage_items
         ))
 
-    def test_v30_character_value_coverage_counts_are_preserved(self) -> None:
+    def test_release_character_value_coverage_counts_are_preserved(self) -> None:
         characters = tuple(
             item for item in self.service.list_characters(limit=200).items
             if item.classification != "combat_transformation"
@@ -220,8 +220,8 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
             for item in characters
         )
 
-        self.assertEqual(23, len(details))
-        self.assertEqual(23, sum(
+        self.assertEqual(25, len(details))
+        self.assertEqual(25, sum(
             detail is not None and detail.equipment_plan is not None
             for detail in details
         ))
@@ -235,19 +235,19 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
             ) == 20
             for detail in details
         ))
-        self.assertEqual(23, sum(
+        self.assertEqual(25, sum(
             detail is not None and detail.shape_bonus is not None
             for detail in details
         ))
-        self.assertEqual(23, sum(
+        self.assertEqual(25, sum(
             detail is not None and detail.recommended_weights is not None
             for detail in details
         ))
-        self.assertEqual(23, sum(
+        self.assertEqual(25, sum(
             detail is not None and detail.cultivation is not None
             for detail in details
         ))
-        self.assertEqual(22, sum(
+        self.assertEqual(24, sum(
             detail is not None and detail.graduation is not None
             for detail in details
         ))
@@ -256,9 +256,9 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
             for detail in details if detail is not None
             for skill in detail.skills
         )
-        self.assertEqual(92, len(skills))
-        self.assertEqual(645, sum(len(skill.damage_items) for skill in skills))
-        self.assertEqual(626, sum(len(skill.level_hints) for skill in skills))
+        self.assertEqual(100, len(skills))
+        self.assertEqual(670, sum(len(skill.damage_items) for skill in skills))
+        self.assertEqual(697, sum(len(skill.level_hints) for skill in skills))
 
     def test_growth_and_combat_relationships_are_independently_paginated(self) -> None:
         first_growth = self.service.list_growth(1036, limit=10, offset=0)

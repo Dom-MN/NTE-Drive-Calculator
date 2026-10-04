@@ -287,7 +287,9 @@ class BattleReportAnalysisControllerMixin:
         record_id = request.load.battle_record_id
         if analysis is None or not analysis.timeline_hits:
             self._page.end_analysis_details()
-            if request.load.detail_level != "marginal":
+            if request.load.detail_level in {"hit", "buff", "composition"}:
+                self._page.show_analysis_detail_error("当前详情没有可用的逐击分析结果。")
+            elif request.load.detail_level != "marginal":
                 self._page.clear_analysis(
                     "当前记录只有聚合摘要，或所选时段没有正式逐击证据。"
                 )
@@ -355,7 +357,13 @@ class BattleReportAnalysisControllerMixin:
         ):
             return
         self._page.end_analysis_details()
-        if request.load.detail_level != "marginal":
+        if message == "任务已取消":
+            return
+        if request.load.detail_level == "composition":
+            self._page.show_analysis_detail_error(f"倾陷归属未完成：{message}")
+        elif request.load.detail_level in {"hit", "buff"}:
+            self._page.show_analysis_detail_error(f"当前详情未完成：{message}")
+        elif request.load.detail_level != "marginal":
             self._page.clear_analysis(f"读取战报逐击分析失败：{message}")
         log_event(
             "WARNING",
@@ -374,16 +382,14 @@ class BattleReportAnalysisControllerMixin:
         self._active_analysis_load = None
         self._active_analysis_load_invalidated = False
         worker.deleteLater()
-        if self._pending_analysis_load is None:
-            self._page.end_analysis_details()
         self._start_pending_analysis_load()
 
     def _load_analysis_details(self, kind: str, payload: object = None) -> None:
         record_id = self._latest_state.battle_record_id
         if record_id is None or self.is_running():
             return
-        detail_level = "hit" if kind == "composition" else kind
-        if detail_level not in {"hit", "buff"}:
+        detail_level = kind
+        if detail_level not in {"hit", "buff", "composition"}:
             return
         base = self._latest_analysis_load_request
         if base is None or base.battle_record_id != record_id:

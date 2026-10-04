@@ -34,6 +34,7 @@ duration；取消、过期丢弃、待确认和降级使用独立事件，不伪
 | 同步 | `inventory_sync.*` | 连接、候选、稳定化、提交、运行时状态增量、保留策略和停止原因 |
 | 扫描 | `scanning.*` | 冻结依赖、捕获驱动、分页、解析、提交与扫描后状态管理 |
 | 计算 | `allocation.*` | 冻结请求、求解、目标槽位、保存、失败和过期丢弃 |
+| 页面性能 | `PERF allocation.catalog_read`、`PERF allocation.catalog_apply`、`PERF equipment.render` | 目录读取、主线程应用和配装控件重建耗时；只记耗时、模式与是否跳过，不记角色名、路径或方案内容。 |
 | 配装槽位 | `loadout_slot.*` | 创建、重命名、归档、当前方案切换与锁冲突 |
 | 角色 | `role.*` | 索引/详情、配置、替换、动态权重与 dirty 决策 |
 | 基础权重 | `basic_weight.*` | 账号权重、自建角色与底盘保存/重置 |
@@ -46,6 +47,7 @@ duration；取消、过期丢弃、待确认和降级使用独立事件，不伪
 | 倒带 | `rewind.*` | 推荐请求、八槽保存、OCR 阶段、十连计划和停止 |
 | 战报 | `battle_report.*` | capture 生命周期、摘要持久化、历史恢复和保留策略 |
 | 环境 | `environment.*` | Npcap、nte-core、dwmapi、Mod Loader、VC Runtime、SDK 缓存、pipe、部署与恢复 |
+| 手动环境检测 | `environment.detection_failed` | 固定原因、下一步、异常类型和已识别错误码；不写原始异常、RPC 数据或 stderr，后台轮询不重复记录。 |
 | 更新 | `update.*` | 检查、下载、取消、失败、完成和安装器启动 |
 
 同步与仓库允许记录驱动、卡带、已装备、锁定和角色实例的聚合数量，不记录 UID 列表。战报允许字段包括
@@ -70,6 +72,19 @@ duration；取消、过期丢弃、待确认和降级使用独立事件，不伪
 拒绝原因码区分不完整快照、声明数量不符、重复装备/角色实例、其他结构无效、装配库存守卫不匹配、
 过期/重复序号，以及角色列表升级期间忽略旧格式事件。日志不记录可含 UID 的原始校验异常文本。
 
+原生同步与通信另记录以下脱敏诊断，不要求保存完整原始采集文件：
+
+- `native_sync.projection_read`：状态、刷新、分页耗时与次数；失败时记录所在阶段、固定域错误码或异常类型，不写 RPC 错误正文。
+- `native_sync.refresh_finished`：分别记录装备、角色和 `all_items` 刷新耗时、布尔就绪状态、条目数及固定白名单的未完成原因。新版 DLL 的可选 `collectionWork` 提供批次数、扫描/验证单位数、总历时、批内累计耗时、最长批次及角色关联装备详情读取次数；不含 UID、字段原文或返回正文，旧 DLL 未提供的计数不补零。总历时包含批间等待，批内耗时是墙钟观测，不等于 CPU 时间或游戏帧率。
+- `native_sync.retry_deferred`：同一来源修订未完成时的 1、2、4、8、10 秒重试等待；来源修订变化不沿用旧等待，不提交残缺集合。
+- `native_sync.runtime_cost`：支持该字段的 DLL 返回游戏线程快照周期与读取批次的累计次数、累计微秒和最大单次微秒；最多每 30 秒记录变化。可选 `inventory_notifications` 仅保留通知类型（0–255）、累计次数、Items 条数、空数组/无效数组头次数、最后单调毫秒；拒绝负数、非法类型并丢弃额外字段，不记录成员、UID、物品数量值或正文。计数归 DLL 生命周期，互有包含关系，不相加、不当作游戏 FPS；旧 DLL 未提供时不补零。通知计数不证明增量事件完整。
+- `native_sync.timing_summary`：可选 DLL `snapshot_diagnostics` 的分段累计计时，最多每 30 秒记录变化；仅接受 version=1、固定阶段名和有界非负整数。保留次数、总/最大微秒、超过 8333/20000 微秒次数，以及慢调用总数和缓冲区竞争丢弃数。阈值是诊断分桶，不是实测帧预算；嵌套阶段不能求和，缺失阶段不补零。
+- `native_sync.hud_interaction` / `native_sync.hud_interaction_event`：可选 `hud_interaction` version=1 的 HUD 开关、角色读取、技能查询、HUD 绘制活动计数、捕获到的异常码及有界事件。沿现有状态读取观测，最多每秒接收一次；状态变化立即记录，累计摘要最多每 30 秒一次，不增加游戏轮询。最近事件最多 32 条，以序号和单调时间去重；拒绝未知阶段、未知事件、越界数字与额外字段。觉醒通知、HUD 开关和任意角色 E/Q 选择状态变化后 10 秒内，各阶段最多每秒采样一对开始/结束。技能选择只记录 E/Q、候选数和固定原因，不记录角色实例、技能类、对象地址或 UID。`active_mask` 的 control/character/skill_query/hud 位为 1/2/4/8，重叠可能来自嵌套调用，不能解释为线程竞争。环形覆盖、竞争丢弃和进程崩溃前尚未送达的记录均可能缺失；它不是崩溃转储，也不能由一条 begin 缺少 end 认定该函数崩溃。旧组件缺字段时不补零。
+- `native_sync.slow_pulse`：同一低频观测最多接收最近 8 次加生命周期最慢一次的去重慢调用，保留固定域、all_items、回调序号、单调起点、临时采集 job/step 及分段耗时。回调序号与单调起点共同去重，允许 DLL 重启后序号从头开始；不记录 provider、对象、UID、路径或响应正文。缓冲区不可读或超界时不输出样本。它是有界留样，不是完整逐帧记录；`native_sync.refresh_finished` 可选 `diagnostic_job/diagnostic_step` 用于关联同一 DLL 会话内的刷新任务，旧组件缺字段时省略。
+- `native_session.idle_closed`：自动同步与插件关闭、且无战报、库存租约或进行中读取时释放共享连接。
+- `native_core.invalid_json`：响应字符数、完整换行标记、解析失败位置、Core 哈希及可获得的退出码；不记录响应片段或原始解析异常。
+- `native_core.output`：仅消费 Core 固定诊断前缀与白名单字段，记录输出总字节、已写字节、耗时及 slow/timeout/failed；其他 stderr 不直接转入常驻日志。
+
 `inventory_sync.snapshot_commit_retry` 还记录本会话保存尝试次数与候选件数。SQLite 保存失败诊断包括 `save_error_code`、`save_stage`、
 `sqlite_exception_type`、`sqlite_errorcode`、`sqlite_errorname`、`sqlite_message` 和 `rollback_status`；
 底层未提供的错误码或错误名不写入。`save_stage` 区分开启事务、写快照、写装备、写词条、更新装备角色映射、
@@ -92,7 +107,7 @@ duration；取消、过期丢弃、待确认和降级使用独立事件，不伪
 ## 脱敏边界
 
 日志不写 Mirror CDK、Token、Cookie、Authorization、鉴权查询参数、完整 nte-core RPC、完整背包、UID
-列表、账号显示名、OCR 全文、截图内容、用户绝对路径、窗口标题和可复原业务 payload。
+列表、账号显示名、OCR 全文、截图内容、窗口标题和可复原业务 payload。本机故障日志可保留必要的文件路径、异常类型和调用位置，便于离线排查；日志不进默认账号导出，用户复制或外发前应检查路径。
 
-异常进入结构化日志前经过统一脱敏，只保留异常类型、安全消息和允许的错误码。自动测试入口为
+结构化日志入口仍按原规则脱敏路径；本地日志 sink 对普通消息中的常见凭据执行统一遮盖，保留文件路径。计算与目录加载异常只记录有界消息和最多八个堆栈位置，不写原始整段 traceback 或局部变量。其他遗留直接日志仍可能包含业务值，后续收口见[路线图](../roadmap.md#6-遗留日志入口收口)。自动测试入口为
 `tests.test_observability_logging` 与 `tests.test_runtime_logging`。

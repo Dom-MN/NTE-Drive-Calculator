@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from src.domain.drive_layout import extract_drive_blocks_from_state
+from src.domain.loadout_plan_scores import exact_assignment_score_total
 from src.services.virtual_equipment_service import (
     is_virtual_equipment_assignment,
     virtual_equipment_inventory_item,
@@ -425,9 +426,20 @@ class SavedStateLoadoutBridge:
         self,
         user_dao: UserDataDao,
         static_dao: StaticGameDataDao,
+        *, frozen_snapshot_id: int | None = None,
     ) -> None:
         self.user_dao = user_dao
         self.static_dao = static_dao
+        self._frozen_snapshot_id = frozen_snapshot_id
+        self._frozen_items = (
+            {(item["uid_slot"], item["uid_serial"]): item
+             for item in user_dao.list_inventory_items(frozen_snapshot_id)}
+            if frozen_snapshot_id is not None else None
+        )
+        self._frozen_shapes = (
+            {shape["shape_id"]: shape for shape in static_dao.list_shapes()}
+            if frozen_snapshot_id is not None else None
+        )
 
     def save_role_plan(
         self,
@@ -497,11 +509,17 @@ class SavedStateLoadoutBridge:
                 tr("静态数据库中不存在角色 ID {id}（{role}）", id=character_id, role=display_term(role_name))
             )
 
-        inventory = self.user_dao.list_inventory_items(selected_snapshot_id)
-        items_by_uid = {
-            (item["uid_slot"], item["uid_serial"]): item for item in inventory
-        }
-        shapes = {shape["shape_id"]: shape for shape in self.static_dao.list_shapes()}
+        if self._frozen_snapshot_id is not None:
+            if selected_snapshot_id != self._frozen_snapshot_id:
+                raise SavedStateLoadoutError("不能在同一次保存中切换冻结背包快照")
+            items_by_uid = self._frozen_items
+            shapes = self._frozen_shapes
+        else:
+            items_by_uid = {
+                (item["uid_slot"], item["uid_serial"]): item
+                for item in self.user_dao.list_inventory_items(selected_snapshot_id)
+            }
+            shapes = {shape["shape_id"]: shape for shape in self.static_dao.list_shapes()}
 
         assignments: list[dict[str, Any]] = []
         blocks = extract_drive_blocks_from_state({role_name: dict(role_state)})
@@ -597,7 +615,16 @@ class SavedStateLoadoutBridge:
 
         module_count = sum(item["kind"] == "module" for item in assignments)
         if module_count <= 0:
-            raise SavedStateLoadoutError(tr("角色 [{role}] 没有可装配的驱动", role=display_term(role_name)))
+            raise SavedStateLoadoutError(f"角色 [{role_name}] 没有可装配的驱动")
+        normalized_payload = dict(payload or {
+            "schema": "saved-state-official-loadout-v1",
+            "source": "equipment_page",
+            "source_role_name": role_name,
+        })
+        exact_score = exact_assignment_score_total(
+            assignments,
+            normalized_payload.get("assignment_scores") or {},
+        )
         return PreparedLoadoutPlan(
             name=name or tr("配装页：{role}", role=display_term(role_name)),
             role_name=role_name,
@@ -612,11 +639,7 @@ class SavedStateLoadoutBridge:
                 else "ready"
             ),
             assignments=tuple(assignments),
-            payload=dict(payload or {
-                "schema": "saved-state-official-loadout-v1",
-                "source": "equipment_page",
-                "source_role_name": role_name,
-            }),
-            score=score,
+            payload=normalized_payload,
+            score=exact_score if exact_score is not None else score,
             module_count=module_count,
         )

@@ -8,22 +8,39 @@ import subprocess
 import threading
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QLabel, QMessageBox, QProgressDialog, QVBoxLayout
+from PySide6.QtCore import QObject, QSize, Qt, QTimer, Signal
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QDialogButtonBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QProgressDialog,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from src.i18n import tr
 from src.app.constants import (
     APP_VERSION,
     BILIBILI_HOME_URL,
-    GROUP_CHAT_NOTICE,
+    DISCORD_GROUP_URL,
+    GROUP_CHAT_DEVELOPER_HINT,
+    GROUP_CHAT_DISCORD_HINT,
     GITHUB_HOME_URL,
     GITHUB_LATEST_RELEASE_URL,
     GITHUB_RELEASES_URL,
     MIRROR_PROJECT_URL,
     MIRROR_UPDATE_API,
+    QQ_GROUP_NUMBER,
     SUPPORT_US_URL,
 )
+from src.app.theme import themed_style
+from src.app.window_geometry import fit_dialog_to_available_screen
 from src.app.workers import WorkerThread
 from src.observability.context import OperationContext
 from src.observability.operation import log_event
@@ -78,7 +95,12 @@ class _MirrorInstallerDownloadWorker(WorkerThread):
 def _maybe_check_updates_on_startup(self):
     if self._update_config.get("never_remind"):
         return
-    QTimer.singleShot(1200, lambda: self._check_updates(manual=False))
+    def check_when_idle():
+        if QApplication.activeModalWidget() is not None:
+            QTimer.singleShot(1200, check_when_idle)
+        else:
+            self._check_updates(manual=False)
+    QTimer.singleShot(1200, check_when_idle)
 
 
 def _mirror_cdk_value(self):
@@ -159,7 +181,20 @@ def _on_update_checked(self, info):
             tr("发现新版本: {latest}（当前 {current}）", latest=latest, current=APP_VERSION)
         )
         if manual or self._should_show_startup_update(info):
-            self._show_update_dialog(info, manual=manual)
+            if manual:
+                self._show_update_dialog(info, manual=True)
+            else:
+                def show_when_idle():
+                    try:
+                        if not self.isVisible():
+                            return
+                    except RuntimeError:
+                        return
+                    if QApplication.activeModalWidget() is not None:
+                        QTimer.singleShot(1200, show_when_idle)
+                    else:
+                        self._show_update_dialog(info, manual=False)
+                show_when_idle()
     else:
         self._update_status.setText(tr("当前已是最新版本: {version}", version=APP_VERSION))
         if manual:
@@ -234,26 +269,34 @@ def _on_mirror_download_ready(self, info):
         _new_update_operation(self, feature="update_download"),
     )
     url = str(info.get("url") or "").strip()
+    latest = str(info.get("latest") or "").strip()
+    if url and not latest:
+        url = ""
     if url:
-        latest = str(info.get("latest") or "").strip()
         if not _mirror_download_version_is_available(latest, APP_VERSION):
             log_event(
                 "WARNING",
-                "update.download_historical_version_blocked",
-                "Mirror 返回的版本低于当前版本",
+                "update.download_historical_version_confirmation_required",
+                "Mirror 下载版本低于当前版本，等待用户确认",
                 operation,
                 current_version=APP_VERSION,
                 latest_version=latest,
             )
-            if hasattr(self, "_mirror_download_btn"):
-                self._mirror_download_btn.setEnabled(True)
-            self._update_status.setText(tr("当前已是最新版本，无法下载历史旧版本。"))
-            QMessageBox.information(
-                self,
-                tr("Mirror 下载"),
-                tr("当前版本高于 Mirror 可下载版本，已是最新版本，无法下载历史旧版本。"),
+            if not _confirm_mirror_older_version_download(self, APP_VERSION, latest):
+                log_event(
+                    "INFO", "update.download_historical_version_cancelled",
+                    "用户取消下载较旧版本", operation,
+                    current_version=APP_VERSION, latest_version=latest,
+                )
+                if hasattr(self, "_mirror_download_btn"):
+                    self._mirror_download_btn.setEnabled(True)
+                self._update_status.setText(tr("已取消较旧版本下载。"))
+                return
+            log_event(
+                "WARNING", "update.download_historical_version_confirmed",
+                "用户确认下载较旧版本", operation,
+                current_version=APP_VERSION, latest_version=latest,
             )
-            return
         log_event(
             "INFO",
             "update.download_url_received",
@@ -447,8 +490,29 @@ def _mirror_project_link_text(action: str) -> str:
 
 
 def _mirror_download_version_is_available(latest: str, current: str) -> bool:
-    """Allow the current release or a newer release, never a historical one."""
+    """Whether the remote release is current or newer; older ones need confirmation."""
     return bool(latest) and not is_newer_version(current, latest)
+
+
+def _confirm_mirror_older_version_download(self: Any, current: str, latest: str) -> bool:
+    dialog = QMessageBox(self)
+    dialog.setIcon(QMessageBox.Icon.Warning)
+    dialog.setWindowTitle(tr("Mirror 下载较旧版本"))
+    dialog.setText(tr("Mirror 提供的版本低于当前安装版本。"))
+    dialog.setInformativeText(
+        f"当前版本：{current}\nMirror 版本：{latest}\n"
+        "下载完成后会自动启动安装程序，可能覆盖当前版本。是否继续下载？"
+    )
+    download = dialog.addButton("下载", QMessageBox.ButtonRole.AcceptRole)
+    cancel = dialog.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+    dialog.setDefaultButton(cancel)
+    dialog.setEscapeButton(cancel)
+    if hasattr(self, "_current_style_sheet"):
+        dialog.setStyleSheet(self._current_style_sheet())
+    fit_dialog_to_available_screen(dialog, QSize(490, 210))
+    QApplication.beep()
+    dialog.exec()
+    return dialog.clickedButton() is download
 
 
 def _show_mirror_project_download_dialog(self: Any, summary: str) -> None:
@@ -516,27 +580,124 @@ def _open_support_homepage(self):
     self._open_url(SUPPORT_US_URL)
 
 
+def _open_discord_group(self):
+    self._open_url(DISCORD_GROUP_URL)
+
+
 def _show_group_chat_notice(self):
-    QMessageBox.information(self, tr("加入群聊"), GROUP_CHAT_NOTICE)
+    dialog = QDialog(self)
+    dialog.setWindowTitle(tr("加入群聊"))
+    dialog.setMinimumSize(410, 245)
+    if hasattr(self, "_current_style_sheet"):
+        dialog.setStyleSheet(self._current_style_sheet())
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(24, 22, 24, 22)
+    layout.setSpacing(11)
+    intro = QLabel(tr("遇到问题，或想交流计算器的使用体验？"))
+    intro.setWordWrap(True)
+    intro.setStyleSheet(themed_style("color:#8b949e"))
+    layout.addWidget(intro)
+
+    def add_option(title: str, detail: str, action: QPushButton, number: str = ""):
+        card = QFrame()
+        card.setObjectName("groupChatOption")
+        card.setStyleSheet(themed_style(
+            "QFrame#groupChatOption{background:#161b22;border:1px solid #30363d;border-radius:8px}"
+        ))
+        row = QHBoxLayout(card)
+        row.setContentsMargins(15, 12, 15, 12)
+        row.setSpacing(12)
+        text = QVBoxLayout()
+        text.setSpacing(5)
+        title_label = QLabel(title)
+        title_label.setStyleSheet(themed_style("font-size:14px;font-weight:600;color:#f0f6fc"))
+        text.addWidget(title_label)
+        if number:
+            number_label = QLabel(number)
+            number_label.setObjectName("groupChatNumber")
+            number_label.setStyleSheet(themed_style("font-size:18px;font-weight:600;color:#58a6ff"))
+            text.addWidget(number_label)
+        detail_label = QLabel(detail)
+        detail_label.setWordWrap(True)
+        detail_label.setStyleSheet(themed_style("color:#8b949e"))
+        text.addWidget(detail_label)
+        row.addLayout(text, 1)
+        row.addWidget(action, 0, Qt.AlignVCenter)
+        layout.addWidget(card)
+
+    copy_button = QPushButton(tr("复制群号"))
+
+    def copy_group_number():
+        QApplication.clipboard().setText(QQ_GROUP_NUMBER)
+        copy_button.setText(tr("已复制"))
+
+    copy_button.clicked.connect(copy_group_number)
+    add_option("QQ 交流群", GROUP_CHAT_DEVELOPER_HINT, copy_button, QQ_GROUP_NUMBER)
+
+    discord_button = QPushButton(tr("加入 Discord"))
+    discord_button.setObjectName("btnNew")
+
+    def open_discord_group():
+        self._open_discord_group()
+        dialog.accept()
+
+    discord_button.clicked.connect(open_discord_group)
+    add_option("Discord 群组", GROUP_CHAT_DISCORD_HINT, discord_button)
+    fit_dialog_to_available_screen(dialog, QSize(490, 285))
+    dialog.exec()
+    return dialog
 
 
 def _show_netdisk_download_dialog(self, links):
     links = tuple((str(name), str(url)) for name, url in links if name and url)
     if not links:
         return
-    box = QMessageBox(self)
-    box.setWindowTitle(tr("网盘下载"))
-    box.setText(tr("请选择下载网盘"))
-    box.setInformativeText("\n\n".join(f"{name}：\n{url}" for name, url in links))
-    box.setMinimumSize(620, 300)
-    box.setStyleSheet(box.styleSheet() + "\nQLabel{min-width:560px;}")
-    buttons = [(box.addButton(f"打开{name}", QMessageBox.AcceptRole), url) for name, url in links]
-    box.addButton(tr("取消"), QMessageBox.RejectRole)
-    box.exec()
-    for button, url in buttons:
-        if box.clickedButton() is button:
-            self._open_url(url)
-            break
+    dialog = QDialog(self)
+    dialog.setWindowTitle(tr("网盘下载"))
+    dialog.setMinimumSize(500, 315)
+    if hasattr(self, "_current_style_sheet"):
+        dialog.setStyleSheet(self._current_style_sheet())
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(24, 20, 24, 20)
+    layout.setSpacing(10)
+
+    for name, url in links:
+        card = QFrame()
+        card.setObjectName("netdiskOption")
+        card.setStyleSheet(themed_style(
+            "QFrame#netdiskOption{background:#161b22;border:1px solid #30363d;border-radius:8px}"
+        ))
+        row = QHBoxLayout(card)
+        row.setContentsMargins(15, 11, 15, 11)
+        row.setSpacing(12)
+        description = QVBoxLayout()
+        description.setSpacing(4)
+        title = QLabel(name)
+        title.setStyleSheet(themed_style("font-size:15px;font-weight:600;color:#f0f6fc"))
+        description.addWidget(title)
+        domain = QLabel(urlsplit(url).netloc)
+        domain.setStyleSheet(themed_style("color:#8b949e"))
+        description.addWidget(domain)
+        row.addLayout(description, 1)
+        open_button = QPushButton(tr("打开网盘"))
+        open_button.setAccessibleName(f"打开{name}")
+        open_button.setStyleSheet(themed_style(
+            "QPushButton{background:#161b22;border:1px solid #58a6ff;color:#58a6ff;"
+            "border-radius:6px;padding:7px 14px}"
+            "QPushButton:hover{background:#30363d}"
+        ))
+
+        def open_netdisk(_checked=False, *, target_url=url):
+            dialog.accept()
+            self._open_url(target_url)
+
+        open_button.clicked.connect(open_netdisk)
+        row.addWidget(open_button, 0, Qt.AlignVCenter)
+        layout.addWidget(card)
+
+    fit_dialog_to_available_screen(dialog, QSize(650, 390))
+    dialog.exec()
+    return dialog
 
 
 def _open_url(self, url):
@@ -564,6 +725,7 @@ class UpdateControllerMixin:
     _open_bilibili_homepage = _open_bilibili_homepage
     _open_project_homepage = _open_project_homepage
     _open_support_homepage = _open_support_homepage
+    _open_discord_group = _open_discord_group
     _show_group_chat_notice = _show_group_chat_notice
     _show_netdisk_download_dialog = _show_netdisk_download_dialog
     _open_url = _open_url

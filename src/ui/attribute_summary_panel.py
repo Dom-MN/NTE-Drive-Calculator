@@ -57,9 +57,9 @@ def attribute_summary_weight_color(weight: float) -> str:
     if value < 0.3:
         return theme_color("#8b949e")
     if value < 0.5:
-        return "#58a6ff"
-    if value < 0.7:
         return "#56d364"
+    if value < 0.7:
+        return "#58a6ff"
     if value < 0.85:
         return "#d2991d"
     return "#f0883e"
@@ -170,6 +170,8 @@ class AttributeSummaryPanel(QFrame):
             str,
             tuple[Sequence[AttributeSummaryRow], Sequence[AttributeSummaryRow]],
         ] | None = None,
+        comparison_titles: tuple[str, str, str] = ("旧", "新", "变化"),
+        header_control: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._role_name = str(role_name)
@@ -187,6 +189,7 @@ class AttributeSummaryPanel(QFrame):
                 comparison_rows_by_mode or {}
             ).items()
         }
+        self._comparison_titles = tuple(str(title) for title in comparison_titles)
         self._mode_labels = {
             "equipment": "空幕属性汇总",
             "character": "角色属性汇总",
@@ -229,6 +232,8 @@ class AttributeSummaryPanel(QFrame):
         self._more_button.clicked.connect(self.show_details)
         header.addWidget(self._more_button)
         header.addStretch()
+        if header_control is not None:
+            header.addWidget(header_control)
         root.addLayout(header)
 
         self._content_host = QWidget()
@@ -454,7 +459,7 @@ class AttributeSummaryPanel(QFrame):
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-        for index, title in enumerate(("旧", "新", "变化")):
+        for index, title in enumerate(self._comparison_titles):
             layout.addWidget(
                 self._comparison_column(title, aligned, index, weights), 1
             )

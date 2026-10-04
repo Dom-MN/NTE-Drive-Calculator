@@ -516,23 +516,31 @@ class CharacterProfileDaoMixin(UserDataDaoMixinHost):
                 "DELETE FROM character_profile WHERE character_id = ?",
                 (raw_character_id,),
             )
+            observed = connection.execute(
+                "DELETE FROM character_profile_observation WHERE character_id = ?", (raw_character_id,),
+            )
             connection.commit()
         except sqlite3.Error as exc:
             connection.rollback()
             raise UserDataError("无法重置角色养成指针") from exc
-        return bool(cursor.rowcount)
+        return bool(cursor.rowcount or observed.rowcount)
 
     def reset_all_character_profiles(self) -> int:
         """删除当前账号全部角色养成指针，保留额外形状与基础权重。"""
 
         connection = self._db()
         try:
-            cursor = connection.execute("DELETE FROM character_profile")
+            count = int(connection.execute(
+                "SELECT COUNT(*) FROM (SELECT character_id FROM character_profile UNION "
+                "SELECT character_id FROM character_profile_observation)"
+            ).fetchone()[0])
+            connection.execute("DELETE FROM character_profile_observation")
+            connection.execute("DELETE FROM character_profile")
             connection.commit()
         except sqlite3.Error as exc:
             connection.rollback()
             raise UserDataError("无法重置全部角色养成指针") from exc
-        return int(cursor.rowcount)
+        return count
 
     def save_character_profile(
         self,
@@ -613,8 +621,8 @@ class CharacterProfileDaoMixin(UserDataDaoMixinHost):
                 raise UserDataValidationError("selected_awaken_effect_ids 不能重复")
             normalized_awaken_effects.append(normalized)
         selection_initialized = bool(awakening_selection_initialized)
-        if selection_initialized and len(normalized_awaken_effects) != raw_awakening:
-            raise UserDataValidationError("觉醒等级必须等于已选择的普通觉醒数量")
+        if selection_initialized and len(normalized_awaken_effects) > raw_awakening:
+            raise UserDataValidationError("已选择的普通觉醒数量不能超过觉醒等级")
 
         connection = self._db()
         now = _utc_now()
@@ -654,6 +662,9 @@ class CharacterProfileDaoMixin(UserDataDaoMixinHost):
                     int(bool(likeability_level_10_enabled)),
                     int(selection_initialized), now, now,
                 ),
+            )
+            connection.execute(
+                "DELETE FROM character_profile_observation WHERE character_id = ?", (raw_character_id,),
             )
             connection.execute(
                 "DELETE FROM character_profile_skill WHERE character_id = ?",

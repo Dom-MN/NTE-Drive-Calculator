@@ -91,6 +91,15 @@ class _FixtureBuilder(ProgressionImportMixin):
             "item_catalog": {
                 "MatA": self._item("材料甲", "mat_a"),
                 "MatB": self._item("材料乙", "mat_b"),
+                "WeaponUpMaterial_lv1": self._fork_exp_item(
+                    "淡色染剂", "weapon_exp_1", 500, 150,
+                ),
+                "WeaponUpMaterial_lv2": self._fork_exp_item(
+                    "无彩染剂", "weapon_exp_2", 2500, 750,
+                ),
+                "WeaponUpMaterial_lv3": self._fork_exp_item(
+                    "混沌染剂", "weapon_exp_3", 10000, 3000,
+                ),
             },
             "capital_item_catalog": {
                 "Fons": self._item("方斯", "item_Fons_name"),
@@ -208,6 +217,25 @@ class _FixtureBuilder(ProgressionImportMixin):
             "ItemQuality": "EItemQuality::ITEM_QUALITY_GREEN",
             "ItemIcon": {"AssetPathName": f"/Game/UI/{key}.{key}"},
         }
+
+    @classmethod
+    def _fork_exp_item(
+        cls,
+        name: str,
+        key: str,
+        experience: int,
+        cost: int,
+    ):
+        item = cls._item(name, key)
+        item.update({
+            "ItemType": "EItemType::ITEM_TYPE_FORK_MATERIAL",
+            "ItemTags": ["DevelopMaterial"],
+            "ElementData": {
+                "EXP": experience,
+                "CostGold": f"gold:{cost}",
+            },
+        })
+        return item
 
     def source_row_id(self, table: str, row_key: str) -> int:
         return self.source_row_ids[(table, str(row_key))]
@@ -361,7 +389,7 @@ class StaticGameProgressionCatalogTest(unittest.TestCase):
             ("方斯", "/Game/Text/ST_Item.ST_Item", "item_Fons_name", "official_item_catalog"),
             fons,
         )
-        self.assertEqual(("Fons", "product_contract"), alias)
+        self.assertEqual(("Gold", "product_contract"), alias)
         self.assertIsNone(self.connection.execute(
             "SELECT item_id FROM progression_item WHERE item_id = '0'"
         ).fetchone())
@@ -372,6 +400,43 @@ class StaticGameProgressionCatalogTest(unittest.TestCase):
         self.assertEqual(
             ("S", "DT_ItemQuality_S", "橙色", "Quality_Orange"),
             quality,
+        )
+
+    def test_fork_exp_materials_keep_value_cost_and_item_presentation(self) -> None:
+        self.builder._import_progression_catalog()
+
+        materials = self.connection.execute(
+            """SELECT item_id, experience_value FROM fork_exp_material
+               ORDER BY experience_value"""
+        ).fetchall()
+        costs = self.connection.execute(
+            """SELECT item_id, cost_item_id, quantity
+               FROM fork_exp_material_cost ORDER BY quantity"""
+        ).fetchall()
+        icon = self.connection.execute(
+            """SELECT icon_path FROM progression_item
+               WHERE item_id = 'WeaponUpMaterial_lv3'"""
+        ).fetchone()
+
+        self.assertEqual(
+            [
+                ("WeaponUpMaterial_lv1", 500),
+                ("WeaponUpMaterial_lv2", 2500),
+                ("WeaponUpMaterial_lv3", 10000),
+            ],
+            materials,
+        )
+        self.assertEqual(
+            [
+                ("WeaponUpMaterial_lv1", "Gold", 150),
+                ("WeaponUpMaterial_lv2", "Gold", 750),
+                ("WeaponUpMaterial_lv3", "Gold", 3000),
+            ],
+            costs,
+        )
+        self.assertEqual(
+            ("/Game/UI/weapon_exp_3.weapon_exp_3",),
+            icon,
         )
 
     def test_readonly_dao_resolves_alias_then_exact_case_canonical(self) -> None:
@@ -404,7 +469,7 @@ class StaticGameProgressionCatalogTest(unittest.TestCase):
                     "gameplay_effect", "GE_Internal_Only"
                 )
 
-        self.assertEqual(("Fons", "方斯"), (cost.canonical_id, cost.display_name))
+        self.assertEqual(("Gold", "甲硬币"), (cost.canonical_id, cost.display_name))
         self.assertEqual(
             ("Gold", "甲硬币"),
             (capital.canonical_id, capital.display_name),
@@ -544,7 +609,7 @@ class StaticGameProgressionCatalogTest(unittest.TestCase):
             statuses,
         )
         self.assertEqual(("MatA", 6), exact)
-        self.assertEqual(("Fons", 4000), currency)
+        self.assertEqual(("Gold", 4000), currency)
         self.assertEqual(("sequence_not_deterministic",), partial_gap)
 
     def test_failed_import_rolls_back_all_catalog_rows_and_can_retry(self) -> None:

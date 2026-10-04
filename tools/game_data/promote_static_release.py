@@ -21,12 +21,32 @@ try:
         SCHEMA_VERSION,
         write_static_manifest,
     )
+    from .upgrade_static_database import (
+        PROVENANCE_FILENAME,
+        validate_upgrade_provenance,
+    )
+    from .storage_repack import (
+        PROVENANCE_FILENAME as STORAGE_REPACK_PROVENANCE_FILENAME,
+        validate_repack_provenance,
+    )
+    from .repair_reference_gold_catalog import validate_gold_fix_provenance
+    from .reference_progression_currency import validate_reference_progression_currency
 except ImportError:  # 支持直接运行
     from static_database_build_support import (
         IMPORTER_VERSION,
         SCHEMA_VERSION,
         write_static_manifest,
     )
+    from upgrade_static_database import (
+        PROVENANCE_FILENAME,
+        validate_upgrade_provenance,
+    )
+    from storage_repack import (
+        PROVENANCE_FILENAME as STORAGE_REPACK_PROVENANCE_FILENAME,
+        validate_repack_provenance,
+    )
+    from repair_reference_gold_catalog import validate_gold_fix_provenance
+    from reference_progression_currency import validate_reference_progression_currency
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +54,7 @@ DEFAULT_TARGET_DIR = ROOT / "data"
 DATABASE_FILENAME = "game_static.sqlite3"
 MANIFEST_FILENAME = "manifest.json"
 REPORT_RELATIVE_PATH = Path("report") / "static_database_report.json"
+GOLD_FIX_PROVENANCE_FILENAME = "gold_fix_provenance.json"
 MIB_BYTES = 1024 * 1024
 DATABASE_WARNING_BYTES = 95 * MIB_BYTES
 DATABASE_REPOSITORY_BUDGET_BYTES = 96 * MIB_BYTES
@@ -137,6 +158,11 @@ def _database_summary(path: Path) -> dict[str, Any]:
             source_files = connection.execute(
                 "SELECT relative_path, sha256 FROM source_file ORDER BY relative_path"
             ).fetchall()
+            scope_rows = connection.execute("SELECT scope FROM dataset_scope").fetchall() if connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE name = 'dataset_scope'"
+            ).fetchone() else [("game",)]
+            if len(scope_rows) != 1 or scope_rows[0][0] not in {"game", "role_page", "reference"}:
+                raise StaticReleasePromotionError("候选数据库缺少唯一的用途声明")
     except sqlite3.Error as exc:
         raise StaticReleasePromotionError(f"无法审计候选数据库：{path}") from exc
 
@@ -156,12 +182,13 @@ def _database_summary(path: Path) -> dict[str, Any]:
         "importer_version": int(importer_version),
         "built_at_utc": str(built_at_utc),
         "schema_version": int(schema_row[0] if schema_row else 0),
+        "catalog_scope": scope_rows[0][0],
         "source_files": [(str(row[0]), str(row[1])) for row in source_files],
     }
 
 
 def _source_path(content_root: Path, relative_path: str) -> Path:
-    normalized = relative_path
+    normalized = relative_path.split("#", 1)[0]
     prefix = "combat_blueprint/"
     if normalized.startswith(prefix):
         normalized = normalized[len(prefix) :]
@@ -210,6 +237,8 @@ def validate_manifest(
     summary: dict[str, Any],
 ) -> dict[str, Any]:
     manifest = _read_json_object(manifest_path, "候选 manifest")
+    if manifest.get("catalog_scope", "game") != summary.get("catalog_scope", "game"):
+        raise StaticReleasePromotionError("候选 manifest 与数据库用途不一致")
     database = manifest.get("database")
     build_tool = manifest.get("build_tool")
     if not isinstance(database, dict) or not isinstance(build_tool, dict):
@@ -408,7 +437,80 @@ def _validate_candidate_database(
             "候选 importer 与当前代码不一致："
             f"候选={summary['importer_version']}，代码={IMPORTER_VERSION}"
         )
-    validate_source_files(summary["source_files"], content_root)
+    if summary.get("catalog_scope") == "reference":
+        with closing(_readonly_connection(database_path)) as connection:
+            try:
+                validate_reference_progression_currency(connection)
+            except ValueError as exc:
+                raise StaticReleasePromotionError(f"独立图鉴养成货币校验失败：{exc}") from exc
+    if summary.get("catalog_scope") not in {"role_page", "reference"}:
+        from tools.game_data.build_analysis_catalogs import validate_catalog_inputs
+
+        validate_catalog_inputs(database_path)
+    provenance_path = candidate_dir / PROVENANCE_FILENAME
+    repack_path = candidate_dir / STORAGE_REPACK_PROVENANCE_FILENAME
+    gold_fix_path = candidate_dir / GOLD_FIX_PROVENANCE_FILENAME
+    if sum(path.is_file() for path in (provenance_path, repack_path, gold_fix_path)) > 1:
+        raise StaticReleasePromotionError("候选只能声明一种特殊晋升来源")
+    upgrade_provenance = None
+    storage_repack_provenance = None
+    gold_fix_provenance = None
+    if gold_fix_path.is_file():
+        baseline_database_value = config.get("baseline_database_path")
+        baseline_manifest_value = config.get("baseline_manifest_path")
+        if not isinstance(baseline_database_value, str) or not isinstance(baseline_manifest_value, str):
+            raise StaticReleasePromotionError("甲硬币修复配置缺少基线数据库或 manifest")
+        try:
+            gold_fix_provenance = validate_gold_fix_provenance(
+                candidate_database=database_path,
+                provenance_path=gold_fix_path,
+                baseline_database=Path(baseline_database_value).expanduser().resolve(),
+                baseline_manifest=Path(baseline_manifest_value).expanduser().resolve(),
+                official_source_root=content_root,
+            )
+        except (OSError, RuntimeError, sqlite3.Error, ValueError, KeyError) as exc:
+            raise StaticReleasePromotionError(f"甲硬币修复 provenance 校验失败：{exc}") from exc
+    elif repack_path.is_file():
+        baseline_database_value = config.get("storage_baseline_database_path")
+        baseline_manifest_value = config.get("storage_baseline_manifest_path")
+        if not isinstance(baseline_database_value, str) or not baseline_database_value:
+            raise StaticReleasePromotionError("物理压缩配置缺少 storage_baseline_database_path")
+        if not isinstance(baseline_manifest_value, str) or not baseline_manifest_value:
+            raise StaticReleasePromotionError("物理压缩配置缺少 storage_baseline_manifest_path")
+        try:
+            storage_repack_provenance = validate_repack_provenance(
+                database_path,
+                repack_path,
+                Path(baseline_database_value).expanduser().resolve(),
+                Path(baseline_manifest_value).expanduser().resolve(),
+            )
+        except (OSError, RuntimeError, sqlite3.Error, ValueError) as exc:
+            raise StaticReleasePromotionError(f"物理压缩 provenance 校验失败：{exc}") from exc
+    elif provenance_path.is_file():
+        baseline_database_value = config.get("baseline_database_path")
+        baseline_manifest_value = config.get("baseline_manifest_path")
+        if not isinstance(baseline_database_value, str) or not baseline_database_value:
+            raise StaticReleasePromotionError(
+                "增量候选配置缺少 baseline_database_path"
+            )
+        if not isinstance(baseline_manifest_value, str) or not baseline_manifest_value:
+            raise StaticReleasePromotionError(
+                "增量候选配置缺少 baseline_manifest_path"
+            )
+        try:
+            upgrade_provenance = validate_upgrade_provenance(
+                candidate_database=database_path,
+                provenance_path=provenance_path,
+                baseline_database=Path(baseline_database_value).expanduser().resolve(),
+                baseline_manifest=Path(baseline_manifest_value).expanduser().resolve(),
+                official_source_root=content_root,
+            )
+        except (OSError, RuntimeError, sqlite3.Error, ValueError) as exc:
+            raise StaticReleasePromotionError(
+                f"增量候选 provenance 校验失败：{exc}"
+            ) from exc
+    else:
+        validate_source_files(summary["source_files"], content_root)
     return {
         "candidate_dir": candidate_dir,
         "database_path": database_path,
@@ -416,6 +518,9 @@ def _validate_candidate_database(
         "report_path": candidate_dir / REPORT_RELATIVE_PATH,
         "summary": summary,
         "database_size_bytes": database_size,
+        "upgrade_provenance": upgrade_provenance,
+        "storage_repack_provenance": storage_repack_provenance,
+        "gold_fix_provenance": gold_fix_provenance,
     }
 
 
@@ -468,6 +573,9 @@ def verify_candidate(
     summary = dict(candidate["summary"])
     validate_manifest(database_path, manifest_path, summary)
     validate_final_report(database_path, report_path, summary)
+    if summary.get("catalog_scope") in {"role_page", "reference"}:
+        from src.integrations.role_catalog_release import read_role_catalog
+        read_role_catalog(database_path.parent)
     return {
         "verified": True,
         "dataset_id": summary["dataset_id"],
@@ -508,6 +616,30 @@ def promote_candidate(
     )
     source_database = Path(finalized["database_path"])
     source_manifest = Path(finalized["manifest_path"])
+    repack_path = resolved_candidate_dir / STORAGE_REPACK_PROVENANCE_FILENAME
+    if repack_path.is_file():
+        provenance = _read_json_object(repack_path, "物理压缩 provenance")
+        current_database = target_dir / DATABASE_FILENAME
+        if not current_database.is_file() or sha256(current_database) != provenance.get(
+            "baseline_database_sha256"
+        ):
+            raise StaticReleasePromotionError("正式库已变化，物理压缩候选必须重新生成")
+    gold_fix_path = resolved_candidate_dir / GOLD_FIX_PROVENANCE_FILENAME
+    if gold_fix_path.is_file():
+        provenance = _read_json_object(gold_fix_path, "甲硬币修复 provenance")
+        current_database = target_dir / DATABASE_FILENAME
+        if not current_database.is_file() or sha256(current_database) != provenance.get(
+            "baseline_sha256"
+        ):
+            raise StaticReleasePromotionError("正式库已变化，甲硬币修复候选必须重新生成")
+    role_target = DEFAULT_TARGET_DIR / "role_catalog"
+    if finalized["summary"].get("catalog_scope") in {"role_page", "reference"}:
+        if target_dir != role_target.resolve():
+            raise StaticReleasePromotionError("角色目录只能晋升到 data/role_catalog，不能替换战报数据集")
+        from tools.game_data.promote_role_catalog import promote_role_catalog
+        return promote_role_catalog(finalized, target_dir)
+    elif target_dir == role_target.resolve():
+        raise StaticReleasePromotionError("完整游戏数据集不能替换独立角色目录")
     target_dir.mkdir(parents=True, exist_ok=True)
     target_database = target_dir / DATABASE_FILENAME
     target_manifest = target_dir / MANIFEST_FILENAME

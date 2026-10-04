@@ -68,32 +68,24 @@ class ProjectMetadataTests(unittest.TestCase):
                     config_path,
                 )
 
-    def test_component_record_hash_parser_is_label_specific(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            record = Path(temporary) / "COMPONENT.md"
-            record.write_text(
-                "- 目标 SHA-256：`" + "A" * 64 + "`\n"
-                "- 其他 SHA-256：`" + "B" * 64 + "`\n",
-                encoding="utf-8",
-            )
-
-            self.assertEqual(
-                "A" * 64,
-                prepare_release._recorded_hash(record, "目标 SHA-256"),
-            )
 
     def test_manual_commands_do_not_execute_release_actions(self):
         with patch("builtins.print") as mocked_print:
             prepare_release.print_manual_commands(
                 __version__,
                 prepare_release.INSTALLER_PATH,
-                Path("notes.md"),
             )
 
         output = "\n".join(str(call.args[0]) for call in mocked_print.call_args_list)
         self.assertIn(f"git tag {__version__}", output)
         self.assertIn(f"git push origin {__version__}", output)
         self.assertIn(f"gh release create {__version__}", output)
+        self.assertNotIn("--notes-file", output)
+
+    def test_release_tool_has_no_notes_document_argument(self):
+        parsed = prepare_release.parse_args([])
+
+        self.assertFalse(hasattr(parsed, "notes_file"))
 
 
 if __name__ == "__main__":

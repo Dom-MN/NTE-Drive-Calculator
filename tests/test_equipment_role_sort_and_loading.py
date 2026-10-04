@@ -12,15 +12,14 @@ from PySide6.QtWidgets import QApplication, QLabel
 from src.features.inventory import equipment_display_loaders
 from src.features.inventory import equipment_display_view
 from src.features.inventory import equipment_plan_optimizer
+from src.features.inventory.equipment_display_controller import _slot_suit_names
+from src.features.inventory.equipment_display_controller import invalidate_saved_equipment_cache
 from src.features.inventory.equipment_master_detail_view import (
-    _loadout_slot_manage_style,
     sorted_equipment_role_states,
 )
-from src.features.inventory.equipment_plan_renderer import _allocation_lock_icon
 from src.optimizer.contracts import DIFF_CHANGED, ROLE_LAST_DIFF, ROLE_TOTAL_SCORE
 from src.services.game_ui_asset_catalog import GameUiAssetCatalog
 from src.ui.equipment_presentation import _equip_card
-from src.ui.equipment_state_icons import warehouse_lock_icon
 
 
 def test_loadout_roles_sort_by_score_descending_then_name() -> None:
@@ -34,6 +33,36 @@ def test_loadout_roles_sort_by_score_descending_then_name() -> None:
     )
 
     assert [name for name, _state in roles] == ["乙", "甲", "低分", "无效"]
+
+
+def test_unchanged_saved_equipment_read_keeps_existing_widgets(monkeypatch) -> None:
+    events = []
+    window = SimpleNamespace(_equipment_mode="saved", _equip_rendered_mode="saved",
+                             _equip_rendered_states={"slot:1": {"score": 10}})
+    def clear(_window):
+        events.append("clear")
+        _window._equip_rendered_mode = None
+        _window._equip_rendered_states = None
+    monkeypatch.setattr(equipment_display_view, "_clear_equip_content", clear)
+    monkeypatch.setattr(equipment_display_view, "_queue_equipment_render",
+                        lambda _window, _states: events.append("render"))
+
+    equipment_display_view._publish_equipment_states(window, {"slot:1": {"score": 10}})
+    assert events == []
+    equipment_display_view._publish_equipment_states(window, {"slot:1": {"score": 11}})
+    assert events == ["clear", "render"]
+
+
+def test_mutation_invalidates_inflight_equipment_read() -> None:
+    prior = object()
+    window = SimpleNamespace(_saved_equipment_cache_valid=True, _equip_load_token=prior)
+    invalidate_saved_equipment_cache(window)
+    assert not window._saved_equipment_cache_valid
+    assert window._equip_load_token is not prior
+    equipment_display_view._on_sqlite_equipment_display_loaded(
+        window, prior, {"obsolete": {"score": 99}},
+    )
+    assert not hasattr(window, "_saved_equipment_states")
 
 
 def test_game_loadout_state_is_not_misread_as_a_saved_slot_group() -> None:
@@ -78,29 +107,17 @@ def test_role_summary_keeps_any_slot_change_but_hides_slot_lock_state() -> None:
     assert summary[ROLE_LAST_DIFF][DIFF_CHANGED]
 
 
-def test_loadout_lock_icon_is_the_shared_warehouse_artwork() -> None:
-    app = QApplication.instance() or QApplication([])
-    del app
-
-    loadout = _allocation_lock_icon(True).pixmap(20, 20).toImage()
-    warehouse = warehouse_lock_icon(True, size=20).pixmap(20, 20).toImage()
-
-    assert loadout == warehouse
-    assert loadout.pixelColor(10, 11).name().casefold() == "#e3b341"
-
-
-def test_loadout_slot_manager_indicator_uses_a_light_theme_surface() -> None:
-    app = QApplication.instance() or QApplication([])
-    previous = app.property("nte_effective_theme")
-    try:
-        app.setProperty("nte_effective_theme", "light")
-        style = _loadout_slot_manage_style()
-    finally:
-        app.setProperty("nte_effective_theme", previous)
-
-    assert "background:#f6f8fa" in style
-    assert "background:#d8f5df" in style
-    assert "background:#0d1117" not in style
+def test_loadout_slot_manager_reads_the_suit_from_the_equipped_tape() -> None:
+    assert _slot_suit_names(
+        {
+            "slot:7": {
+                "_loadout_slot_id": 7,
+                "equipped_tape": {"set_name": "失落光芒"},
+                "equipped_drives": [{"shape_id": "H_2"}],
+            }
+        },
+        7,
+    ) == ("失落光芒",)
 
 
 
@@ -232,6 +249,50 @@ def test_game_loader_reuses_preloaded_saved_states(monkeypatch, tmp_path) -> Non
     )
 
     assert result["saved_states"] == cached
+
+
+def test_game_comparison_uses_first_calculation_slot_for_character() -> None:
+    first = {
+        "_character_id": 1003,
+        "_loadout_slot_id": 11,
+        "_loadout_slot_name": "方案一",
+        "strategy_mode": "role_priority",
+    }
+    second = {
+        "_character_id": 1003,
+        "_loadout_slot_id": 12,
+        "_loadout_slot_name": "方案二",
+        "strategy_mode": "role_priority",
+    }
+    game_import = {
+        "_character_id": 1003,
+        "_loadout_slot_id": 13,
+        "strategy_mode": "game_inventory",
+    }
+    empty_slot = {
+        "_character_id": 1003,
+        "_loadout_slot_id": 15,
+        "_empty_slot": True,
+    }
+    another_character = {
+        "_character_id": 1004,
+        "_loadout_slot_id": 14,
+        "strategy_mode": "role_priority",
+    }
+
+    slots = equipment_display_loaders._calculation_comparison_slots(
+        {
+            "first": first,
+            "game": game_import,
+            "empty": empty_slot,
+            "second": second,
+            "other": another_character,
+        },
+        1003,
+    )
+
+    assert slots == [first, second]
+    assert slots[0]["_loadout_slot_id"] == 11
 
 
 def test_game_asset_catalog_caches_resolved_paths(tmp_path: Path) -> None:

@@ -36,7 +36,7 @@ from src.services.game_ui_asset_catalog import GameUiAssetCatalog
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 from src.ui.widgets import SearchableComboBox
 
-@lru_cache(maxsize=96)
+@lru_cache(maxsize=512)
 def _official_role_portrait(
     role_name: str,
     game_ui_asset_root: Path,
@@ -306,7 +306,7 @@ def render_identify_result_page(window, pages: list[dict]):
             build_identify_result_row(
                 rank,
                 row,
-                game_ui_asset_root=window.app_context.paths.asset_dir / "game_ui",
+                game_ui_asset_root=window.app_context.paths.game_ui_asset_root,
             )
         )
     window.ident_result_layout.addStretch()

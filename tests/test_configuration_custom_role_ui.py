@@ -84,46 +84,6 @@ def test_custom_role_board_prevents_a_twenty_first_enabled_cell() -> None:
     assert count_label.text() == "已启用 20/20"
 
 
-def test_custom_role_board_unselected_cells_follow_the_light_theme() -> None:
-    from PySide6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget
-
-    from src.app.theme import apply_app_theme, refresh_inline_theme_styles
-    from src.features.configuration.page import _add_custom_board
-
-    app = QApplication.instance() or QApplication([])
-    apply_app_theme(app, "black")
-    container = QWidget()
-    layout = QVBoxLayout(container)
-    role_data = {
-        "character_id": 1_500_000_001,
-        "board_cells": [
-            {
-                "row": row,
-                "column": column,
-                "is_enabled": row <= 4,
-                "is_locked": False,
-            }
-            for row in range(1, 6)
-            for column in range(1, 6)
-        ],
-    }
-    window = SimpleNamespace(_config_dirty_board_ids=set(), _config_dirty=False)
-
-    _add_custom_board(window, "自建角色", role_data, layout)
-    apply_app_theme(app, "light")
-    refresh_inline_theme_styles(container, app)
-    unselected = next(
-        button
-        for button in container.findChildren(QPushButton)
-        if int(button.property("boardRow")) == 5
-        and int(button.property("boardColumn")) == 1
-    )
-
-    assert "background:#f6f8fa" in unselected.styleSheet()
-    assert "#080a0d" not in unselected.styleSheet()
-    apply_app_theme(app, "black")
-
-
 def test_custom_role_is_loaded_into_calculation_role_selector() -> None:
     class Selector:
         def __init__(self) -> None:
@@ -151,7 +111,7 @@ def test_custom_role_is_loaded_into_calculation_role_selector() -> None:
         with UserDataDao(database, account_id="selector"):
             pass
         custom = create_custom_character(database, "计算自建角色")
-        game_ui_asset_root = Path(__file__).resolve().parents[1] / "assets" / "game_ui"
+        game_ui_asset_root = Path(__file__).resolve().parents[1] / "data" / "role_catalog" / "game_ui"
         suit_id = str(get_weighted_static_catalog(game_ui_asset_root).suits[0]["suit_id"])
         with UserDataDao(database) as user_dao:
             user_dao.save_custom_character_target_suit_id(

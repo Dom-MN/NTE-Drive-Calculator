@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "catalog_scope": "reference",
+  "database": {
+    "filename": "game_static.sqlite3",
+    "dataset_id": "cn_retail_reference_20260924_9030b45b",
+    "schema_version": 38,
+    "size_bytes": 28160000,
+    "sha256": "500414EADB0EB59710271D5D064616523089EACB588D05BB0D784E570E0DD524",
+    "generated_at_utc": "2026-09-27T04:41:10+00:00",
+    "source_payloads_omitted": true
+  },
+  "build_tool": {
+    "path": "tools/game_data/build_reference_catalog.py",
+    "importer_version": 49
+  }
+}

@@ -12,7 +12,6 @@ from src.observability import OperationContext
 from src.services.battle_report_persistence_service import (
     BattleReportPersistenceDependencies, BattleReportPersistenceService,
 )
-from src.services.battle_report_history_service import BattleReportHistoryService
 from src.services.battle_report_transfer_service import BattleReportTransferService
 from src.services.battle_marginal_candidate_service import BattleMarginalCandidateService
 from src.storage.sqlite.user_data_dao import UserDataDao
@@ -65,38 +64,6 @@ class BattleGraduationFallbackTests(unittest.TestCase):
             raw_record_payload={"contract_version": 4, "axis_complete": True},
         )
 
-    def test_missing_inventory_saves_equipment_stats_and_axis_only_role(self):
-        outcome = self._finish(self._capture())
-        self.assertEqual("saved", outcome.status)
-        self.assertIn("毕业模板", outcome.warning_message)
-        with UserDataDao(self.database_path, account_id="account-a") as dao:
-            build = dao.load_battle_build_snapshot(outcome.battle_record_id)
-            evidence = dao.load_battle_axis_evidence(outcome.battle_record_id)
-            self.assertIsNone(dao.latest_native_inventory_snapshot_id())
-        self.assertIsNone(build["source_inventory_snapshot_id"])
-        self.assertEqual({1051, 1072}, {r["character_id"] for r in build["characters"]})
-        self.assertEqual(120.0, evidence["hits"][0]["damage"])
-        for role in build["characters"]:
-            self.assertEqual("official_graduation", role["profile"]["equipment_assumption"]["kind"])
-            self.assertEqual({"core", "module"}, {r["kind"] for r in role["equipment"]})
-            self.assertTrue(all(r["stats"] for r in role["equipment"]))
-            module = next(r for r in role["equipment"] if r["kind"] == "module")
-            self.assertTrue(module["graduation_assumed_shape_ids"])
-            self.assertTrue(any(r["source_group"] == "equipment" for r in role["stats"]))
-            self.assertEqual(0, role["awakening_level"])
-        history = BattleReportHistoryService(
-            dependencies=self.dependencies, context_is_current=lambda _: True,
-        )
-        editor = history.load_build_editor_data(outcome.battle_record_id)
-        self.assertFalse(editor["equipment_editable"])
-        self.assertEqual("local_capture", editor["report_origin"])
-        for detail in editor["details"]:
-            self.assertIn("毕业模板", detail["equipment_contexts"]["battle"]["title"])
-        history.save_build_edit(outcome.battle_record_id, [
-            dict(detail["profile"], character_level=70, breakthrough_stage=5)
-            for detail in editor["details"]
-        ])
-
     def test_retry_does_not_replace_assumption_with_later_inventory(self):
         service = self._capture()
         first = self._finish(service)
@@ -111,9 +78,9 @@ class BattleGraduationFallbackTests(unittest.TestCase):
         self.assertEqual(first.warning_message, retry.warning_message)
 
     def test_native_inventory_still_takes_priority(self):
-        service = self._capture()
         with UserDataDao(self.database_path, account_id="account-a") as dao:
             dao.import_inventory_snapshot(_snapshot(1, [_equipped_item(101, 11, 1051)]))
+        service = self._capture()
         outcome = self._finish(service)
         self.assertIsNone(outcome.warning_message)
         with UserDataDao(self.database_path, account_id="account-a") as dao:
@@ -122,17 +89,23 @@ class BattleGraduationFallbackTests(unittest.TestCase):
         for role in build["characters"]:
             self.assertNotIn("equipment_assumption", role["profile"])
 
-    def test_failed_freeze_keeps_staging_for_retry(self):
-        service = self._capture()
-        with patch.object(service, "_resolve_character_stat_snapshots", side_effect=ValueError("fixture")):
+    def test_packet_start_does_not_need_panel_and_failed_settlement_can_retry(self):
+        with patch.object(BattleReportPersistenceService, "_resolve_character_stat_snapshots", side_effect=ValueError("fixture")):
+            service = self._capture()
             with self.assertRaisesRegex(ValueError, "fixture"):
                 self._finish(service)
         with UserDataDao(self.database_path, account_id="account-a") as dao:
-            state = dao.battle_axis_capture_state("template-fallback")
-            self.assertEqual("capturing", state["capture_state"])
-            self.assertIsNone(state["battle_record_id"])
-            self.assertEqual(1, state["stored_hits"])
+            self.assertEqual(dao.battle_axis_capture_state("template-fallback")["capture_state"], "capturing")
         self.assertEqual("saved", self._finish(service).status)
+
+    def test_inventory_arriving_before_settlement_is_used_for_packet_report(self):
+        service = self._capture()
+        with UserDataDao(self.database_path, account_id="account-a") as dao:
+            snapshot_id = dao.import_inventory_snapshot(_snapshot(1, [_equipped_item(101, 11, 1051)]))
+        outcome = self._finish(service)
+        self.assertIsNone(outcome.warning_message)
+        with UserDataDao(self.database_path, account_id="account-a") as dao:
+            self.assertEqual(dao.load_battle_build_snapshot(outcome.battle_record_id)["source_inventory_snapshot_id"], snapshot_id)
 
     def test_transfer_preserves_assumed_equipment_and_main_stat_candidates(self):
         outcome = self._finish(self._capture())

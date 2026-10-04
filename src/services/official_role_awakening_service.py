@@ -48,7 +48,7 @@ def active_awaken_effects(
     """Return selected normal effects plus count-gated resonance effects."""
 
     selected_ids = set(resolve_selected_awaken_effect_ids(profile, awakenings))
-    selected_count = len(selected_ids)
+    awakening_level = int(profile.get("awakening_level") or 0)
     active: list[Mapping[str, Any]] = []
     for effect in awakenings:
         effect_id = str(effect.get("effect_id") or "")
@@ -59,7 +59,7 @@ def active_awaken_effects(
         if awaken_type != "Awaken_Resonance":
             continue
         match = _RESONANCE_SUFFIX.search(effect_id)
-        if match is not None and selected_count >= int(match.group(1)):
+        if match is not None and awakening_level >= int(match.group(1)):
             active.append(effect)
     return tuple(active)
 
@@ -89,7 +89,7 @@ def resolve_awakening_profile(
     selected = resolve_selected_awaken_effect_ids(profile, awakenings)
     return {
         **dict(profile),
-        "awakening_level": len(selected),
+        "awakening_level": int(profile.get("awakening_level") or 0),
         "selected_awaken_effect_ids": list(selected),
         "awakening_selection_initialized": True,
     }

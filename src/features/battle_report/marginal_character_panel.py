@@ -194,12 +194,7 @@ class BattleMarginalCharacterPanel(QFrame):
         title = QLabel(tr("人物面板"))
         title.setObjectName("cardTitle")
         layout.addWidget(title)
-        note = QLabel(
-            tr(
-                "静态面板来自本场冻结角色快照；动态面板按该属性实际关联的公式面板伤害，"
-                "使用伤害发生时的 Buff 后属性加权。无公式关联或动态证据不足时显示“—”。"
-            )
-        )
+        note = QLabel(tr("静态面板取自本场快照；动态证据不足时显示“—”。"))
         note.setObjectName("battleMarginalCharacterPanelNote")
         note.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
         note.setWordWrap(True)

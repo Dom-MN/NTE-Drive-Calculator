@@ -35,7 +35,7 @@ class BattleTargetCatalogServiceTests(unittest.TestCase):
         self.assertEqual(0.2, extreme["resistances"]["psyche"]["resistance_base"])
         self.assertEqual(0.15, damage_buff["property_value"])
         self.assertEqual(2, len(catalog["outer_realm"]))
-        self.assertEqual("炽火灼痕", catalog["outer_realm"][0]["season_buff"]["buff_name_zh"])
+        self.assertEqual("星明如昼", catalog["outer_realm"][0]["season_buff"]["buff_name_zh"])
         self.assertEqual(2, len(catalog["outer_realm"][0]["season_buff"]["components"]))
         self.assertGreater(len(catalog["open_world"]), 0)
 

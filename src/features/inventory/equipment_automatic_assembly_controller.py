@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.features.input_operation_entry import request_input_entry, show_input_unavailable
+
 import threading
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,8 @@ from PySide6.QtWidgets import (
 from src.i18n import tr, display_term
 from src.app.theme import current_style_sheet
 from src.app.workers import WorkerThread
+from src.features.drive_assembly.input_backends import PyAutoGuiMouseBackend
+from src.integrations.operation_guard import bind_execution_guard
 from src.features.drive_assembly.ui_bridge import (
     execute_all_roles_from_current_game_page,
     execute_selected_role_from_current_game_page,
@@ -163,6 +167,8 @@ def _start_automatic_equipment_assembly(
     slot_ids: list[int] | None = None,
 ) -> None:
     """在工作线程中执行逐步游戏界面自动装配。"""
+    if not request_input_entry(window, "interface_input", "自动装配"):
+        return
 
     current_worker = getattr(window, "_automatic_equipment_apply_worker", None)
     if current_worker is not None and current_worker.isRunning():
@@ -179,9 +185,7 @@ def _start_automatic_equipment_assembly(
             slot_ids=slot_ids,
         )
     except Exception as exc:
-        QMessageBox.warning(
-            window, tr("自动装配"), tr("无法读取官方 SQLite 方案：{error}", error=exc)
-        )
+        QMessageBox.warning(window, tr("自动装配"), f"读取已保存方案失败：{exc}")
         return
 
     execution_role_names = list(state)
@@ -215,6 +219,10 @@ def _start_automatic_equipment_assembly(
         )
         return
     stop_requested = threading.Event()
+    execution_guard = bind_execution_guard(
+        getattr(window, "operation_guard", None), should_stop=stop_requested.is_set,
+        generation=getattr(window, "operation_generation", None),
+    )
     if hotkey_manager is not None:
         hotkey_manager.start(owner=hotkey_owner, on_stop=stop_requested.set)
     show_minimized = getattr(window, "showMinimized", None)
@@ -227,6 +235,7 @@ def _start_automatic_equipment_assembly(
             return execute_selected_role_from_current_game_page(
                 state,
                 execution_role_names[0],
+                backend=PyAutoGuiMouseBackend(operation_guard=execution_guard),
                 template_dir=str(template_dir),
                 record_root=record_root,
                 role_name_aliases=aliases,
@@ -234,6 +243,7 @@ def _start_automatic_equipment_assembly(
             )
         return execute_all_roles_from_current_game_page(
             state,
+            backend=PyAutoGuiMouseBackend(operation_guard=execution_guard),
             template_dir=str(template_dir),
             record_root=record_root,
             role_name_aliases=aliases,
@@ -265,11 +275,7 @@ def _start_automatic_equipment_assembly(
         if hotkey_manager is not None:
             hotkey_manager.stop(owner=hotkey_owner)
         _return_to_equipment_after_assembly(window)
-        QMessageBox.critical(
-            window,
-            tr("自动装配失败"),
-            tr("自动装配未能完成：\n{message}", message=message),
-        )
+        show_input_unavailable(window, "自动装配", str(message))
 
     worker.result_ready.connect(on_result)
     worker.error.connect(on_error)
@@ -320,6 +326,8 @@ def _preview_automatic_assemble_role(
     confirmed: bool = False,
 ) -> None:
     """确认后通过游戏界面自动化装配一个角色。"""
+    if not request_input_entry(window, "interface_input", "自动装配"):
+        return
 
     if not confirmed:
         result = QMessageBox.question(
@@ -348,6 +356,8 @@ def _preview_automatic_assemble_all_roles(
     role_names: list[str] | None = None,
 ) -> None:
     """确认后通过游戏界面自动化装配全部已保存角色。"""
+    if not request_input_entry(window, "interface_input", "自动装配"):
+        return
 
     requested_roles = tuple(
         dict.fromkeys(str(name) for name in (role_names or ()))
@@ -380,14 +390,14 @@ def _preview_automatic_assemble_all_roles(
         QMessageBox.warning(
             window,
             tr("自动装配"),
-            tr("无法读取官方 SQLite 方案：{error}", error=exc),
+            f"读取已保存方案失败：{exc}",
         )
         return
     if not selections:
         QMessageBox.information(
             window,
             tr("自动装配"),
-            tr("当前没有来自官方背包快照的已保存方案。请先重新计算并保存。"),
+            tr("当前没有基于原生同步背包的已保存方案。请先重新计算并保存。"),
         )
         return
     result = QMessageBox.question(

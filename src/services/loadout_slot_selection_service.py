@@ -187,8 +187,8 @@ class LoadoutSlotSelectionService:
         )
         if summary is None or summary.get("source") != "nte_core":
             raise UserDataValidationError(
-                tr("[{role} · {slot}] 不来自官方背包快照；极速装配只支持 nte-core 原生 UID",
-                   role=display_term(selection.role_name), slot=selection.slot_name)
+                f"[{selection.role_name} · {selection.slot_name}] 不基于原生同步背包；"
+                "极速装配需要原生同步提供的装备标识"
             )
 
     @staticmethod

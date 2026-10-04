@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from src.i18n import tr
 from src.app.theme import themed_style
+from src.app.window_geometry import fit_dialog_to_available_screen
 from src.domain.battle_report import BattleReportHistoryEntry
 from src.services.game_ui_asset_catalog import GameUiAssetCatalog
 
@@ -69,6 +70,7 @@ class BattleReportHistoryDialog(QDialog):
         self.resize(1120, 650)
         self.setMinimumSize(920, 480)
         self._build()
+        fit_dialog_to_available_screen(self)
 
     def _build(self) -> None:
         layout = QVBoxLayout(self)
@@ -93,9 +95,9 @@ class BattleReportHistoryDialog(QDialog):
         )
         layout.addWidget(self.empty_label)
 
-        self.table = QTableWidget(0, 6, self)
+        self.table = QTableWidget(0, 8, self)
         self.table.setHorizontalHeaderLabels(
-            (tr("角色"), tr("保存时间"), tr("场景"), tr("伤害摘要"), tr("状态"), tr("操作"))
+            ("ID", "类型", "角色", "保存时间", "场景", "伤害摘要", "状态", "操作")
         )
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.NoSelection)
@@ -104,15 +106,17 @@ class BattleReportHistoryDialog(QDialog):
         self.table.setWordWrap(False)
         header = self.table.horizontalHeader()
         header.setSectionsMovable(False)
-        header.setMinimumSectionSize(60)
-        for column in (0, 1, 2, 4, 5):
+        header.setMinimumSectionSize(36)
+        for column in (0, 1, 2, 3, 4, 6, 7):
             header.setSectionResizeMode(column, QHeaderView.Fixed)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
-        self.table.setColumnWidth(0, 218)
-        self.table.setColumnWidth(1, 158)
-        self.table.setColumnWidth(2, 220)
-        self.table.setColumnWidth(4, 98)
-        self.table.setColumnWidth(5, 250)
+        header.setSectionResizeMode(5, QHeaderView.Stretch)
+        self.table.setColumnWidth(0, 42)
+        self.table.setColumnWidth(1, 46)
+        self.table.setColumnWidth(2, 236)
+        self.table.setColumnWidth(3, 158)
+        self.table.setColumnWidth(4, 140)
+        self.table.setColumnWidth(6, 54)
+        self.table.setColumnWidth(7, 188)
         layout.addWidget(self.table, 1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
@@ -124,19 +128,21 @@ class BattleReportHistoryDialog(QDialog):
         self.table.setVisible(bool(entries))
         self.empty_label.setVisible(not entries)
         for row, entry in enumerate(entries):
-            self.table.setCellWidget(row, 0, self._characters_widget(entry))
-            self.table.setItem(row, 1, self._text_item(_local_time(entry.saved_at_utc)))
-            self.table.setItem(row, 2, self._text_item(_scene_label(entry)))
+            self.table.setItem(row, 0, self._text_item(str(entry.battle_record_id)))
+            kind = self._text_item("完整" if entry.native_capture else "部分")
+            kind.setToolTip(tr("战报类型不代表每项计算证据均已齐全；具体缺口以分析结果为准。"))
+            self.table.setItem(row, 1, kind)
+            self.table.setCellWidget(row, 2, self._characters_widget(entry))
+            self.table.setItem(row, 3, self._text_item(_local_time(entry.saved_at_utc)))
+            self.table.setItem(row, 4, self._text_item(_scene_label(entry)))
             summary = (
-                tr("伤害 {damage}  ·  DPS {dps}  ·  {seconds}s  ·  {hits} 命中",
-                   damage=_format_number(entry.total_damage),
-                   dps=_format_number(entry.total_dps),
-                   seconds=f"{entry.duration_seconds:.1f}",
-                   hits=f"{entry.total_hits:,}")
+                f"伤害 {_format_number(entry.total_damage)}  ·  "
+                f"DPS {_format_number(entry.total_dps)}\n"
+                f"{entry.duration_seconds:.1f}s  ·  {entry.total_hits:,} 命中"
             )
-            self.table.setItem(row, 3, self._text_item(summary))
-            self.table.setCellWidget(row, 4, self._status_widget(entry))
-            self.table.setCellWidget(row, 5, self._actions_widget(entry))
+            self.table.setItem(row, 5, self._text_item(summary))
+            self.table.setCellWidget(row, 6, self._status_widget(entry))
+            self.table.setCellWidget(row, 7, self._actions_widget(entry))
             self.table.setRowHeight(row, 54)
 
     @staticmethod
@@ -187,7 +193,7 @@ class BattleReportHistoryDialog(QDialog):
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(5, 8, 5, 8)
-        badge = QLabel(tr("手动保存") if entry.retention_kind == "manual" else tr("自动保存"))
+        badge = QLabel("手动" if entry.retention_kind == "manual" else "自动")
         badge.setAlignment(Qt.AlignCenter)
         badge.setStyleSheet(
             themed_style(
@@ -233,7 +239,8 @@ class BattleReportHistoryDialog(QDialog):
                 self.delete_requested.emit(record_id)
             )
         )
-        layout.addWidget(view)
-        layout.addWidget(toggle)
-        layout.addWidget(delete)
+        for button, width in ((view, 48), (toggle, 68), (delete, 48)):
+            button.setFixedSize(width, 28)
+            button.setStyleSheet("padding:2px 4px;font-size:11px")
+            layout.addWidget(button)
         return widget

@@ -94,8 +94,8 @@ class BattleInferredTargetConditionServiceTests(unittest.TestCase):
             floor=12,
             evidence={
                 "hits": (
-                    _hit(1, 2_924_242.0, "enemy-wire:reused", "upper"),
-                    _hit(20, 2_924_249.0, "enemy-wire:reused", "lower"),
+                    _hit(1, 3_570_949.0, "enemy-wire:reused", "upper"),
+                    _hit(20, 3_570_949.0, "enemy-wire:reused", "lower"),
                 )
             },
             range_start_us=0,
@@ -231,8 +231,8 @@ class BattleInferredTargetConditionServiceTests(unittest.TestCase):
             floor=12,
             evidence={
                 "hits": (
-                    _hit(1, 2_924_242.0, "enemy-wire:reused", "upper"),
-                    _hit(2, 2_924_249.0, "enemy-wire:reused", "lower"),
+                    _hit(1, 3_570_949.0, "enemy-wire:reused", "upper"),
+                    _hit(2, 3_570_949.0, "enemy-wire:reused", "lower"),
                 )
             },
             range_start_us=0,
@@ -240,7 +240,7 @@ class BattleInferredTargetConditionServiceTests(unittest.TestCase):
         )
 
         assert mixed is not None
-        self.assertEqual("Abyss_8|12|mixed", mixed.environment_ref)
+        self.assertEqual("Abyss_10|12|mixed", mixed.environment_ref)
         self.assertEqual("", mixed.scope_half)
         self.assertIsNone(mixed.target_condition)
         self.assertEqual(
@@ -256,24 +256,18 @@ class BattleInferredTargetConditionServiceTests(unittest.TestCase):
             floor=10,
             evidence={
                 "hits": (
-                    _hit(1, 2_906_977.0, "enemy-wire:upper-boss-1", "upper"),
-                    _hit(2, 2_906_977.0, "enemy-wire:upper-boss-2", "upper"),
-                    _hit(3, 894_455.0, "enemy-wire:upper-small", "upper"),
-                    _hit(4, 2_906_977.0, "enemy-wire:lower-boss", "lower"),
-                    _hit(5, 521_765.0, "enemy-wire:lower-small-1", "lower"),
-                    _hit(6, 521_765.0, "enemy-wire:lower-small-2", "lower"),
-                    _hit(7, 521_765.0, "enemy-wire:lower-small-3", "lower"),
-                    _hit(8, 521_765.0, "enemy-wire:lower-small-4", "lower"),
+                    _hit(1, 999_999.0, "enemy-wire:upper-conflict", "upper"),
+                    _hit(2, 3_210_314.0, "enemy-wire:lower-boss", "lower"),
                 )
             },
             range_start_us=None,
             range_end_us=None,
-            battle_occurred_at_utc="2026-09-04T08:16:46.743+00:00",
+            battle_occurred_at_utc="2026-09-19T08:16:46.743+00:00",
         )
 
         assert inferred is not None
-        self.assertEqual("Abyss_9|10|mixed", inferred.environment_ref)
-        self.assertIn("幽语环线", inferred.environment_name)
+        self.assertEqual("Abyss_10|10|mixed", inferred.environment_ref)
+        self.assertIn("星流环线", inferred.environment_name)
         self.assertEqual("battle_time_partial_mixed", inferred.selection_mode)
         self.assertEqual("中", inferred.confidence)
         self.assertFalse(inferred.ambiguous)
@@ -282,7 +276,7 @@ class BattleInferredTargetConditionServiceTests(unittest.TestCase):
             {half for half, _condition in inferred.target_conditions_by_half},
         )
         self.assertIn("上半目标映射仍冲突", inferred.inference_basis)
-        self.assertIn("2026-09-04 16:16:46", inferred.inference_basis)
+        self.assertIn("2026-09-19 16:16:46", inferred.inference_basis)
 
     def test_non_unique_signature_does_not_match(self) -> None:
         unknown = BattleInferredTargetConditionService.infer(
@@ -301,10 +295,10 @@ class BattleInferredTargetConditionServiceTests(unittest.TestCase):
             outer = static_dao.list_outer_realm_configs()
             feast = static_dao.list_feast_stages()
 
-        self.assertEqual(["Abyss_8", "Abyss_9"], [row["level_config_id"] for row in outer])
+        self.assertEqual(["Abyss_10", "Abyss_11"], [row["level_config_id"] for row in outer])
         self.assertEqual([12, 12], [row["max_level"] for row in outer])
         self.assertEqual(
-            ["2026-08-21T05:00:00", "2026-09-04T05:00:00"],
+            ["2026-09-18T05:00:00", "2026-10-02T05:00:00"],
             [row["starts_at_mainland"] for row in outer],
         )
         self.assertEqual(

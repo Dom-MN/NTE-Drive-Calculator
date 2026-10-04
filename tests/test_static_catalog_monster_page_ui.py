@@ -38,7 +38,7 @@ from src.services.static_catalog_terminology_service import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DATABASE = PROJECT_ROOT / "data" / "game_static.sqlite3"
-ASSET_ROOT = PROJECT_ROOT / "assets" / "game_ui"
+ASSET_ROOT = PROJECT_ROOT / "data" / "role_catalog" / "game_ui"
 MAINLAND_SNAPSHOT = datetime(2026, 8, 30, 12, 0, 0)
 
 
@@ -170,13 +170,13 @@ class StaticCatalogMonsterPageUiTests(unittest.TestCase):
         history = [row for row in rotations if row.release_state == "historical"]
         unscheduled = [row for row in rotations if row.release_state == "unscheduled"]
         self.assertEqual(["Abyss_8"], [row.primary_id for row in current])
-        self.assertEqual(["Abyss_9"], [row.primary_id for row in upcoming])
+        self.assertEqual(["Abyss_9", "Abyss_10", "Abyss_11", "Abyss_12"], [row.primary_id for row in upcoming])
         self.assertEqual(
             sorted((row.primary_id for row in history), reverse=True),
             [row.primary_id for row in history],
         )
         self.assertEqual(
-            ["Abyss_1", "Abyss_4", "Abyss_7", "Abyss_10", "Abyss_11", "Abyss_12"],
+            ["Abyss_1", "Abyss_4", "Abyss_7"],
             [row.primary_id for row in unscheduled],
         )
 

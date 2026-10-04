@@ -25,7 +25,7 @@ from src.services.advancement_stage_service import (
     select_fork_breakthrough,
 )
 from src.services.official_role_graduation_service import (
-    graduation_benchmark_damage,
+    graduation_rate,
     graduation_tooltip as _graduation_tooltip,
 )
 from src.services.official_role_page_service import (
@@ -141,7 +141,7 @@ def _calculation_detail(detail: dict, editor: dict) -> dict:
         for effect_id, check in awakening_checks.items()
         if check.isChecked()
     ]
-    profile["awakening_level"] = len(selected_awaken_effect_ids)
+    profile["awakening_level"] = editor["awakening_level"].value()
     profile["selected_awaken_effect_ids"] = selected_awaken_effect_ids
     profile["awakening_selection_initialized"] = True
     likeability = editor.get("likeability_level_10")
@@ -232,7 +232,7 @@ def _build_margin_group(
     layout = QVBoxLayout(group)
     state = {"margins": None, "initialized": False}
     header = QHBoxLayout()
-    graduation_label = QLabel(tr("直伤毕业率 : --"))
+    graduation_label = QLabel(tr("空幕直伤毕业率 : --"))
     graduation_label.setObjectName("officialRoleGraduationRate")
     graduation_label.setStyleSheet("font-weight:bold;color:#ffaa00;font-size:14px;")
     graduation_label.setToolTip(_graduation_tooltip(detail))
@@ -248,8 +248,6 @@ def _build_margin_group(
     table_layout = QVBoxLayout(table_host)
     table_layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(table_host)
-    graduation_benchmark = graduation_benchmark_damage(detail)
-
     def refresh() -> None:
         calculation_detail = _calculation_detail(detail, editor)
         margin_context = str(editor.get("equipment_context_key") or "current")
@@ -273,12 +271,14 @@ def _build_margin_group(
             refresh_weights()
         _clear_layout(table_layout)
         damage = float((margins or {}).get("damage") or 0.0)
+        graduation_detail = {
+            **calculation_detail,
+            "property_weights": detail.get("property_weights") or {},
+            "main_property_weights": detail.get("main_property_weights") or {},
+        }
+        rate = graduation_rate(graduation_detail, margin_context)
         graduation_label.setText(
-            tr("直伤毕业率 : {value}%", value=f"{damage / graduation_benchmark * 100:.1f}")
-            if damage > 0 and graduation_benchmark else tr("直伤毕业率 : --")
-        )
-        damage_label.setText(
-            tr("直伤评分 : {value}", value=f"{damage:.2f}") if margins else tr("直伤评分 : --")
+            f"空幕直伤毕业率 : {rate:.1f}%" if rate is not None else "空幕直伤毕业率 : --"
         )
         if not margins:
             note = QLabel(tr("当前角色状态尚无可计算的官方直伤技能或装备上下文。"))
