@@ -374,10 +374,12 @@ def _equip_card(
         )
         replacement_btn.setObjectName("btnAction")
         if is_feature_card:
-            replacement_btn.setFixedSize(74, 33)
+            replacement_btn.setFixedHeight(33)
+            replacement_btn.setMinimumWidth(74)
             replacement_btn.setStyleSheet(themed_style(f"font-size:{header_font_size}px;padding:2px 8px"))
         else:
-            replacement_btn.setFixedSize(60, 28)
+            replacement_btn.setFixedHeight(28)
+            replacement_btn.setMinimumWidth(60)
         replacement_btn.clicked.connect(lambda _checked=False: replacement_callback())
         hdr.addWidget(replacement_btn, 0, Qt.AlignTop)
     inner.addLayout(hdr)
@@ -390,7 +392,12 @@ def _equip_card(
             sw = self._stat_w(sn, weights)
             color = self._stat_c(sw)
             stat_border, stat_background = _stat_chip_surface(color)
-            block = QLabel(f"{sn} <b>{_format_equipment_stat_display(sv)}</b>")
+            # A translated name drops the key's %, so carry it onto the value instead.
+            stat_name = display_term(str(sn))
+            stat_suffix = "%" if "%" in str(sn) and stat_name != str(sn) else ""
+            block = QLabel(
+                f"{stat_name} <b>{_format_equipment_stat_display(sv)}{stat_suffix}</b>"
+            )
             block.setAlignment(Qt.AlignCenter)
             block.setStyleSheet(
                 f"border:1px solid {stat_border};background:{stat_background};border-radius:6px;padding:5px 12px;font-size:{'13px' if is_feature_card else '12px'};color:{color};font-weight:600"

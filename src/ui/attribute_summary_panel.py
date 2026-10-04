@@ -99,7 +99,7 @@ def build_attribute_summary_mode_switch(
     )
     normalized_modes = tuple(mode_defs)
     for index, (mode, label) in enumerate(normalized_modes):
-        button = QPushButton(label)
+        button = QPushButton(tr(label))
         button.setCheckable(True)
         button.setCursor(Qt.PointingHandCursor)
         button.setStyleSheet(toggle_style)
@@ -472,7 +472,7 @@ class AttributeSummaryPanel(QFrame):
             return
         label = self._mode_labels.get(self._mode, self._mode)
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"{self._role_name} {label}")
+        dialog.setWindowTitle(f"{display_term(self._role_name)} {tr(label)}")
         dialog.setMinimumSize(680 if comparison is not None else 360, 420)
         dialog.setStyleSheet(current_style_sheet())
         layout = QVBoxLayout(dialog)

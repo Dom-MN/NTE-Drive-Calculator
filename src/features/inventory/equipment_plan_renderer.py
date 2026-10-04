@@ -412,7 +412,8 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
     last_diff = rd.get(ROLE_LAST_DIFF, {}) or {}
     if last_diff.get(DIFF_CHANGED):
         diff_btn = QPushButton(tr("变动"))
-        diff_btn.setFixedSize(76, header_height)
+        diff_btn.setFixedHeight(header_height)
+        diff_btn.setMinimumWidth(76)
         diff_btn.setStyleSheet(
             themed_style(
                 "QPushButton{background:#1f6feb;color:#ffffff;border:1px solid #58a6ff;border-radius:6px;font-size:13px;font-weight:700;padding:0;min-width:76px}QPushButton:hover{background:#388bfd}"
@@ -434,7 +435,7 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
             "damage_based": "期望伤害",
             "game_inventory": "游戏配装",
         }.get(_sm, _sm)
-        sml = QLabel(_ml)
+        sml = QLabel(tr(_ml))
         sml.setStyleSheet(
             themed_style("font-size:12px;color:#8b949e;border:1px solid #30363d;border-radius:5px;padding:3px 8px")
         )
@@ -516,7 +517,8 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
     else:
         del_btn = QPushButton(tr("删除"))
         del_btn.setObjectName("btnDanger")
-        del_btn.setFixedSize(64, header_height)
+        del_btn.setFixedHeight(header_height)
+        del_btn.setMinimumWidth(64)
         del_btn.clicked.connect(
             lambda _=False, rn=source_role_name, pid=plan_id: self._delete_role_equipment(rn, plan_id=pid)
         )
