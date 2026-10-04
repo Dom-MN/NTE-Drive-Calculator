@@ -3394,5 +3394,8 @@
   "插件已关闭，但关闭状态保存失败，请检查配置目录权限。": "The plugins are off, but saving that state failed; check the permissions on the config directory.",
   "请先在设置中切换到中风险或开发模式，再开启插件。": "Switch to medium-risk or development mode in settings before turning on plugins.",
   "插件开关必须为布尔值": "A plugin switch must be true or false",
-  "期望伤害": "Expected damage"
+  "期望伤害": "Expected damage",
+  "觉醒等级：": "Awakening level: ",
+  "未激活（需要 {threshold} 觉）": "Inactive (needs awakening {threshold})",
+  "｜": " | "
 }

@@ -5,7 +5,10 @@ from src.i18n import tr
 
 import re
 from PySide6.QtWidgets import QCheckBox, QGroupBox, QLabel, QVBoxLayout
-from src.services.official_role_awakening_service import render_awaken_effect_description
+from src.services.official_role_awakening_service import (
+    awaken_effect_title,
+    render_awaken_effect_description,
+)
 from src.ui.widgets import NoWheelSpinBox
 from .role_calculation import _mark_dirty, _refresh_role_calculations
 
@@ -36,7 +39,7 @@ def _build_awakening_group(
     awakening_level = NoWheelSpinBox()
     awakening_level.setObjectName("officialRoleAwakeningLevel")
     awakening_level.setRange(0, 6)
-    awakening_level.setPrefix("觉醒等级：")
+    awakening_level.setPrefix(tr("觉醒等级："))
     awakening_level.setToolTip(
         tr("已解锁的觉醒槽位数，可留空；三觉和六觉共鸣按此等级激活。滚轮仅滚动页面。")
     )
@@ -63,7 +66,7 @@ def _build_awakening_group(
     ]
     for index, effect in enumerate(normal_effects, start=1):
         effect_id = str(effect.get("effect_id") or "")
-        title = str(effect.get("title_zh") or f"觉醒 {index}")
+        title = awaken_effect_title(effect) or tr("觉醒 {index}", index=index)
         check = QCheckBox(f"{index}. {title}")
         check.setChecked(effect_id in selected_ids)
         layout.addWidget(check)
@@ -85,7 +88,7 @@ def _build_awakening_group(
         threshold = _resonance_threshold(effect)
         if threshold is None:
             continue
-        title = str(effect.get("title_zh") or f"{threshold} 觉效果")
+        title = awaken_effect_title(effect) or tr("{threshold} 觉效果", threshold=threshold)
         label = QLabel()
         label.setWordWrap(True)
         label.setContentsMargins(8, 0, 8, 0)
@@ -118,7 +121,7 @@ def _build_awakening_group(
             current_profile(),
             detail.get("awakenings") or (),
         )
-        return _plain_effect_text(rendered) or "暂无效果说明"
+        return _plain_effect_text(rendered) or tr("暂无效果说明")
 
     def refresh_descriptions() -> None:
         for effect, label in description_labels:
@@ -128,9 +131,9 @@ def _build_awakening_group(
         level = awakening_level.value()
         for effect, threshold, label in resonance_labels:
             active = level >= threshold
-            state = "已激活" if active else f"未激活（需要 {threshold} 觉）"
+            state = tr("已激活") if active else tr("未激活（需要 {threshold} 觉）", threshold=threshold)
             label.setText(
-                f"{state}｜{label.property('resonance_title')}\n"
+                f"{state}{tr('｜')}{label.property('resonance_title')}\n"
                 f"{rendered_description(effect)}"
             )
             label.setStyleSheet(
