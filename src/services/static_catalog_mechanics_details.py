@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from src.services.static_catalog_formula_presenters import (
     CounterfactualMatrixRow,
     FormulaDetailView,
@@ -228,7 +230,7 @@ class StaticCatalogMechanicsDetailProjector:
             PlayerSection("计算顺序", (PlayerField(
                 "逐步过程",
                 "\n".join(
-                    f"{index}. {step}"
+                    f"{index}. {tr(step)}"
                     for index, step in enumerate(steps, start=1)
                 ),
                 "accent",

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,7 +50,7 @@ def _formula_sections(
             "完整公式",
             ("公式", formula, "formula"),
             ("计算顺序", "\n".join(
-                f"{index}. {step}" for index, step in enumerate(steps, start=1)
+                f"{index}. {tr(step)}" for index, step in enumerate(steps, start=1)
             ), "accent"),
         ),
         _section(
@@ -135,16 +137,16 @@ class StaticCatalogSpecialFormulaService:
                 level_start = tier * 5 + 1
                 level_end = level_start + 4
                 values = " ｜ ".join(
-                    f"{label} {_number(points[tier])}"
+                    f"{tr(label)} {_number(points[tier])}"
                     for label, points in columns.items()
                 )
                 fields.append((
-                    f"源档 {tier} · 角色等级 {level_start}–{level_end}",
+                    tr("源档 {tier} · 角色等级 {start}–{end}", tier=tier, start=level_start, end=level_end),
                     values,
                     "tier",
                 ))
             tier_sections.append(_section(
-                f"官方基础值 · 源档 {group_start}–{group_start + 3}",
+                tr("官方基础值 · 源档 {start}–{end}", start=group_start, end=group_start + 3),
                 *fields,
             ))
         return SpecialFormulaRecord(
@@ -511,11 +513,11 @@ class StaticCatalogSpecialFormulaService:
     def _topple(level_values: tuple[float, ...]) -> SpecialFormulaRecord:
         level_sections = tuple(
             _section(
-                f"官方倾陷基础 · {start}–{start + 9} 级",
+                tr("官方倾陷基础 · {start}–{end} 级", start=start, end=start + 9),
                 (
                     "逐级数值",
                     " ｜ ".join(
-                        f"{level}级 {_number(level_values[level - 1])}"
+                        tr("{level}级 {value}", level=level, value=_number(level_values[level - 1]))
                         for level in range(start, start + 10)
                     ),
                     "tier",
