@@ -280,7 +280,7 @@ class ForkProfileView(QWidget):
         self.level_slider.setValue(80)
         self.level_slider.blockSignals(False)
         summary = detail.summary
-        self.name.setText(display_term(summary.name_zh))
+        self.name.setText(display_text("ST_Fork", f"{summary.fork_id}_name", display_term(summary.name_zh)))
         self.quality_badge.setText(self._item_names.quality_name(summary.quality))
         self.type_badge.setText(display_term(summary.fork_type_name_zh) or tr("类型未提供"))
         campaign = self._display_campaigns.get(summary.fork_id)

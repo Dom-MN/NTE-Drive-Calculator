@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import display_term, tr
+from src.i18n import display_term, display_text, tr
 
 from collections.abc import Callable
 from pathlib import Path
@@ -161,7 +161,8 @@ class ForkGalleryCard(QFrame):
                 Qt.TransformationMode.SmoothTransformation,
             ))
         root.addWidget(art)
-        name = QLabel(display_term(self.summary.name_zh), self)
+        # An Arc's key in ST_Fork is "<fork_id>_name"; the glossary covers older data.
+        name = QLabel(display_text("ST_Fork", f"{self.summary.fork_id}_name", display_term(self.summary.name_zh)), self)
         name.setWordWrap(True)
         name.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:16px;font-weight:900"
