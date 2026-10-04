@@ -84,7 +84,7 @@ class PluginsPage(QWidget):
 
         row = QHBoxLayout()
         row.setSpacing(10)
-        heading = QLabel(title)
+        heading = QLabel(tr(title))
         font = heading.font()
         font.setBold(True)
         heading.setFont(font)
@@ -99,7 +99,7 @@ class PluginsPage(QWidget):
         row.addWidget(toggle)
         card.addLayout(row)
 
-        label = QLabel(description)
+        label = QLabel(tr(description))
         label.setWordWrap(True)
         label.setStyleSheet(f"color:{theme_color('#8b949e')}")
         card.addWidget(label)
@@ -107,7 +107,7 @@ class PluginsPage(QWidget):
         options.setSpacing(24)
         boxes = {}
         for field, text in fields:
-            box = QCheckBox(text)
+            box = QCheckBox(tr(text))
             box.toggled.connect(lambda enabled, field=field: self._update(**{field: enabled}))
             options.addWidget(box)
             boxes[field] = box
@@ -145,8 +145,8 @@ class PluginsPage(QWidget):
 
     @staticmethod
     def _set_badge(status: QLabel, text: str, tone: str, detail: str) -> None:
-        status.setText(text)
-        status.setToolTip(detail if detail and detail != text else "")
+        status.setText(tr(text))
+        status.setToolTip(tr(detail) if detail and detail != text else "")
         status.setProperty("tone", tone)
         status.style().unpolish(status)
         status.style().polish(status)
@@ -179,8 +179,8 @@ class PluginsPage(QWidget):
             "设置已保存，等待应用", "当前模式不可启用", "连接已暂停",
         }
         self.notice.setText(
-            self.service.load_error
-            or next((status for status in active_statuses if status not in known_statuses), "")
+            tr(self.service.load_error
+               or next((status for status in active_statuses if status not in known_statuses), ""))
             or (tr("退出 Calc 后停止显示；下次启动时恢复已保存设置。") if allowed else
                 tr("当前模式不支持插件；请切换到中风险或开发模式。"))
         )
@@ -215,7 +215,7 @@ class PluginsPage(QWidget):
         try:
             self.service.update(**changes)
         except (PermissionError, OSError, ValueError) as error:
-            QMessageBox.warning(self, tr("插件设置"), str(error))
+            QMessageBox.warning(self, tr("插件设置"), tr(str(error)))
         else:
             self.request_apply()
         self.refresh()
