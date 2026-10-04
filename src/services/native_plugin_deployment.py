@@ -301,7 +301,7 @@ def cleanup_manual_native_plugin(
     *, application_root: str | Path, game_executable_path: str | Path,
     managed_files: dict[str, str], game_running: Callable[[], bool] | None = None,
 ) -> NativePluginCleanupResult:
-    """Explicit cleanup may adopt only bundled or reviewed predecessor DLLs."""
+    """Explicit cleanup removes fixed component filenames in the selected directory."""
     probe = game_running or game_process_running
     if probe():
         return NativePluginCleanupResult('waiting_game_exit', '游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。')
@@ -310,13 +310,6 @@ def cleanup_manual_native_plugin(
         raise EquipmentPluginDeploymentError('清理记录中的游戏主程序路径无效。')
     directory = executable.parent.resolve()
     recorded = dict(managed_files)
-    bundle = inspect_native_plugin_bundle(application_root)
-    allowed: dict[str, set[str]] = {}
-    if bundle.ready:
-        for role, relative in bundle.deployment_paths.items():
-            allowed[relative] = {
-                bundle.files[bundle.roles[role]], *bundle.upgrade_from.get(relative, ()),
-            }
     observed: dict[str, str] = {}
     try:
         for relative in recorded:
@@ -325,12 +318,9 @@ def cleanup_manual_native_plugin(
             target = _manual_cleanup_target(directory, relative)
             if not target.exists():
                 continue
-            digest = _digest(target)
-            if relative not in recorded and digest not in allowed.get(relative, set()):
-                return NativePluginCleanupResult(
-                    'conflict', f'游戏目录中的 {relative} 来源未确认，已保留文件；请核对组件归属。',
-                )
-            observed[relative] = digest
+            # The explicit cleanup action authorizes these exact names, including
+            # unrecorded older versions. Hash only detects changes during this action.
+            observed[relative] = _digest(target)
         ordered = sorted(observed, key=lambda relative: relative != NATIVE_PLUGIN_DEPLOYMENT_PATHS['host'])
         for relative in ordered:
             if probe():
@@ -347,4 +337,4 @@ def cleanup_manual_native_plugin(
         raise EquipmentPluginDeploymentError('无法清理游戏目录原生组件，请保持游戏关闭并重试。') from error
     if probe():
         return NativePluginCleanupResult('waiting_game_exit', '组件文件已清理，游戏仍需退出以结束已加载会话。')
-    return NativePluginCleanupResult('cleaned', '已清理有部署记录或经整包哈希确认的游戏目录原生组件。')
+    return NativePluginCleanupResult('cleaned', '已按固定文件名清理游戏目录原生组件。')

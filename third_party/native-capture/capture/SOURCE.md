@@ -2,12 +2,10 @@
 
 Source repository: https://github.com/kongbaiz/UETools-NTE
 
-Base commit: 13320c0e44dfa203170309255e67553201abf901. Modified working-tree input SHA-256: 2db91c9bf9784854fa19aa401add9a7206541412e15136f5fd3a228d9a2d69f2. The base alone does not reproduce this build.
+Base commit: bf7ffc7f06f1766e008c6a974d94c4fd4aa310d9. Modified working-tree input SHA-256: 65f0ed08f5117545c9424952cbfb6d88ddef6ecdb8a4563538a0faa8ad96aba7. The base alone does not reproduce this build.
 
-This dated test candidate removes the fallback whole-row HUD plate and border, retaining skill icons, cooldown masks and values while native buttons initialize or are unavailable. It also queues HUD Info messages in a bounded plugin-owned buffer. The existing plugin-management thread performs output, retaining the original timestamp, thread and source location. Overflow is counted; teardown quiesces producers before draining. Combat adds in-memory timing for clock identity checks, function validation and individual pause queries without changing sampling or pause semantics.
+Reviewed upstream reference: c6b30a17a46f0725ce4b4fc34cbdee96bca233b1. Selected changes include bounded HUD lookup and layout batches, native-mode definition-only skill reads, owned-event exclusion, batched idle Hook retirement, and optional performance spans and window summaries. The prior guarded-root, event empty-slot, skill-category and awakening-definition changes are retained.
 
-Five Release x64 DLLs use selected function protection. Four plugin signatures bind final bytes. The host, plugins and signatures are delivered as one checked set with the existing Core and Loader. No game deployment was performed.
+The branch retains separate Combat/HUD plugins, native avatar-tree mounting, construction-context tracking and native-only wait states. Performance retains seven service kinds, Calc control and leases, and complete raw records by default. Diagnostic compaction requires explicit opt-in. Developer MCP tools and training controls are not included in this five-DLL bundle.
 
-Twenty-five focused HUD cases passed, including compiled values, geometry, owner construction, code-contract, queue and timing fixtures. The exact protected and signed set passed isolated loading, altered-signature rejection, dependency checks, independent HUD lifecycle, trace completion and SDK-not-ready refusal. The companion Core hash matches the existing Calc bundle.
-
-Game performance and acquisition acceptance are not run for this candidate. No reduction in long stalls is claimed. Old runtime or antivirus observations are not validation of these newly built DLLs.
+Five Release x64 DLLs use selected-function protection and four final-byte signatures. Targeted HUD fixtures, performance channel accounting, exact-DLL raw/diagnostic output and unload tests, and the signed-host dependency/tamper checks passed. Core and Loader are reused unchanged. No game deployment or real-game acceptance was performed; fixture counts are not frame-rate measurements.

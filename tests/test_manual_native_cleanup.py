@@ -1,4 +1,4 @@
-# 验证手动清理只接管有记录或哈希已核实的游戏目录组件。
+# 验证手动清理按固定文件名执行，并保留目录、并发变化与游戏运行门禁。
 from __future__ import annotations
 
 import hashlib
@@ -36,16 +36,35 @@ def test_unrecorded_current_and_reviewed_predecessor_are_cleaned(tmp_path):
     assert unrelated.read_bytes() == b'preserve'
 
 
-def test_unknown_hash_blocks_all_native_deletes(tmp_path):
+def test_manual_cleanup_removes_exact_names_with_unknown_hash(tmp_path):
     root, payload = make_bundle(tmp_path)
     game = game_files(tmp_path, root, payload)
     capture = game.parent / 'NTE_Capture.dll'
     capture.write_bytes(b'unknown component')
 
     result = _cleanup(root, game)
-    assert result.status == 'conflict' and 'NTE_Capture.dll' in result.detail
-    assert (game.parent / 'd3d12.dll').is_file()
-    assert capture.read_bytes() == b'unknown component'
+    assert result.status == 'cleaned'
+    assert not (game.parent / 'd3d12.dll').exists()
+    assert not capture.exists()
+
+
+def test_manual_cleanup_does_not_require_bundle_and_preserves_other_plugins(tmp_path):
+    root, payload = make_bundle(tmp_path)
+    game = game_files(tmp_path, root, payload)
+    (root / 'component-bundle.json').unlink()
+    plugins = game.parent / 'plugins'
+    plugins.mkdir()
+    targets = [plugins / f'NTE_Plugin{role}.dll{suffix}'
+               for role in ('User', 'Combat', 'HUD', 'Performance') for suffix in ('', '.sig')]
+    for target in targets:
+        target.write_bytes(b'unknown previous component')
+    unrelated = plugins / 'other-tool.dll'
+    unrelated.write_bytes(b'preserve')
+
+    assert _cleanup(root, game).status == 'cleaned'
+    assert all(not target.exists() for target in targets)
+    assert unrelated.read_bytes() == b'preserve'
+    assert plugins.is_dir()
 
 
 def test_recorded_file_may_have_changed_hash(tmp_path):
@@ -108,16 +127,17 @@ def test_both_manual_cleanup_entry_layouts_remove_recognized_files(tmp_path, mon
     assert not (game.parent / 'NTE_Capture.dll').exists()
 
 
-def test_unknown_file_keeps_cleanup_pending_and_other_component(tmp_path, monkeypatch):
+def test_manual_cleanup_unknown_file_clears_pending_after_completion(tmp_path, monkeypatch):
     runtime, policy, game, _ = setup_runtime(tmp_path, monkeypatch)
     capture = game.parent / 'NTE_Capture.dll'
     capture.write_bytes(b'unknown component')
     policy.set_paused(True)
     policy.set_cleanup_pending(True)
+    monkeypatch.setattr(managed_plugin_cleanup, 'mod_workspace_registry_snapshot', lambda: (False, None))
+    monkeypatch.setattr(managed_plugin_cleanup, 'cleanup_mod_workspace', lambda **_kw: True)
 
     runtime.cleanup(allow_unrecorded_legacy_workspace=True)
 
-    assert policy.settings.pending_cleanup
-    assert runtime.cleanup_state.value == 'fault'
-    assert (game.parent / 'd3d12.dll').is_file()
-    assert capture.read_bytes() == b'unknown component'
+    assert not policy.settings.pending_cleanup
+    assert not (game.parent / 'd3d12.dll').exists()
+    assert not capture.exists()

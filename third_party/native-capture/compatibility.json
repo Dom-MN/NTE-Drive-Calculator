@@ -2,8 +2,8 @@
   "schema_version": 1,
   "core_rebuilt": false,
   "core_sha256": "1f875858409ad47eed83ded7991d7a3133eb4afafebf2c2b09cd52802c7b2fed",
-  "capture_sha256": "024c39726c229ababe2f180e66430936752b5e1991a1772fb321d6d505157485",
-  "proxy_sha256": "a89e672b4f3bc953c1bfa3118a13867a4f173a7fc502a864cad2d5fc640007f4",
+  "capture_sha256": "5105f4fa6042f7235aec6757c2f22559ad0690c5f950e8b8a4dddb9cf74155c9",
+  "proxy_sha256": "15fb3dfed69aedde7efe5a645af325abff8973301fd292c85b6981b0eb5f208c",
   "protocol_version": 1,
   "provider_capabilities": [
     "hud.configure.v1",
@@ -62,13 +62,13 @@
     "native_battle_equipped_v1"
   ],
   "validation": {
-    "build": "Release x64 candidate, selected function protection and four final-byte signatures verified; source inputs frozen. Core and Loader reused unchanged.",
-    "focused": "Twenty-five focused HUD cases plus one exact signed-host isolation case passed. Calc version/update and packaging verification is recorded with the installer.",
-    "isolated_final": "Exact signed five-DLL set passed isolated loading, tamper rejection, dependencies, HUD lifecycle, trace completion and SDK-not-ready refusal.",
+    "build": "Release x64 candidate, selected-function protection and four final-byte signatures verified. Core and Loader reused unchanged.",
+    "focused": "23 HUD tests, performance channel/accounting, and Hook retirement fixtures passed. MCP tooling tested separately and excluded from this bundle.",
+    "isolated_final": "Exact signed five-DLL set passed loading, tamper rejection, dependencies, HUD lifecycle, trace completion and SDK-not-ready refusal. Actual performance DLL passed raw/diagnostic output, drain, reload and output failure tests.",
     "game_developer": "Not run for this candidate.",
-    "game_protected": "Not run for this candidate; long-stall attribution remains incomplete.",
-    "frames": "No new PresentMon or real-game frame measurements for this candidate.",
-    "defender": "No new explicit antivirus scan for this candidate; prior DLL scan observations do not validate the rebuilt files.",
+    "game_protected": "Not run for this candidate; HUD behavior and runtime performance require game acceptance.",
+    "frames": "No new real-game frame measurements.",
+    "defender": "No new explicit antivirus scan for this candidate.",
     "core_equipped": "Production mapping passed synthetic coverage checks and archived first-hit equipment projection (4 members, 32 items); live acceptance pending."
   },
   "limits": [
@@ -80,9 +80,9 @@
     "All-items collection proves the observed client containers, not complete server account assets.",
     "Final protected host, plugins and Calc require real-game acceptance."
   ],
-  "user_sha256": "e9fa510dc59b89bbf76f441d06525c8a6ce3303c2e2fbdfcdc5ec925077a6335",
-  "performance_sha256": "09f906df77e3a8a333becbde5dc3814546d1338694a8bfedd7538c1f43f86be4",
+  "user_sha256": "c5d323b712ad0019c7b74916dae59c041934e46141cdc4678ea4547a2beb7cae",
+  "performance_sha256": "ecde84ee27434280d4479efaa89b9f2f284b96fb75652048fe0fa217c97d1dfb",
   "layout": "native-plugins-v3",
-  "hud_sha256": "4520e4918a41054890a6c72e8947540bf86369bc3c91da15acac3333049e5a6c",
+  "hud_sha256": "3b44220d87b77e618281aec5124476d65c54ad05a9162a34719d172c9c543b68",
   "core_reused": true
 }

@@ -39,6 +39,20 @@ class BattleProgressFooterTests(unittest.TestCase):
         self.assertEqual(footer.progress.text(), '1%')
         self.assertNotIn('15', footer.message_label.text())
 
+    def test_failure_remains_visible_without_busy_animation_and_retry_resets_it(self):
+        footer = BattleAnalysisProgressBar()
+        self.addCleanup(footer.close)
+        footer.show_for('marginal')
+        footer.finish()
+        footer.show_error('边际计算未完成：计算超时。请点击“重算”重试。')
+        self.assertFalse(footer.isHidden())
+        self.assertTrue(footer.progress.isHidden())
+        self.assertIn('计算超时', footer.message_label.text())
+        self.assertIn('重算', footer.message_label.text())
+        footer.show_for('marginal')
+        self.assertFalse(footer.progress.isHidden())
+        self.assertNotIn('超时', footer.message_label.text())
+
     def test_overall_percentage_keeps_actual_stage_count_in_message(self):
         footer = BattleAnalysisProgressBar()
         self.addCleanup(footer.close)

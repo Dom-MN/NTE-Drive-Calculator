@@ -3,7 +3,7 @@
 
 import re
 
-__version__ = "2.3.1.T261002"
+__version__ = "2.3.2"
 # Python 包元数据遵守 PEP 440；应用与安装器仍显示用户约定的日期测试版。
 __package_version__ = __version__.replace(".T", ".dev")
 

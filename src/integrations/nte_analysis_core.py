@@ -108,6 +108,9 @@ class NteAnalysisCoreClient:
             engine_version == ENGINE_VERSION
             and capabilities is not None and "allocation_v2" in capabilities
         )
+        self.supports_native_payload_fragments = (
+            capabilities is not None and "battle_native_payload_fragments_v1" in capabilities
+        )
         self.timeout = timeout
         self.cancelled = cancelled
         self._lock = threading.Lock()
@@ -232,6 +235,7 @@ class NteAnalysisCoreClient:
         try:
             stdout, returncode = communicate_progress(
                 process, payload, timeout=self.timeout, max_output_bytes=MAX_BYTES,
+                total_timeout=max(self.timeout, 600.0),
                 checkpoint=lambda: self._checkpoint(checkpoint),
                 progress_callback=progress_callback,
             )
@@ -314,6 +318,9 @@ class NteAnalysisCoreClient:
         if not self.supports_battle_page:
             raise NativeAnalysisError("分析组件尚不支持数据库直读，请部署对应版本")
         started = time.perf_counter()
+        request = dict(request)
+        if self.supports_native_payload_fragments:
+            request["native_payload_encoding"] = "fragments_v1"
         payload = json.dumps({
             "schema_version": REQUEST_SCHEMA, "batch_kind": "battle_page_v1",
             "dataset_version": self.dataset_version, "request": dict(request),
