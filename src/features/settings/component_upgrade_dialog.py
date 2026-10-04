@@ -15,7 +15,7 @@ _STAGES = {
     "cleanup": (1, "发现旧版组件", "旧部署与当前版本不一致。", "完全退出游戏；Loader 用户还需退出启动器。随后清理旧组件。", "清理旧组件"),
     "path": (0, "需要确认游戏位置", "旧部署的游戏路径尚未确认。", "前往环境设置，选择当前游戏的 HTGame.exe，再重新核对。", "前往环境设置"),
     "mode": (2, "旧组件已清理", "清理会暂停同步，原有账号数据仍保留。", "前往工作模式设置，确认需要的模式。", "确认工作模式"),
-    "deploy": (3, "准备部署当前组件", "工作模式已确认，组件尚待部署。", "前往环境设置，按选定的 D3D 或 Loader 方式部署；部署前退出游戏，Loader 还需退出启动器。部署后可在检测详情查看同步状态。", "前往部署"),
+    "deploy": (3, "准备部署当前组件", "工作模式已确认，组件尚待部署。", "前往环境设置，按选定的 {method} 方式部署；部署前退出游戏，Loader 还需退出启动器。部署后可在检测详情查看同步状态。", "前往部署"),
     "done": (2, "清理已完成", "当前模式无需部署原生组件。", "如需同步，请按工作台提示开启同步。", "完成引导"),
 }
 
@@ -84,15 +84,18 @@ class ComponentUpgradeDialog(QDialog):
         self._stage = stage
         index, title, reason, next_step, action = _STAGES[stage]
         self.steps.setText("  ›  ".join(
-            (f"● {label}" if position == index else f"○ {label}")
+            (f"● {tr(label)}" if position == index else f"○ {tr(label)}")
             for position, label in enumerate(_STEP_LABELS)
         ))
-        self.title.setText(title)
-        self.reason.setText(tr("原因：{reason}", reason=reason))
-        if stage == "deploy":
-            next_step = next_step.replace("D3D 或 Loader", "Loader" if method == "loader" else "D3D")
-        self.next_step.setText(tr("下一步：{next_step}", next_step=next_step))
-        self.action.setText(action)
+        self.title.setText(tr(title))
+        self.reason.setText(tr("原因：{reason}", reason=tr(reason)))
+        rendered_next_step = (
+            tr(next_step, method="Loader" if method == "loader" else "D3D")
+            if stage == "deploy" else tr(next_step)
+        )
+        self.next_step.setText(
+            tr("下一步：{next_step}", next_step=rendered_next_step))
+        self.action.setText(tr(action))
 
     def _act(self) -> None:
         stage = self._stage

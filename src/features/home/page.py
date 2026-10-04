@@ -309,7 +309,7 @@ def build_home_page(window) -> QScrollArea:
     )
     window.home_metric_labels = {}
     for index, (key, label, subtitle) in enumerate(definitions):
-        card, value_label, subtitle_label = metric_card(label, "—", subtitle)
+        card, value_label, subtitle_label = metric_card(tr(label), "—", tr(subtitle))
         window.home_metric_labels[key] = (value_label, subtitle_label)
         metrics.addWidget(card, index // 3, index % 3)
     root.addLayout(metrics)
@@ -393,8 +393,10 @@ def refresh_home_page(window, dashboard: dict[str, Any]) -> None:
         if synced_count else tr("当前账号尚未同步角色")
     )
     profile_count = int(dashboard["characters"]["profile_count"])
-    role_detail = (f"角色养成：已保存 {profile_count} 个角色的已确认养成字段。" if profile_count else
-                   "角色养成：尚无已保存的游戏养成数据，连接后自动读取。")
+    role_detail = (
+        tr("角色养成：已保存 {count} 个角色的已确认养成字段。", count=profile_count)
+        if profile_count
+        else tr("角色养成：尚无已保存的游戏养成数据，连接后自动读取。"))
     window.home_character_sync_detail.setProperty("savedSummary", role_detail)
     window.home_character_sync_detail.setText(role_detail)
 

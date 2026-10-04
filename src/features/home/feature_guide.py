@@ -110,17 +110,17 @@ class FeatureGuideDialog(QDialog):
     def __init__(self, parent: QWidget, guide: FeatureGuide, navigate: Callable[[str], None]):
         super().__init__(parent)
         self.setObjectName("featureGuideDialog")
-        self.setWindowTitle(tr("{title} · 功能说明", title=guide.title))
+        self.setWindowTitle(tr("{title} · 功能说明", title=tr(guide.title)))
         self.setWindowModality(Qt.WindowModal)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 16)
         layout.setSpacing(14)
 
-        heading = QLabel(guide.title, self)
+        heading = QLabel(tr(guide.title), self)
         heading.setObjectName("featureGuideDialogTitle")
         heading.setStyleSheet(themed_style("font-size:18px;font-weight:700;color:#f0f6fc"))
         layout.addWidget(heading)
-        entry = QLabel(tr("入口：{entry}", entry=guide.entry), self)
+        entry = QLabel(tr("入口：{entry}", entry=tr(guide.entry)), self)
         entry.setObjectName("featureGuideEntry")
         entry.setWordWrap(True)
         layout.addWidget(entry)
@@ -134,11 +134,13 @@ class FeatureGuideDialog(QDialog):
         content_layout.setSpacing(10)
         for section in guide.sections:
             if section.title:
-                title = QLabel(section.title + "：", content)
+                title = QLabel(tr("{title}：", title=tr(section.title)), content)
                 title.setStyleSheet(themed_style("font-weight:700;color:#58a6ff"))
                 content_layout.addWidget(title)
             for index, line in enumerate(section.lines, 1):
-                label = QLabel(f"{index}. {line}" if section.numbered else line, content)
+                label = QLabel(
+                    tr("{index}. {line}", index=index, line=tr(line))
+                    if section.numbered else tr(line), content)
                 label.setWordWrap(True)
                 label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
                 content_layout.addWidget(label)
@@ -149,7 +151,7 @@ class FeatureGuideDialog(QDialog):
         actions = QHBoxLayout()
         actions.addStretch()
         for text, key in guide.destinations:
-            button = QPushButton(text, self)
+            button = QPushButton(tr(text), self)
             button.clicked.connect(lambda _checked=False, target=key: self._navigate(navigate, target))
             actions.addWidget(button)
         close = QPushButton(tr("关闭"), self)
@@ -169,9 +171,9 @@ def add_feature_guides(layout: QVBoxLayout, parent: QWidget, navigate: Callable[
     row = QHBoxLayout()
     row.setSpacing(10)
     for guide in FEATURE_GUIDES:
-        button = QPushButton(guide.title, parent)
+        button = QPushButton(tr(guide.title), parent)
         button.setObjectName("featureGuideButton")
-        button.setAccessibleName(guide.title + "说明")
+        button.setAccessibleName(tr("{title}说明", title=tr(guide.title)))
         button.setFixedWidth(88)
         button.clicked.connect(
             lambda _checked=False, item=guide: FeatureGuideDialog(parent, item, navigate).exec()

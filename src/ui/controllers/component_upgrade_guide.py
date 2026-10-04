@@ -114,7 +114,7 @@ class ComponentUpgradeGuideMixin:
             "deploy": "工作模式已确认：请部署当前版本组件。",
             "done": "旧组件已清理；当前模式无需原生部署。",
         }
-        self.window.home_upgrade_summary.setText(summary[stage])
+        self.window.home_upgrade_summary.setText(tr(summary[stage]))
 
     def show_upgrade_guide(self) -> None:
         if self._closed:
