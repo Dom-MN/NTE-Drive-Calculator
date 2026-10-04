@@ -89,7 +89,7 @@ cleaning act on official identity and ownership, never widening scope by display
 
 ## 3. Source capability, sync and inventory integrity
 
-Offline, low-risk, high-risk and development are locally confirmed modes; a combo-box draft does not take
+Offline, low-risk, medium-risk and development are locally confirmed modes; a combo-box draft does not take
 effect, and a downgrade revokes side effects first. A first run or an upgraded old configuration defaults
 automatic sync to off; before enabling it, check read-only, enable when the conditions hold, and
 otherwise offer the matching entry point for handling the problem. Automatic sync only starts and stops

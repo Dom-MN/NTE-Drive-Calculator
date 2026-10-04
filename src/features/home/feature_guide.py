@@ -174,7 +174,8 @@ def add_feature_guides(layout: QVBoxLayout, parent: QWidget, navigate: Callable[
         button = QPushButton(tr(guide.title), parent)
         button.setObjectName("featureGuideButton")
         button.setAccessibleName(tr("{title}说明", title=tr(guide.title)))
-        button.setFixedWidth(88)
+        # 88px fitted a four-character Chinese label; English needs the room.
+        button.setMinimumWidth(88)
         button.clicked.connect(
             lambda _checked=False, item=guide: FeatureGuideDialog(parent, item, navigate).exec()
         )

@@ -78,8 +78,9 @@ def allow_operation_entry(parent, policy, capability: str, feature: str, navigat
     if entry_is_allowed(policy, capability):
         return True
     mode = _MODE_LABELS[policy.settings.mode.value]
-    detail = "当前" + mode + "模式不允许此功能。\n" + _REQUIREMENTS[capability]
-    prompt_operation_settings(parent, title="功能受限", feature=feature, detail=detail,
+    detail = tr("当前{mode}模式不允许此功能。\n{requirement}",
+                mode=tr(mode), requirement=tr(_REQUIREMENTS[capability]))
+    prompt_operation_settings(parent, title=tr("功能受限"), feature=feature, detail=detail,
                               navigate=navigate, target="mode")
     return False
 
@@ -88,13 +89,15 @@ def explain_operation_unavailable(parent, feature: str, detail: str, navigate, t
     target = target if target in {"deployment", "home"} else "detection"
     if target == "home":
         prompt_operation_settings(
-            parent, title="暂时无法同步", feature=feature, detail=detail,
-            navigate=navigate, target=target, action_text="前往工作台",
+            parent, title=tr("暂时无法同步"), feature=feature, detail=detail,
+            navigate=navigate, target=target, action_text=tr("前往工作台"),
         )
         return
-    destination = "组件部署设置" if target == "deployment" else "当前检测信息；需要时请点击重新检测"
+    destination = (tr("组件部署设置") if target == "deployment"
+                   else tr("当前检测信息；需要时请点击重新检测"))
     prompt_operation_settings(
-        parent, title="功能暂不可用", feature=feature,
-        detail=detail + "\n可前往设置查看" + destination + "。",
+        parent, title=tr("功能暂不可用"), feature=feature,
+        detail=tr("{detail}\n可前往设置查看{destination}。",
+                  detail=detail, destination=destination),
         navigate=navigate, target=target,
     )

@@ -161,7 +161,7 @@ def _section(title: str, description: str = "") -> tuple[QFrame, QVBoxLayout]:
     layout = QVBoxLayout(card)
     layout.setContentsMargins(20, 16, 20, 16)
     layout.setSpacing(10)
-    title_label = QLabel(title)
+    title_label = QLabel(tr(title))
     title_label.setObjectName("cardTitle")
     layout.addWidget(title_label)
     if description:

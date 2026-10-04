@@ -2,6 +2,8 @@
 """Managed-file lifecycle facts; never infer pipe or business readiness."""
 from __future__ import annotations
 
+from src.i18n import tr
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
@@ -36,7 +38,7 @@ def _target_path(game_executable_path: str | Path) -> Path:
     # A removed game executable must not prevent cleaning its owned proxy.
     executable = Path(str(game_executable_path).strip().strip('"')).expanduser()
     if not executable.is_absolute() or executable.name.casefold() != GAME_EXECUTABLE_NAME.casefold():
-        raise EquipmentPluginDeploymentError("清理记录中的游戏主程序路径无效。")
+        raise EquipmentPluginDeploymentError(tr("清理记录中的游戏主程序路径无效。"))
     parent = executable.parent.resolve()
     return parent / PLUGIN_FILENAME
 
@@ -88,11 +90,11 @@ def cleanup_managed_plugin(
     )
     if facts.game_running:
         return ManagedPluginCleanupResult(
-            "waiting_game_exit", facts, "游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。",
+            "waiting_game_exit", facts, tr("游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。"),
         )
     if facts.dll_state == "conflict":
         return ManagedPluginCleanupResult(
-            "conflict", facts, "组件路径不是普通文件：dwmapi.dll。请检查游戏目录中的同名目录或链接。",
+            "conflict", facts, tr("组件路径不是普通文件：dwmapi.dll。请检查游戏目录中的同名目录或链接。"),
         )
     cleanup_workspace = mod_workspace_path
     if facts.registry_state == "conflict":
@@ -102,24 +104,24 @@ def cleanup_managed_plugin(
             or not facts.registered_workspace
         ):
             return ManagedPluginCleanupResult(
-                "conflict", facts, "加载配置与部署记录不一致，未清理。请核对当前注册的 Mod 工作区。",
+                "conflict", facts, tr("加载配置与部署记录不一致，未清理。请核对当前注册的 Mod 工作区。"),
             )
         # The explicit cleanup/deploy action adopts only this application's exact
         # legacy registry value. cleanup_mod_workspace rechecks it before deletion.
         cleanup_workspace = facts.registered_workspace
     if probe():
-        return ManagedPluginCleanupResult("waiting_game_exit", facts, "游戏在清理前启动。请完全退出游戏后重新检测。")
+        return ManagedPluginCleanupResult("waiting_game_exit", facts, tr("游戏在清理前启动。请完全退出游戏后重新检测。"))
     if facts.dll_state == "managed":
         try:
             if facts.target_path.is_symlink() or (
                 facts.target_path.exists() and not facts.target_path.is_file()
             ):
-                return ManagedPluginCleanupResult("conflict", facts, "组件文件已变化：dwmapi.dll 在清理前被修改。已停止清理，请核对该组件。")
+                return ManagedPluginCleanupResult("conflict", facts, tr("组件文件已变化：dwmapi.dll 在清理前被修改。已停止清理，请核对该组件。"))
             facts.target_path.unlink(missing_ok=True)
         except OSError as exc:
-            raise EquipmentPluginDeploymentError("组件清理失败，请保持游戏关闭并重新检测。") from exc
+            raise EquipmentPluginDeploymentError(tr("组件清理失败，请保持游戏关闭并重新检测。")) from exc
     if probe():
-        return ManagedPluginCleanupResult("waiting_game_exit", facts, "游戏在清理过程中启动，加载配置尚未清理。请退出游戏后重新检测。")
+        return ManagedPluginCleanupResult("waiting_game_exit", facts, tr("游戏在清理过程中启动，加载配置尚未清理。请退出游戏后重新检测。"))
     cleanup_mod_workspace(workspace_path=cleanup_workspace)
     final = inspect_managed_plugin(
         game_executable_path=game_executable_path,
@@ -127,9 +129,9 @@ def cleanup_managed_plugin(
         inspect_legacy_proxy=cleanup_legacy_proxy,
     )
     if final.game_running:
-        return ManagedPluginCleanupResult("waiting_game_exit", final, "加载登记已处理，游戏仍需退出以结束已加载会话。")
+        return ManagedPluginCleanupResult("waiting_game_exit", final, tr("加载登记已处理，游戏仍需退出以结束已加载会话。"))
     if (cleanup_legacy_proxy and final.dll_state != "missing") or final.registry_state != "absent":
-        return ManagedPluginCleanupResult("conflict", final, "清理后组件或加载配置发生变化，请重新核对。")
+        return ManagedPluginCleanupResult("conflict", final, tr("清理后组件或加载配置发生变化，请重新核对。"))
     return ManagedPluginCleanupResult("cleaned", final,
-        "旧代理与本程序拥有的加载登记已清理。" if cleanup_legacy_proxy else
-        "本程序拥有的旧加载登记已清理；非当前组件文件保持原样。")
+        tr("旧代理与本程序拥有的加载登记已清理。") if cleanup_legacy_proxy else
+        tr("本程序拥有的旧加载登记已清理；非当前组件文件保持原样。"))

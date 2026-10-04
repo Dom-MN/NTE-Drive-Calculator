@@ -135,14 +135,14 @@ class AutoSyncController(QObject):
             self._process = event.process
             self._attempt = None
             self._retry_cancelled = False
-            self._detail = "已发现游戏，正在准备背包监听。"
+            self._detail = tr("已发现游戏，正在准备背包监听。")
         elif event.kind == "exited":
             if self._process != event.process:
                 return
             self._process = None
             self._attempt = None
             self._retry_cancelled = False
-            self._detail = "游戏已退出，等待下次启动。已保存背包仍可用于计算。"
+            self._detail = tr("游戏已退出，等待下次启动。已保存背包仍可用于计算。")
             self._stop_inventory()
         elif event.kind == "error":
             self._detail = event.error
@@ -150,7 +150,7 @@ class AutoSyncController(QObject):
             self._attempt = None
             self._stop_inventory()
         elif event.kind == "waiting" and self._process is None:
-            self._detail = "等待启动游戏；发现游戏后自动开始背包监听。"
+            self._detail = tr("等待启动游戏；发现游戏后自动开始背包监听。")
         self.refresh()
 
     def set_enabled(self, enabled):
@@ -161,12 +161,12 @@ class AutoSyncController(QObject):
             self._request_enable_preflight(self._confirm_enable)
             return
         if enabled and not (self.policy.allowed("native_sync") or self.policy.allowed("packet_capture")):
-            self.window.operation_entry("game_sync", "自动同步")
+            self.window.operation_entry("game_sync", tr("自动同步"))
             self.render()
             return
         if enabled and self.policy.settings.paused:
             self.window.operation_unavailable(
-                "自动同步", "连接已暂停，请查看检测详情并完成同步条件核对。", target="detection",
+                tr("自动同步"), tr("连接已暂停，请查看检测详情并完成同步条件核对。"), target="detection",
             )
             self.render()
             return
@@ -251,7 +251,7 @@ class AutoSyncController(QObject):
             try:
                 service.stop()
             except Exception:
-                error = "上次背包同步尚未停止，请等待收尾或重新同步。"
+                error = tr("上次背包同步尚未停止，请等待收尾或重新同步。")
             if not self._closed:
                 try:
                     self.stop_finished.emit((service, error))
@@ -290,7 +290,7 @@ class AutoSyncController(QObject):
             self._dialog.raise_()
             return
         if not self.policy.allowed("native_sync") and not self.policy.allowed("packet_capture"):
-            self.window.operation_entry("game_sync", "重启同步")
+            self.window.operation_entry("game_sync", tr("重启同步"))
             return
         from src.features.home.sync_retry_dialog import SyncRetryDialog
         dialog = SyncRetryDialog(self.window, controller=self, native=self.policy.allowed("native_sync"))
@@ -313,7 +313,7 @@ class AutoSyncController(QObject):
         self._retry_cancelled = False
         self._stop_failed = False
         self._restarting = True
-        self._detail = "正在停止旧会话并重新建立同步，已保存背包保持可用。"
+        self._detail = tr("正在停止旧会话并重新建立同步，已保存背包保持可用。")
         if self._watcher is not None and not self._watcher.is_running:
             self._stop_watcher()
         self._stop_inventory()
@@ -324,7 +324,7 @@ class AutoSyncController(QObject):
             return
         self._restarting = False
         self._retry_cancelled = True
-        self._detail = "本次重启同步已取消，可点击“重启同步”重试。已保存背包保持可用。"
+        self._detail = tr("本次重启同步已取消，可点击“重启同步”重试。已保存背包保持可用。")
         self._stop_inventory()
         self.render()
 
@@ -350,16 +350,16 @@ class AutoSyncController(QObject):
         toggle.blockSignals(False)
         native = self.policy.allowed("native_sync")
         online = native or self.policy.allowed("packet_capture")
-        source = ("来源：游戏内组件" if native else
-                  "来源：抓包（角色养成需手动维护）")
+        source = (tr("来源：游戏内组件") if native else
+                  tr("来源：抓包（角色养成需手动维护）"))
         source_tip = (
-            "同步背包、当前装备及角色养成（等级、突破、技能、好感度、弧盘），并持续监听变化。"
+            tr("同步背包、当前装备及角色养成（等级、突破、技能、好感度、弧盘），并持续监听变化。")
             if native else
-            "同步背包和当前装备并持续监听变化；角色养成需手动维护。"
+            tr("同步背包和当前装备并持续监听变化；角色养成需手动维护。")
         )
         if not online:
-            source = "离线模式：使用已保存数据"
-            source_tip = "不连接游戏，也不采集新数据。"
+            source = tr("离线模式：使用已保存数据")
+            source_tip = tr("不连接游戏，也不采集新数据。")
         self.window.home_sync_source_label.setText(source)
         self.window.home_sync_source_label.setToolTip(source_tip)
         self.window.home_sync_source_label.hide()
@@ -389,72 +389,73 @@ class AutoSyncController(QObject):
             tr("先显示抓包条件检测，确认后登录游戏并自动保存数据。")
         )
         button.setEnabled(not self._stopping and (not battle or not settings.auto_sync_enabled))
-        hint = "请先结束战报，再重启同步。" if battle and settings.auto_sync_enabled else ""
+        hint = tr("请先结束战报，再重启同步。") if battle and settings.auto_sync_enabled else ""
         self.window.home_sync_action_hint.setText(hint)
         self.window.home_sync_action_hint.setVisible(bool(hint))
         detail = None
         if not online:
-            detail = "离线模式，使用已保存背包。"
+            detail = tr("离线模式，使用已保存背包。")
         elif settings.paused:
-            detail = "连接已暂停；点击“恢复自动同步”核对条件，无需重选工作模式。"
+            detail = tr("连接已暂停；点击“恢复自动同步”核对条件，无需重选工作模式。")
         elif not settings.auto_sync_enabled:
-            detail = "自动同步已关闭，已保存背包仍可用于计算。"
+            detail = tr("自动同步已关闭，已保存背包仍可用于计算。")
         elif self._stopping or self._stop_failed or self._retry_cancelled:
-            detail = self._detail or "正在收尾上次同步，已保存背包仍可用于计算。"
+            detail = self._detail or tr("正在收尾上次同步，已保存背包仍可用于计算。")
         elif native and battle:
-            detail = "战报采集中，背包与角色刷新暂时等待，结束后自动恢复。"
+            detail = tr("战报采集中，背包与角色刷新暂时等待，结束后自动恢复。")
         elif native and preparation == 'checking_game':
-            detail = "正在检测游戏是否启动。已保存背包仍可用于计算。"
+            detail = tr("正在检测游戏是否启动。已保存背包仍可用于计算。")
         elif native and preparation == 'waiting_game_exit':
-            detail = "组件尚未完成部署或更新，请完全退出游戏，部署完成后再启动并进入游戏场景。"
+            detail = tr("组件尚未完成部署或更新，请完全退出游戏，部署完成后再启动并进入游戏场景。")
         elif native and preparation == 'waiting_deployment':
-            detail = "组件尚未完成部署或更新，请暂勿启动游戏；查看检测详情，完成部署后再启动并进入游戏场景。"
+            detail = tr("组件尚未完成部署或更新，请暂勿启动游戏；查看检测详情，完成部署后再启动并进入游戏场景。")
         elif native and preparation == 'waiting_game':
-            detail = "等待启动游戏；请登录并进入游戏场景，等待背包与角色数据同步完成。"
+            detail = tr("等待启动游戏；请登录并进入游戏场景，等待背包与角色数据同步完成。")
         elif not native and self._process is None:
-            detail = self._detail or "等待启动游戏；发现游戏后自动开始背包监听。"
+            detail = self._detail or tr("等待启动游戏；发现游戏后自动开始背包监听。")
         elif state is None or not service.is_running:
             detail = (state.message if state and state.phase == "error" else
-                      "等待游戏内组件就绪；请进入游戏场景，等待同步完成。" if native else self._detail or "正在准备背包监听。")
+                      tr("等待游戏内组件就绪；请进入游戏场景，等待同步完成。") if native else self._detail or tr("正在准备背包监听。"))
         elif state.capturing and not state.source_snapshot_ready:
             detail = (
-                state.message + "\n请进入游戏场景，等待同步完成；当前显示的仍是上次保存的背包。" if native else
-                "抓包监听已就绪，请登录游戏以获取完整背包；当前显示的仍是上次保存的背包。"
+                tr("{message}\n请进入游戏场景，等待同步完成；当前显示的仍是上次保存的背包。",
+                   message=state.message) if native else
+                tr("抓包监听已就绪，请登录游戏以获取完整背包；当前显示的仍是上次保存的背包。")
             )
         if detail is not None:
             self.window.home_sync_detail.setText(detail)
         badge = getattr(self.window, "home_sync_badge", None)
         if badge is not None:
             if not online or not settings.auto_sync_enabled or settings.paused:
-                title, tone = "同步已关闭", "neutral"
+                title, tone = tr("同步已关闭"), "neutral"
             elif self._stopping:
-                title, tone = "收尾中", "active"
+                title, tone = tr("收尾中"), "active"
             elif self._stop_failed:
-                title, tone = "同步异常", "error"
+                title, tone = tr("同步异常"), "error"
             elif self._retry_cancelled:
-                title, tone = "等待重试", "warning"
+                title, tone = tr("等待重试"), "warning"
             elif native and battle:
-                title, tone = "等待战报结束", "warning"
+                title, tone = tr("等待战报结束"), "warning"
             elif native and preparation == 'checking_game':
-                title, tone = "检测游戏", "active"
+                title, tone = tr("检测游戏"), "active"
             elif native and preparation == 'waiting_game_exit':
-                title, tone = "等待退出游戏", "warning"
+                title, tone = tr("等待退出游戏"), "warning"
             elif native and preparation == 'waiting_deployment':
-                title, tone = "等待部署", "warning"
+                title, tone = tr("等待部署"), "warning"
             elif native and preparation == 'waiting_game':
-                title, tone = "等待游戏", "warning"
+                title, tone = tr("等待游戏"), "warning"
             elif not native and self._process is None:
-                title, tone = "等待游戏", "warning"
+                title, tone = tr("等待游戏"), "warning"
             elif state and state.phase == "error":
-                title, tone = "同步异常", "error"
+                title, tone = tr("同步异常"), "error"
             elif native and preparation == 'waiting_component':
-                title, tone = "等待组件", "warning"
+                title, tone = tr("等待组件"), "warning"
             elif state and state.phase == "listening" and state.source_snapshot_ready:
-                title, tone = "持续监听", "success"
+                title, tone = tr("持续监听"), "success"
             elif state and state.phase in {"collecting", "saving"}:
-                title, tone = "同步中", "active"
+                title, tone = tr("同步中"), "active"
             else:
-                title, tone = "等待背包", "warning"
+                title, tone = tr("等待背包"), "warning"
             if badge.text() != title:
                 from src.ui.dashboard_widgets import set_status_badge
                 set_status_badge(badge, title, tone)
