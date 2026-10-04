@@ -61,7 +61,7 @@ ISSUE_STATES = frozenset({"fault", "missing", "cleanup_pending"})
 def _check_state_label(item) -> str:
     if dict(item.facts).get("inspection_incomplete") is True:
         return tr("未完成检测")
-    return STATE_LABELS[item.state.value]
+    return tr(STATE_LABELS[item.state.value])
 
 
 def _fact_value(value) -> str:
@@ -239,10 +239,10 @@ class ModeReportDialog(QDialog):
         self.settings_button.clicked.connect(lambda: self._primary_action())
         footer.addWidget(self.settings_button)
         self.close_button = QPushButton(tr("关闭"))
-        self.close_button.setFixedWidth(72)
+        self.close_button.setMinimumWidth(72)
         self.close_button.clicked.connect(self.reject)
         self.retry_button = QPushButton(tr("重新检测"))
-        self.retry_button.setFixedWidth(88)
+        self.retry_button.setMinimumWidth(88)
         self.retry_button.clicked.connect(self._retry)
         footer.addWidget(self.retry_button)
         footer.addWidget(self.close_button)
@@ -295,7 +295,7 @@ class ModeReportDialog(QDialog):
             body = QVBoxLayout(row)
             body.setContentsMargins(12, 8, 12, 8)
             body.setSpacing(3)
-            label = QLabel(f"{state_label}  ·  {'、'.join(labels)}", row)
+            label = QLabel(f"{state_label}  ·  {tr('、').join(labels)}", row)
             label.setWordWrap(True)
             label.setStyleSheet(f"color:{color};font-weight:700")
             body.addWidget(label)
@@ -330,7 +330,7 @@ class ModeReportDialog(QDialog):
             heading = QLabel(tr("已就绪（{ready} 项）", ready=ready_count), self.results)
             heading.setStyleSheet(f"color:{theme_color('#3fb950')};font-weight:700;font-size:13px")
             self.results_layout.addWidget(heading)
-            names = QLabel("、".join(label for _key, labels in available for label in labels), self.results)
+            names = QLabel(tr("、").join(label for _key, labels in available for label in labels), self.results)
             names.setWordWrap(True)
             self.results_layout.addWidget(names)
 
@@ -482,7 +482,7 @@ class ModeReportDialog(QDialog):
 
     def _set_result(self, detail):
         header = (f"NTE Drive Calc {__version__} · {self.windowTitle()}\n"
-                  f"检测时间：{datetime.now().astimezone().isoformat(timespec='seconds')}")
+                  + tr("检测时间：{time}", time=datetime.now().astimezone().isoformat(timespec='seconds')))
         self._copy_text = header + "\n\n" + detail
         self.metadata.setText(header.replace("\n", "  ·  "))
         self.label.setText(self._copy_text)

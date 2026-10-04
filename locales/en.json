@@ -3358,5 +3358,10 @@
   "无法核对游戏主程序位置；尚未检查原生部署文件。": "Could not verify the game executable's location; the native deployment files were not checked.",
   "游戏目录缺少原生组件：{relative}": "The game directory is missing a native component: {relative}",
   "无法读取实际原生组件：{relative}": "Could not read the deployed native component: {relative}",
-  "实际原生组件尚未与配套整包核对匹配：{relative}": "The deployed native component does not yet match the bundled set: {relative}"
+  "实际原生组件尚未与配套整包核对匹配：{relative}": "The deployed native component does not yet match the bundled set: {relative}",
+  "可用": "Available",
+  "正常等待": "Waiting",
+  "缺少条件": "Missing a condition",
+  "清理待完成": "Cleanup pending",
+  "检测时间：{time}": "Checked at: {time}"
 }
