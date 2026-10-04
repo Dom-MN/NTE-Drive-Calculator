@@ -281,7 +281,8 @@ def _build_strategy_card(window, layout):
     header.addSpacing(max(1, title_label.fontMetrics().horizontalAdvance("　") // 2))
     window.allocation_filter_settings_button = QPushButton(tr("设置"))
     window.allocation_filter_settings_button.setObjectName("allocationFilterSettingsButton")
-    window.allocation_filter_settings_button.setFixedSize(54, 28)
+    window.allocation_filter_settings_button.setFixedHeight(28)
+    window.allocation_filter_settings_button.setMinimumWidth(54)
     window.allocation_filter_settings_button.clicked.connect(
         window._open_allocation_filter_settings
     )

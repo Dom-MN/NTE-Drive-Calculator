@@ -224,7 +224,8 @@
       "鲸之歌",
       "鸩火",
       "黯星",
-      "黯星伤害增强"
+      "黯星伤害增强",
+      "黑羽"
     ],
     "provenance": {
       "locres": "Joined to the game's own string tables on name_text_key / attribute_id. Authoritative.",
@@ -455,7 +456,8 @@
     "灵可": "Linko",
     "小吱": "Chiz",
     "伊洛伊": "Iroi",
-    "真红": "Shinku"
+    "真红": "Shinku",
+    "黑羽": "Blackbird"
   },
   "forks": {
     "永恒圆舞曲": "Eternal Waltz",

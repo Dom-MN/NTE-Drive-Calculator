@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QMimeData, QTimer, Qt, Signal
-from PySide6.QtGui import QDrag, QPainter, QPixmap
+from PySide6.QtGui import QDrag, QFont, QFontMetrics, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -319,7 +319,14 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
         return sorted(names, key=role_name_sort_key)
 
     def _priority_role_frame_width(self, name):
-        return self._priority_role_name_width() + 106
+        # Avatar, spacing and margins take 58px; the manage button sizes to its label.
+        return self._priority_role_name_width() + 58 + self._manage_button_width()
+
+    def _manage_button_width(self):
+        font = QFont(self.font())
+        font.setPixelSize(12)
+        font.setBold(True)
+        return max(48, QFontMetrics(font).horizontalAdvance(tr("管理")) + 18)
 
     def _priority_role_name_width(self):
         return max(54, self.fontMetrics().horizontalAdvance("MMMM") + 18)
@@ -361,7 +368,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
             item = QFrame()
             item.setFixedSize(self._priority_role_frame_width(name), 48)
             item.setCursor(Qt.PointingHandCursor)
-            item.setToolTip(tr("{name}：点击头像或角色名移回待选区", name=name))
+            item.setToolTip(tr("{name}：点击头像或角色名移回待选区", name=display_term(name)))
             item.mousePressEvent = (
                 lambda event, role=name: self._toggle(role)
                 if event.button() == Qt.LeftButton else event.ignore()
@@ -380,7 +387,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
 
             name_btn = PriorityRoleButton(self, name, index)
             name_btn.setObjectName("priorityRoleName")
-            name_btn.setToolTip(tr("{name}：点击移出当前优先级；向后拖拽调整优先级", name=name))
+            name_btn.setToolTip(tr("{name}：点击移出当前优先级；向后拖拽调整优先级", name=display_term(name)))
             name_btn.setFixedWidth(self._priority_role_name_width())
             name_btn.setStyleSheet(
                 themed_style(
@@ -394,7 +401,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
 
             manage_btn = QPushButton(tr("管理"))
             manage_btn.setObjectName("btnSm")
-            manage_btn.setFixedSize(48, 30)
+            manage_btn.setFixedSize(self._manage_button_width(), 30)
             manage_btn.setStyleSheet(
                 "QPushButton{background:#238636;color:#fff;border:1px solid #2ea043;"
                 "border-radius:5px;padding:3px 7px;font-size:12px;font-weight:700}"
@@ -447,7 +454,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
 
         layout.addWidget(self._role_avatar(name, 36))
 
-        name_label = QLabel(name)
+        name_label = QLabel(display_term(name))
         name_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         name_label.setStyleSheet(
             themed_style(
