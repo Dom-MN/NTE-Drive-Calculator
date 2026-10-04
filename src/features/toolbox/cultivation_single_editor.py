@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from pathlib import Path
 
@@ -138,10 +138,10 @@ class CultivationSingleEditor(QWidget):
         body.setSpacing(10)
         if title:
             caption = QHBoxLayout()
-            label = QLabel(title, panel)
+            label = QLabel(tr(title), panel)
             label.setStyleSheet(themed_style("color:#f0f6fc;font-size:14px;font-weight:800"))
             caption.addWidget(label)
-            subtitle = QLabel(note, panel)
+            subtitle = QLabel(tr(note), panel)
             subtitle.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
             caption.addWidget(subtitle)
             caption.addStretch(1)
@@ -166,7 +166,7 @@ class CultivationSingleEditor(QWidget):
         body = QVBoxLayout(state)
         body.setContentsMargins(11, 8, 11, 9)
         body.setSpacing(6)
-        label = QLabel(title, state)
+        label = QLabel(tr(title), state)
         label.setStyleSheet(themed_style("color:#8b949e;font-size:11px;font-weight:700"))
         body.addWidget(label)
         fields = QHBoxLayout()
@@ -203,13 +203,13 @@ class CultivationSingleEditor(QWidget):
             label.setPixmap(pixmap)
 
     def set_role(self, name: str, image: str | Path | None) -> None:
-        self.role_name.setText(name)
+        self.role_name.setText(display_term(name))
         self._set_image(self.role_icon, image, name[:1] or "?")
 
     def set_fork(self, name: str | None, image: str | Path | None) -> None:
-        self.fork_name.setText(name or tr("尚未选择弧盘"))
+        self.fork_name.setText(display_term(name) if name else tr("尚未选择弧盘"))
         self.fork_button.setText(tr("更换弧盘") if name else tr("选择弧盘"))
-        self._set_image(self.fork_icon, image, "弧")
+        self._set_image(self.fork_icon, image, tr("弧"))
 
     def set_skills(self, seed: CultivationSeed) -> None:
         while self.skills_grid.count():

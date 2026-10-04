@@ -3397,5 +3397,13 @@
   "期望伤害": "Expected damage",
   "觉醒等级：": "Awakening level: ",
   "未激活（需要 {threshold} 觉）": "Inactive (needs awakening {threshold})",
-  "｜": " | "
+  "｜": " | ",
+  "（当前）": "(current)",
+  "（下调）": "(lowered)",
+  "当前状态": "Current",
+  "目标状态": "Target",
+  "当前等级 → 目标等级": "current level → target level",
+  "角色等级与突破": "Character level and ascension",
+  "人物养成目标": "Character growth target",
+  "选择弧盘并设置目标": "Pick an Arc and set its target"
 }

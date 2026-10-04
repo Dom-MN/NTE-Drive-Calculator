@@ -102,7 +102,7 @@ def participation_toggle(parent: QWidget, label: str) -> QToolButton:
 def level_spinbox(parent: QWidget) -> QSpinBox:
     control = _CultivationSpinBox(parent)
     control.setRange(1, 80)
-    control.setSuffix(" 级")
+    control.setSuffix(tr(" 级"))
     control.setFixedWidth(92)
     return control
 

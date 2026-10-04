@@ -238,7 +238,7 @@ class CultivationCalculatorContent(QWidget):
         self._materials_dirty = False
         self._calculate_button.setText(tr("计算所需材料与体力"))
         self.plan_available.emit(False)
-        self._set_result_message("已按角色页保存的等级、突破和技能等级预填。")
+        self._set_result_message(tr("已按角色页保存的等级、突破和技能等级预填。"))
 
     def _select_fork(self) -> None:
         try:

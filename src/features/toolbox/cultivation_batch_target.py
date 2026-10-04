@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from collections.abc import Callable
 from pathlib import Path
@@ -155,7 +155,7 @@ class CultivationBatchTargetCard(QFrame):
         header.addWidget(avatar)
         copy = QVBoxLayout()
         copy.setSpacing(2)
-        name = QLabel(self.seed.character_name, self)
+        name = QLabel(display_term(self.seed.character_name), self)
         name.setStyleSheet(themed_style("color:#f0f6fc;font-size:15px;font-weight:900"))
         copy.addWidget(name)
         self.summary = QLabel(self)
@@ -197,10 +197,10 @@ class CultivationBatchTargetCard(QFrame):
         layout.setContentsMargins(14, 12, 14, 13)
         layout.setSpacing(10)
         header = QHBoxLayout()
-        heading = QLabel(title, panel)
+        heading = QLabel(tr(title), panel)
         heading.setStyleSheet(themed_style("color:#f0f6fc;font-size:14px;font-weight:900"))
         header.addWidget(heading)
-        note = QLabel(subtitle, panel)
+        note = QLabel(tr(subtitle), panel)
         note.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
         header.addWidget(note)
         header.addStretch(1)
@@ -230,7 +230,7 @@ class CultivationBatchTargetCard(QFrame):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(11, 8, 11, 9)
         layout.setSpacing(6)
-        caption = QLabel(label, panel)
+        caption = QLabel(tr(label), panel)
         caption.setStyleSheet(themed_style("color:#8b949e;font-size:11px;font-weight:700"))
         layout.addWidget(caption)
         fields = QHBoxLayout()
@@ -384,7 +384,7 @@ class CultivationBatchTargetCard(QFrame):
     def _set_fork_visual(self) -> None:
         seed = self._fork_seed
         self.fork_name.setText(
-            seed.fork_name if seed is not None else tr("尚未选择弧盘"))
+            display_term(seed.fork_name) if seed is not None else tr("尚未选择弧盘"))
         self.fork_note.setText(
             tr("当前角色使用的弧盘") if seed is not None
             else tr("选择弧盘后可设置等级与突破")
