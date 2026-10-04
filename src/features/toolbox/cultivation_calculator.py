@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
+import json
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -17,15 +19,19 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSpinBox,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from src.app.theme import themed_style
+from src.features.toolbox.cultivation_single_result import CultivationSingleResultMixin
+from src.features.toolbox.cultivation_history_binding import CultivationHistoryDraftBinding, CultivationHistorySaveStatus
+from src.features.toolbox.cultivation_history_draft import capture_target, apply_target_values
+from src.services.cultivation_history_projection import single_history_payload
+from src.services.cultivation_history_restore import PreparedHistoryRestore
+from src.services.cultivation_planner_models import CultivationPreparedTarget
 from src.features.toolbox.cultivation_owned_materials import (
     CultivationOwnedMaterials,
-    build_material_grid,
     remaining_materials,
     visible_materials,
     visible_owned_inputs,
@@ -37,12 +43,6 @@ from src.features.toolbox.cultivation_single_controller import (
 from src.features.toolbox.cultivation_single_editor import CultivationSingleEditor
 from src.features.toolbox.cultivation_stamina_ui import (
     CultivationStaminaControls,
-    stamina_runs_text,
-    stamina_summary_text,
-    style_stamina_badge,
-)
-from src.services.character_progression_requirements import (
-    MaterialSummaryStatus,
 )
 from src.integrations.bundled_resources import bundled_game_ui_asset_root
 from src.services.game_ui_asset_catalog import GameUiAssetCatalog
@@ -61,7 +61,7 @@ from src.services.cultivation_planner_service import (
 )
 
 
-class CultivationCalculatorContent(QWidget):
+class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
     """Editable planning draft; calculation never writes the account or inventory."""
 
     plan_available = Signal(bool)
@@ -75,9 +75,12 @@ class CultivationCalculatorContent(QWidget):
         *,
         context_identity: Callable[[], object] | None = None,
         asset_root: str | Path | None = None,
+        history_binding: CultivationHistoryDraftBinding | None = None,
     ) -> None:
         super().__init__(parent)
         self._service = service
+        self._history_binding = history_binding
+        self._restoring = False
         self._context_identity = context_identity
         self._initial_identity = context_identity() if context_identity is not None else None
         self._controller = CultivationSingleController(
@@ -86,6 +89,14 @@ class CultivationCalculatorContent(QWidget):
         self._controller.result_ready.connect(self._receive_plan)
         self._controller.error.connect(self._calculation_error)
         self._controller.busy_changed.connect(self._set_busy)
+        self._controller.preparation_ready.connect(self._receive_preparation)
+        self._controller.preparation_error.connect(self._preparation_failed)
+        self._controller.preparing_changed.connect(self._preparation_busy)
+        self._prepared: CultivationPreparedTarget | None = None
+        self._prepare_timer = QTimer(self)
+        self._prepare_timer.setSingleShot(True)
+        self._prepare_timer.setInterval(250)
+        self._prepare_timer.timeout.connect(self._prepare_materials)
         self._roles: tuple[CultivationRole, ...] = ()
         self._forks: tuple[CultivationFork, ...] = ()
         self._seed: CultivationSeed | None = None
@@ -94,6 +105,7 @@ class CultivationCalculatorContent(QWidget):
         self._last_plan: CultivationPlan | None = None
         self._last_stamina_plan: CultivationStaminaPlan | None = None
         self._materials_dirty = False
+        self._result_current = False
         self._material_scope = "stamina"
         self._details_expanded = False
         self._asset_catalog = GameUiAssetCatalog(
@@ -162,6 +174,10 @@ class CultivationCalculatorContent(QWidget):
         self._stamina_controls = CultivationStaminaControls(input_body)
         self._stamina_controls.values_changed.connect(self._stamina_inputs_changed)
         input_layout.addWidget(self._stamina_controls)
+        self._preparation_hint = QLabel("目标确定后会提前列出已有材料输入项。", input_body)
+        self._preparation_hint.setWordWrap(True)
+        self._preparation_hint.setTextFormat(Qt.TextFormat.PlainText)
+        input_layout.addWidget(self._preparation_hint)
 
         self._owned_materials = CultivationOwnedMaterials(
             self._asset_catalog.progression_item_icon,
@@ -186,6 +202,8 @@ class CultivationCalculatorContent(QWidget):
         self._calculate_button.clicked.connect(self._calculate)
         action_row.addWidget(self._calculate_button)
         input_layout.addLayout(action_row)
+        if self._history_binding is not None:
+            input_layout.addWidget(CultivationHistorySaveStatus(self._history_binding, input_body))
         layout.addWidget(input_body)
 
         result_panel = QFrame(self)
@@ -239,7 +257,9 @@ class CultivationCalculatorContent(QWidget):
             self._load_selected_seed(int(selected))
 
     def _load_selected_seed(self, character_id: int) -> None:
-        self._controller.invalidate()
+        self._prepare_timer.stop()
+        self._controller.invalidate(clear_preparation=True)
+        self._prepared = None
         try:
             seed = self._service.load_seed(int(character_id))
         except Exception as exc:
@@ -259,9 +279,13 @@ class CultivationCalculatorContent(QWidget):
         self._last_plan = None
         self._last_stamina_plan = None
         self._materials_dirty = False
+        self._result_current = False
         self._calculate_button.setText("计算所需材料与体力")
         self.plan_available.emit(False)
         self._set_result_message("已按角色页保存的等级、突破和技能等级预填。")
+        if self._history_binding is not None:
+            self._history_binding.reset()
+        self._prepare_timer.start()
 
     def _select_fork(self) -> None:
         try:
@@ -296,10 +320,13 @@ class CultivationCalculatorContent(QWidget):
 
     def _apply_fork_seed(self, seed: CultivationForkSeed | None) -> None:
         self._controller.invalidate()
+        if self._history_binding is not None and not self._restoring:
+            self._history_binding.invalidate()
         self._fork_seed = seed
         self._set_fork_controls_enabled(seed is not None)
         if seed is None:
             self._editor.set_fork(None, None)
+            self._draft_edited()
             return
         self._editor.set_fork(
             seed.fork_name, self._asset_catalog.fork_icon(seed.fork_id),
@@ -312,6 +339,7 @@ class CultivationCalculatorContent(QWidget):
         )
         self._fork_target_level.setValue(80)
         self._set_stages(self._fork_target_stage, 80, 6)
+        self._draft_edited()
 
     def _set_fork_controls_enabled(self, enabled: bool) -> None:
         enabled = bool(enabled and self._fork_toggle.isChecked())
@@ -371,22 +399,51 @@ class CultivationCalculatorContent(QWidget):
     def _set_stages(combo: QComboBox, level: int, preferred: object) -> None:
         previous = int(preferred) if preferred is not None else None
         options = _stages_for_level(level)
-        combo.blockSignals(True)
+        blocked = combo.blockSignals(True)
         combo.clear()
         for stage in options:
             combo.addItem(_stage_label(level, stage), stage)
         selected = previous if previous in options else options[0]
         combo.setCurrentIndex(options.index(selected))
-        combo.blockSignals(False)
+        combo.blockSignals(blocked)
 
-    def _calculate(self) -> None:
+    def _calculate(self, _checked: bool = False, *, explicit: bool = True) -> None:
         if self._seed is None:
             return
-        identity = self._context_identity() if self._context_identity is not None else None
+        identity = self._identity()
         if identity != self._initial_identity:
             return
+        self._prepare_timer.stop()
         request = self._single_request()
+        if self._history_binding is not None:
+            envelope = self._history_binding.freeze(self.export_history_configuration(), explicit=explicit)
+            request = replace(request, history_envelope=envelope)
         self._controller.submit(request, identity)
+
+    def _prepare_materials(self) -> None:
+        if self._seed is None or self._restoring:
+            return
+        identity = self._identity()
+        if identity == self._initial_identity:
+            self._controller.prepare(self._single_request(), identity)
+
+    def _receive_preparation(self, value: object) -> None:
+        if not isinstance(value, CultivationPreparedTarget) or self._seed is None:
+            return
+        if value.request != self._single_request().target:
+            return
+        self._prepared = value
+        self._owned_materials.set_materials(self._input_options(value.plan))
+        self._preparation_hint.hide()
+
+    def _preparation_busy(self, busy: bool) -> None:
+        if busy:
+            self._preparation_hint.setText("材料输入准备中；尚未求解体力。")
+            self._preparation_hint.show()
+
+    def _preparation_failed(self, _message: str) -> None:
+        self._preparation_hint.setText("材料输入准备失败；已填数量保留，可点击计算重新尝试。")
+        self._preparation_hint.show()
 
     def _single_request(self) -> SingleCalculationRequest:
         seed = self._seed
@@ -429,11 +486,22 @@ class CultivationCalculatorContent(QWidget):
         plan = value.plan
         self._last_plan = plan
         self._last_stamina_plan = value.stamina
+        self._prepared = value.preparation
         self._materials_dirty = False
+        self._result_current = True
         self._calculate_button.setText("计算所需材料与体力")
         self.plan_available.emit(True)
         self._render_plan(plan)
+        self._preparation_hint.hide()
         self.calculation_completed.emit()
+        envelope = value.request.history_envelope
+        if self._history_binding is not None and envelope is not None:
+            self._history_binding.accept(
+                envelope, lambda: single_history_payload(
+                    envelope.configuration_json, value.plan, value.stamina, dict(value.dataset_metadata),
+                    stamina_item_ids=value.preparation.stamina_item_ids if value.preparation is not None else None,
+                ), history_error=value.history_error,
+            )
 
     def _calculation_error(self, message: str) -> None:
         QMessageBox.warning(self, "养成计算器", f"计算材料失败：{message}")
@@ -448,10 +516,27 @@ class CultivationCalculatorContent(QWidget):
         )
 
     def _draft_edited(self, *_args: object) -> None:
+        if self._restoring:
+            return
         self._controller.invalidate()
+        if self._history_binding is not None:
+            self._history_binding.invalidate()
+        self._prepared = None
+        self._result_current = False
+        if self._last_plan is not None:
+            self._materials_dirty = True
+            self.plan_available.emit(False)
+            self._set_result_message("养成目标已修改，请点击重新计算更新材料与体力。")
+        self._prepare_timer.start()
 
     def _owned_quantities_changed(self) -> None:
+        if self._restoring:
+            return
         self._controller.invalidate()
+        if self._history_binding is not None:
+            self._history_binding.invalidate()
+        self._prepare_timer.start()
+        self._result_current = False
         if self._last_plan is not None and not self._materials_dirty:
             self._materials_dirty = True
             self._calculate_button.setText("重新计算所需材料与体力")
@@ -459,19 +544,69 @@ class CultivationCalculatorContent(QWidget):
             self._set_result_message("已有材料已修改，请点击重新计算更新材料与体力。")
 
     def _stamina_inputs_changed(self) -> None:
+        if self._restoring:
+            return
         self._controller.invalidate()
+        if self._history_binding is not None:
+            self._history_binding.invalidate()
+        self._result_current = False
         if self._last_plan is not None and not self._materials_dirty:
-            self._calculate()
+            self.plan_available.emit(False)
+            self._set_result_message("体力设置已修改，正在重新计算。")
+            self._calculate(explicit=False)
+        else:
+            self._prepare_timer.start()
+
+    def export_history_configuration(self) -> dict[str, object]:
+        if self._seed is None:
+            raise ValueError("请先选择角色")
+        hunter, identification = self._stamina_controls.values()
+        return {
+            "version": 1, "mode": "single", "hunter_level": hunter, "identification_level": identification,
+            "material_scope": self._material_scope, "owned_materials": self._owned_materials.export_history_materials(),
+            "targets": [capture_target(self._editor, self._seed, self._fork_seed, self._skill_inputs, line_id="single")],
+        }
+
+    def restore_from_history(self, prepared: PreparedHistoryRestore) -> None:
+        if prepared.mode != "single" or len(prepared.seeds) != 1:
+            raise ValueError("历史模式或角色数量不匹配")
+        configuration = json.loads(prepared.configuration_json)
+        self._prepare_timer.stop()
+        self._controller.invalidate(clear_preparation=True)
+        self._prepared = None
+        self._restoring = True
+        try:
+            self._seed = prepared.seeds[0]
+            self._editor.set_role(self._seed.character_name, self._asset_catalog.character_icon(self._seed.character_id))
+            self._rebuild_skills(self._seed)
+            self._apply_fork_seed(self._seed.fork)
+            apply_target_values(self._editor, configuration["targets"][0], self._skill_inputs, self._set_stages)
+            self._set_character_progression_enabled(self._character_toggle.isChecked())
+            self._set_skills_enabled(self._skills_toggle.isChecked())
+            self._set_fork_controls_enabled(self._fork_seed is not None)
+            self._stamina_controls.restore_values(configuration["hunter_level"], configuration["identification_level"])
+            self._owned_materials.clear_materials()
+            self._owned_materials.restore_history_materials(configuration["owned_materials"])
+            self._material_scope = configuration["material_scope"]
+            self._last_plan = None
+            self._last_stamina_plan = None
+            self._materials_dirty = False
+            self._result_current = False
+        finally:
+            self._restoring = False
+        self.plan_available.emit(False)
+        self._set_result_message("已加载历史配置；请确认当前状态与材料数量后点击计算。")
+        self._prepare_timer.start()
 
     def set_material_scope(self, scope: str) -> None:
         if scope not in {"all", "stamina"} or scope == self._material_scope:
             return
         self._material_scope = scope
+        if self._prepared is not None:
+            self._owned_materials.set_materials(self._input_options(self._prepared.plan))
         if self._last_plan is None:
             return
-        if self._materials_dirty:
-            self._owned_materials.set_materials(self._input_options(self._last_plan))
-        else:
+        if self._result_current:
             self._render_plan(self._last_plan)
 
     def _visible(
@@ -486,215 +621,17 @@ class CultivationCalculatorContent(QWidget):
     def _input_options(self, plan: CultivationPlan) -> tuple[CultivationMaterial, ...]:
         item_ids = (
             self._last_stamina_plan.stamina_item_ids
-            if self._last_stamina_plan is not None else frozenset()
+            if self._result_current and self._last_stamina_plan is not None else (
+                self._prepared.stamina_item_ids if self._prepared is not None else frozenset()
+            )
         )
         return visible_owned_inputs(
             plan.owned_inputs or plan.totals, plan.totals,
             self._material_scope, item_ids,
         )
 
-    def _render_plan(self, plan: CultivationPlan) -> None:
-        self._clear_result()
-        self._owned_materials.set_materials(self._input_options(plan))
-        complete = plan.status == MaterialSummaryStatus.COMPLETE
-        if not complete:
-            summary = QLabel(
-                "材料数据不完整，以下为已识别的材料",
-                self._result_body,
-            )
-            summary.setStyleSheet(themed_style(
-                "color:#d29922;font-weight:800"
-            ))
-            self._result_layout.addWidget(summary)
-        if plan.required_experience:
-            overflow = f"，经验书最小溢出 {plan.experience_overflow:,}" if plan.experience_overflow else ""
-            self._result_layout.addWidget(QLabel(
-                f"角色升级经验 {plan.required_experience:,}{overflow}", self._result_body
-            ))
-        if plan.fork_required_experience:
-            overflow = (
-                f"，材料最小溢出 {plan.fork_experience_overflow:,}"
-                if plan.fork_experience_overflow else ""
-            )
-            self._result_layout.addWidget(QLabel(
-                f"弧盘升级经验 {plan.fork_required_experience:,}{overflow}",
-                self._result_body,
-            ))
-        total = QFrame(self._result_body)
-        total.setObjectName("cultivationCalculatorTotals")
-        total.setStyleSheet(themed_style(
-            "QFrame#cultivationCalculatorTotals{background:#0d1117;border:1px solid #58a6ff;border-radius:8px;}"
-        ))
-        total_layout = QVBoxLayout(total)
-        total_layout.setContentsMargins(10, 8, 10, 8)
-        owned = self._owned_materials.quantities()
-        visible_totals = self._visible(plan.totals)
-        remaining = remaining_materials(visible_totals, owned)
-        total_header = QHBoxLayout()
-        total_heading = QLabel("仍需合计", total)
-        total_heading.setStyleSheet(themed_style("color:#58a6ff;font-size:14px;font-weight:900"))
-        total_header.addWidget(total_heading)
-        total_header.addStretch(1)
-        total_stamina = QLabel(
-            stamina_summary_text(
-                self._last_stamina_plan.total if self._last_stamina_plan else None
-            ),
-            total,
-        )
-        style_stamina_badge(total_stamina)
-        total_header.addWidget(total_stamina)
-        total_layout.addLayout(total_header)
-        if remaining:
-            total_grid = build_material_grid(
-                remaining,
-                icon_lookup=self._asset_catalog.progression_item_icon,
-                parent=total,
-            )
-            total_grid.layout_changed.connect(self.layout_changed)
-            total_layout.addWidget(total_grid)
-        elif visible_totals:
-            total_layout.addWidget(QLabel("已有材料已覆盖全部需求", total))
-        elif self._material_scope == "stamina":
-            total_layout.addWidget(QLabel("本次目标没有需消耗体力刷取的材料", total))
-        else:
-            total_layout.addWidget(QLabel("本次目标没有新增材料", total))
-        total_runs = stamina_runs_text(
-            self._last_stamina_plan.total if self._last_stamina_plan else None
-        )
-        if total_runs:
-            run_label = QLabel(total_runs, total)
-            run_label.setWordWrap(True)
-            run_label.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
-            total_layout.addWidget(run_label)
-        self._result_layout.addWidget(total, 0, Qt.AlignmentFlag.AlignTop)
-        if plan.gaps:
-            self._result_layout.addWidget(QLabel(
-                "部分正式材料数量尚未提供，合计只包含已识别条目。", self._result_body
-            ))
-        if plan.sections:
-            self._result_layout.addWidget(
-                self._details_panel(plan, self._last_stamina_plan),
-                0,
-                Qt.AlignmentFlag.AlignTop,
-            )
-        self._result_layout.addStretch()
-        self.layout_changed.emit()
-
-    def _details_panel(
-        self,
-        plan: CultivationPlan,
-        stamina_plan: CultivationStaminaPlan | None,
-    ) -> QFrame:
-        panel = QFrame(self._result_body)
-        panel.setObjectName("cultivationCalculatorDetailsPanel")
-        panel.setStyleSheet(themed_style(
-            "QFrame#cultivationCalculatorDetailsPanel{background:#0d1117;"
-            "border:1px solid #30363d;border-radius:8px;}"
-            "QToolButton#cultivationCalculatorDetailsToggle{border:0;"
-            "padding:9px;text-align:left;color:#c9d1d9;font-weight:800;}"
-        ))
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        toggle = QToolButton(panel)
-        toggle.setObjectName("cultivationCalculatorDetailsToggle")
-        toggle.setText(f"计算明细 · {len(plan.sections)}项")
-        toggle.setCheckable(True)
-        toggle.setChecked(self._details_expanded)
-        toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        layout.addWidget(toggle)
-        content = QWidget(panel)
-        content.setObjectName("cultivationCalculatorDetailsContent")
-        content.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Maximum,
-        )
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(10, 4, 10, 10)
-        content_layout.setSpacing(8)
-        content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        for index, section in enumerate(plan.sections):
-            card = QFrame(content)
-            card.setObjectName("cultivationCalculatorResultSection")
-            card.setSizePolicy(
-                QSizePolicy.Policy.Preferred,
-                QSizePolicy.Policy.Maximum,
-            )
-            card.setStyleSheet(themed_style(
-                "QFrame#cultivationCalculatorResultSection{background:#161b22;"
-                "border:1px solid #30363d;border-radius:8px;}"
-            ))
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(10, 8, 10, 8)
-            heading_row = QHBoxLayout()
-            heading = QLabel(section.label, card)
-            heading.setStyleSheet(themed_style("color:#58a6ff;font-weight:800"))
-            heading_row.addWidget(heading)
-            heading_row.addStretch(1)
-            section_stamina = (
-                stamina_plan.sections[index].result
-                if stamina_plan is not None and index < len(stamina_plan.sections)
-                else None
-            )
-            stamina = QLabel(stamina_summary_text(section_stamina), card)
-            style_stamina_badge(stamina)
-            heading_row.addWidget(stamina)
-            card_layout.addLayout(heading_row)
-            section_materials = self._visible(section.materials)
-            if section_materials:
-                grid = build_material_grid(
-                    section_materials,
-                    icon_lookup=self._asset_catalog.progression_item_icon,
-                    parent=card,
-                    minimum_card_width=118,
-                )
-                grid.layout_changed.connect(self.layout_changed)
-                card_layout.addWidget(grid)
-            else:
-                values = QLabel(
-                    "本模块没有需消耗体力刷取的材料"
-                    if self._material_scope == "stamina" else "无额外材料",
-                    card,
-                )
-                values.setStyleSheet(themed_style("color:#8b949e"))
-                card_layout.addWidget(values)
-            if section.description:
-                description = QLabel(section.description, card)
-                description.setWordWrap(True)
-                description.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
-                card_layout.addWidget(description)
-            runs = stamina_runs_text(section_stamina)
-            if runs:
-                run_label = QLabel(runs, card)
-                run_label.setWordWrap(True)
-                run_label.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
-                card_layout.addWidget(run_label)
-            content_layout.addWidget(card)
-        layout.addWidget(content)
-        toggle.toggled.connect(
-            lambda expanded: self._set_details_expanded(expanded, toggle, content)
-        )
-        self._set_details_expanded(self._details_expanded, toggle, content)
-        return panel
-
-    def _set_details_expanded(
-        self,
-        expanded: bool,
-        toggle: QToolButton,
-        content: QWidget,
-    ) -> None:
-        self._details_expanded = bool(expanded)
-        toggle.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
-        )
-        content.setVisible(expanded)
-        content.updateGeometry()
-        toggle.parentWidget().updateGeometry()
-        self.layout_changed.emit()
-
     def copy_plan(self) -> None:
-        if self._last_plan is None or self._materials_dirty:
+        if self._last_plan is None or not self._result_current:
             return
         lines = [f"{self._last_plan.character_name} · 养成材料"]
         if self._last_plan.fork_required_experience:
@@ -714,6 +651,7 @@ class CultivationCalculatorContent(QWidget):
         self._last_plan = None
         self._last_stamina_plan = None
         self._materials_dirty = False
+        self._result_current = False
         self._calculate_button.setText("计算所需材料与体力")
         self.plan_available.emit(False)
         if self._seed is not None:
@@ -724,7 +662,16 @@ class CultivationCalculatorContent(QWidget):
             self._set_result_message("正在读取可用于养成计算的角色。")
 
     def close_controller(self) -> None:
+        self._prepare_timer.stop()
         self._controller.close()
+        if self._history_binding is not None:
+            self._history_binding.close()
+
+    def _identity(self) -> object:
+        try:
+            return self._context_identity() if self._context_identity is not None else None
+        except (OSError, RuntimeError):
+            return None
 
     def _set_result_message(self, text: str, *, error: bool = False) -> None:
         self._clear_result()

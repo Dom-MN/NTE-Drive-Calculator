@@ -16,6 +16,7 @@ from src.services.game_observation_service import GameObservationService, Observ
 from src.services.work_mode_diagnostics import detection_failure_detail
 from src.services.sync_enable_preflight import decide_sync_activation, decide_sync_enable
 from src.ui.controllers.component_upgrade_guide import ComponentUpgradeGuideMixin, UpgradeResult
+from src.ui.controllers.work_mode_report_actions import WorkModeReportActionsMixin
 
 
 @dataclass(frozen=True)
@@ -44,7 +45,7 @@ class _CleanupResult:
 
 
 
-class WorkModeController(ComponentUpgradeGuideMixin, QObject):
+class WorkModeController(ComponentUpgradeGuideMixin, WorkModeReportActionsMixin, QObject):
     observed = Signal(object)
     plugins_applied = Signal(object)
 
@@ -261,7 +262,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         return ""
 
     def select_mode(self, mode: str) -> None:
-        if self._closed:
+        if self._closed or mode not in MODE_LABELS:
             return
         if not confirm_mode(self.window, mode):
             self.refresh_controls(reset_selection=True)
@@ -328,6 +329,8 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
               preview: bool = False, retry_deployment: bool = False) -> None:
         if self._closed or self._sync_activation_request is not None:
             return
+        if not preview:
+            self.cancel_report_sync_guidance()
         self._request_serial += 1
         request_id = self._request_serial
         if preview:
@@ -341,7 +344,9 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         if show or self._show_request_id is not None:
             self._show_request_id = request_id
             if self._report_dialog is None:
-                self._report_dialog = ModeReportDialog(self.window, self)
+                self._report_dialog = ModeReportDialog(
+                    self.window, self, sync_action_provider=self.sync_enable_action_for_report,
+                )
                 self._report_dialog.finished.connect(self._dismiss_report)
             self._report_dialog.begin(self.policy.settings.mode.value, preview=preview)
             if self._controls:
@@ -363,6 +368,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         self._observer.submit(perform, key="check")
 
     def _dismiss_report(self, _result=0) -> None:
+        self.cancel_report_sync_guidance()
         dialog, self._report_dialog = self._report_dialog, None
         self._show_request_id = None
         self._sync_preflight_request = None
@@ -701,6 +707,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
             except OSError:
                 pass  # revoke_first already removed the in-process automatic authority.
             self.refresh_controls()
+        self.finish_report_sync_guidance(success)
         if self._report_dialog is not None:
             if success:
                 self._report_dialog.accept()

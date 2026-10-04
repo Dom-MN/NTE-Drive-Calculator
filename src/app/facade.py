@@ -76,6 +76,7 @@ class NTEAppFacade:
         locked_uids=None,
         blueprint_combo_limit: int = 2000,
         cancel_check=None,
+        allocation_observer=None,
     ):
         """使用已经固定的数据集合计算，不要求生成中间库存文件。"""
 
@@ -85,6 +86,8 @@ class NTEAppFacade:
         )
 
         def allocation_executor(request, scorer):
+            if allocation_observer is not None:
+                allocation_observer(request, scorer)
             plans = native_allocation_executor(request, scorer)
             return explain_allocation_failures(plans, request, scorer.stat_catalog)
 

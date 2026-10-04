@@ -356,6 +356,9 @@ def run_inventory_sync(service: Any) -> None:
                             added_count=0,
                             removed_count=0,
                         )
+                        if (current_summary and current_summary.get("source") == "nte_core"
+                            and (not native or client.confirm_inventory_snapshot(event["params"].get("native_snapshot")))):
+                            service._record_inventory_observation(event["params"])
 
                 sync_stage = "listening"
                 now = time.monotonic()
@@ -504,6 +507,8 @@ def run_inventory_sync(service: Any) -> None:
                     error=None,
                     error_code=None,
                 )
+                if current_summary and current_summary.get("source") == "nte_core":
+                    service._record_inventory_observation(stable.payload)
                 sync_stage = "listening"
     except InventorySyncCancelled as exc:
         # Only classify from bounded owner state; exception text can contain

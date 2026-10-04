@@ -124,7 +124,7 @@ class RewindSlotUiMixin:
         layout.addStretch(1)
         self._result_tabs.addTab(page, "推荐结果")
         complete = self._slots_complete()
-        self._save_plan_button.setEnabled(complete)
+        self._save_plan_button.setEnabled(complete and not getattr(self, "_recommendation_invalidated", False))
         self._start_rewind_button.setEnabled(True)
         self._save_plan_button.setText("保存方案" if complete else "填满八槽后保存")
 
@@ -210,6 +210,7 @@ class RewindSlotUiMixin:
         ]
 
     def _clear_rewind_slots(self) -> None:
+        self._begin_manual_draft()
         self._editable_slots = [None] * REWIND_SLOT_COUNT
         self._render_rewind_slots(
             "自定义方案",

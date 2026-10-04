@@ -1,6 +1,7 @@
 # 测试鼠标扫描状态同步。
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -160,11 +161,13 @@ class MouseStateSyncTests(unittest.TestCase):
             )
             report = Path(tmp, "mouse_state_sync_last_report.json").read_text(encoding="utf-8")
         self.assertEqual(0, result.applied_count)
-        self.assertEqual(1, len(result.state_mismatches))
-        self.assertEqual("discarded", result.state_mismatches[0].detected_state)
+        self.assertEqual(1, len(result.issues))
+        self.assertEqual("state_mismatch", result.issues[0].reason)
+        self.assertEqual("discarded", result.issues[0].detected_state)
         self.assertEqual(1, len(scanner._input.clicks))
         self.assertIn('"status": "complete_with_skips"', report)
-        self.assertIn('"index": 1', report)
+        self.assertEqual({"state_mismatch": 1}, json.loads(report)["issue_counts"])
+        self.assertNotIn('"index"', report)
 
     def test_state_mismatch_does_not_stop_later_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -181,7 +184,114 @@ class MouseStateSyncTests(unittest.TestCase):
             )
 
         self.assertEqual(1, result.applied_count)
-        self.assertEqual([2], [item.index for item in result.state_mismatches])
+        self.assertEqual([2], [item.index for item in result.issues])
+
+    def test_identity_mismatch_skips_action_and_continues_later_items(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scanner = self.Scanner(["normal", "locked"], tmp)
+            checked = []
+            actions = []
+
+            def verify(index, _image):
+                checked.append(index)
+                return index != 2
+
+            sync = MouseEquipmentStateSync(
+                scanner, identity_verifier=verify,
+                state_detector=lambda _image: next(scanner.states), sleep_fn=lambda _seconds: None,
+            )
+            sync._apply_transition = lambda frame, current, target: actions.append((current, target)) or frame
+            result = sync.sync(7, [
+                {"index": 2, "current_state": "normal", "target_state": "locked"},
+                {"index": 1, "current_state": "normal", "target_state": "locked"},
+            ])
+
+        self.assertEqual([2, 1], checked)
+        self.assertEqual([("normal", "locked")], actions)
+        self.assertEqual(1, result.applied_count)
+        self.assertEqual([(2, "identity_mismatch")], [(item.index, item.reason) for item in result.issues])
+
+    def test_all_identity_mismatches_return_skips_without_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scanner = self.Scanner([], tmp)
+            sync = MouseEquipmentStateSync(
+                scanner, identity_verifier=lambda _index, _image: False,
+                state_detector=lambda _image: self.fail("Skipped identity must not reach state detection"),
+            )
+            sync._apply_transition = lambda *_args: self.fail("Skipped item must not receive an action")
+            result = sync.sync(7, [
+                {"index": 2, "current_state": "normal", "target_state": "locked"},
+                {"index": 1, "current_state": "normal", "target_state": "discarded"},
+            ])
+            report = json.loads(Path(tmp, "mouse_state_sync_last_report.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(0, result.applied_count)
+        self.assertEqual([2, 1], [item.index for item in result.issues])
+        self.assertEqual("complete_with_skips", report["status"])
+        self.assertEqual({"identity_mismatch": 2}, report["issue_counts"])
+
+    def test_missing_reference_is_a_skip_not_a_batch_exception(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scanner = self.Scanner([], tmp)
+            sync = MouseEquipmentStateSync(scanner, state_detector=lambda _image: self.fail("No action expected"))
+            result = sync.sync(7, [{"index": 3, "current_state": "normal", "target_state": "locked"}])
+        self.assertEqual(0, result.applied_count)
+        self.assertEqual("identity_mismatch", result.issues[0].reason)
+
+    def test_corrupt_reference_is_a_skip_not_a_batch_exception(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scanner = self.Scanner([], tmp)
+            Path(tmp, "raw_drive_0003.png").write_bytes(b"broken image contents")
+            sync = MouseEquipmentStateSync(scanner, state_detector=lambda _image: self.fail("No action expected"))
+            result = sync.sync(7, [{"index": 3, "current_state": "normal", "target_state": "locked"}])
+        self.assertEqual(0, result.applied_count)
+        self.assertEqual("identity_mismatch", result.issues[0].reason)
+
+    def test_mixed_identity_and_state_mismatches_preserve_each_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scanner = self.Scanner(["discarded", "normal", "locked"], tmp)
+            sync = MouseEquipmentStateSync(
+                scanner, identity_verifier=lambda index, _image: index != 3,
+                state_detector=lambda _image: next(scanner.states), sleep_fn=lambda _seconds: None,
+            )
+            sync._apply_transition = lambda frame, _current, _target: frame
+            result = sync.sync(7, [
+                {"index": index, "current_state": "normal", "target_state": "locked"}
+                for index in (3, 2, 1)
+            ])
+        self.assertEqual(1, result.applied_count)
+        self.assertEqual(["identity_mismatch", "state_mismatch"], [item.reason for item in result.issues])
+
+    def test_cancel_and_unexpected_identity_exception_still_stop(self) -> None:
+        for cancelled in (True, False):
+            with self.subTest(cancelled=cancelled), tempfile.TemporaryDirectory() as tmp:
+                scanner = self.Scanner([], tmp)
+                scanner._stopped = cancelled
+
+                def verify(_index, _image):
+                    raise ValueError("Unexpected verifier failure")
+
+                sync = MouseEquipmentStateSync(scanner, identity_verifier=verify, state_detector=lambda _image: "normal")
+                with self.assertRaises(RuntimeError if cancelled else ValueError):
+                    sync.sync(7, [{"index": 1, "current_state": "normal", "target_state": "locked"}])
+
+    def test_unconfirmed_action_stops_before_later_items_and_is_not_replayed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scanner = self.Scanner([], tmp)
+            checked = []
+            actions = []
+            sync = MouseEquipmentStateSync(
+                scanner, identity_verifier=lambda index, _image: checked.append(index) or True,
+                state_detector=lambda _image: "normal", sleep_fn=lambda _seconds: None,
+            )
+            sync._apply_transition = lambda frame, current, target: actions.append((current, target)) or frame
+            with self.assertRaisesRegex(RuntimeError, "复核失败"):
+                sync.sync(7, [
+                    {"index": 2, "current_state": "normal", "target_state": "locked"},
+                    {"index": 1, "current_state": "normal", "target_state": "locked"},
+                ])
+        self.assertEqual([2], checked)
+        self.assertEqual([("normal", "locked")], actions)
 
     def test_lock_to_discard_waits_then_confirms_and_verifies(self) -> None:
         scanner = self.Scanner(["discarded"])

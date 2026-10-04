@@ -427,7 +427,7 @@ def _render_equip_role(self, role_name, rd, *, target_layout=None):
     if _sm:
         _ml = {
             "role_priority": "角色优先",
-            "update_mode": "增量更新",
+            "update_mode": "锁定更新",
             "damage_based": "期望伤害",
             "game_inventory": "游戏配装",
         }.get(_sm, _sm)

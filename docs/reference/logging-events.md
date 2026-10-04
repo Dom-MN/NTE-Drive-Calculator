@@ -45,7 +45,7 @@ duration；取消、过期丢弃、待确认和降级使用独立事件，不伪
 | 图纸 | `blueprint.*` | 生成、失败和旧账号结果丢弃 |
 | 仓库 | `warehouse.*` | 固定快照、运行时覆盖、筛选、计划、RPC、待确认和最终状态 |
 | 鉴定 | `identification.*` | 输入来源、热键 owner、识别与展示生命周期 |
-| 极速装配 | `equipment_apply.*` | 槽位预检、下发、完整快照/范围事件确认、重试和摘要 |
+| 极速装配 | `equipment_apply.*` | 槽位预检、下发、完整快照/范围事件确认、重试和摘要；补救用 `command_retry`、`recovery_waiting`、`recovery_resumed`，步骤用 `command_accepted`、`command_failed`、`role_failed`。返回未完成结果记录 `bulk_failed`，不得仅因无异常而记录成功；摘要成功仅表示派发完成。 |
 | 自动装配 | `drive_assembly.*` | 页面阶段、输入后端、动作、停止与可见结果 |
 | 倒带 | `rewind.*` | 推荐请求、八槽保存、OCR 阶段、十连计划和停止 |
 | 战报 | `battle_report.*` | capture 生命周期、摘要持久化、历史恢复和保留策略 |

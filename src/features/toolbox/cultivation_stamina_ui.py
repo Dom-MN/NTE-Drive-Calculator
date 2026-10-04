@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QSignalBlocker, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -63,6 +63,17 @@ class CultivationStaminaControls(QFrame):
 
     def values(self) -> tuple[int, int]:
         return self.hunter_level.value(), int(self.identification_level.currentData())
+
+    def restore_values(self, hunter_level: int, identification_level: int | None) -> None:
+        projection = project_identification_level(hunter_level, effective_level=identification_level)
+        with QSignalBlocker(self), QSignalBlocker(self.hunter_level):
+            self.hunter_level.setValue(hunter_level)
+            self._refresh_identification()
+            with QSignalBlocker(self.identification_level):
+                index = self.identification_level.findData(projection.effective_level)
+                if index < 0:
+                    raise ValueError("历史鉴别等级与当前范围不一致")
+                self.identification_level.setCurrentIndex(index)
 
     def _refresh_identification(self) -> None:
         previous = self.identification_level.currentData()

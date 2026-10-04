@@ -288,7 +288,7 @@ def export_account_data(manager: AccountManager, account_id: str, target_zip: Pa
             ),
         )
         for child in sorted(source_root.iterdir()):
-            if child.name in {"logs", "scanned_images"}:
+            if child.name in {"logs", "scanned_images", ".migration-backups"}:
                 continue
             if child.is_dir():
                 _write_tree_to_zip(zf, child, f"account/{child.name}")

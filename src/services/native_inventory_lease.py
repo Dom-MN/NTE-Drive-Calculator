@@ -258,11 +258,16 @@ class NativeInventoryLease:
             self._owner._release_inventory(self)
 
     @contextmanager
-    def equipment_batch(self):
+    def equipment_batch(self, *, check_cancelled=None, timeout: float | None = None):
         """暂缓快照读取直到整批派发完成；通知仍由 DLL 累积。"""
+        deadline = None if timeout is None else monotonic() + timeout
         def check():
             self._check()
             self._owner._guard("native_equipment")
+            if check_cancelled is not None:
+                check_cancelled()
+            if deadline is not None and monotonic() >= deadline:
+                raise TimeoutError("等待装配读取锁超时，本次未派发")
 
         with self._owner._snapshot_scope(check):
             if self._equipment_context is not None:
@@ -270,7 +275,8 @@ class NativeInventoryLease:
                 return
             # The application pins a saved complete inventory before dispatch.
             # Refresh readiness must not block commands against those known UIDs.
-            status = self._owner.equipment_status(self._client)
+            status = self._owner.equipment_status(self._client,
+                timeout=2.0 if deadline is None else min(2.0, max(0.001, deadline - monotonic())))
             if status.get("ready") is not True:
                 raise NteCoreRpcError({"code": -32001, "message": "请等待装备接口就绪后重试。",
                                        "data": {"domain_code": "NATIVE_SNAPSHOT_INCOMPLETE"}})
@@ -287,6 +293,22 @@ class NativeInventoryLease:
             return self._equipment_direct(method, **kwargs)
         with self.equipment_batch():
             return self._equipment_direct(method, **kwargs)
+
+    def equipment_identity(self, *, timeout: float = 2.0):
+        """Read the live command source identity without changing a frozen batch."""
+        self._check()
+        status = self._owner.equipment_status(self._client, timeout=timeout)
+        if status.get("ready") is not True:
+            raise NteCoreRpcError({"code": -32001, "message": "source_changed",
+                                   "data": {"domain_code": "EQUIPMENT_REQUEST_REJECTED"}})
+        provider, domain = status.get("providerId"), status.get("domainKey")
+        if provider is None or domain is None:
+            raise NteCoreProtocolError("装备来源身份缺少正式提供方或对象域")
+        if self._equipment_context is not None and (provider, domain) != self._equipment_context:
+            raise NteCoreRpcError({"code": -32001, "message": "source_changed",
+                                   "data": {"domain_code": "EQUIPMENT_REQUEST_REJECTED"}})
+        self._check()
+        return (provider, domain, self._client.executable_sha256, id(self._client))
 
     def _equipment_direct(self, method, **kwargs):
         self._check()

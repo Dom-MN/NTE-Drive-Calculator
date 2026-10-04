@@ -382,12 +382,13 @@ class NativeGameSession:
             if acquired:
                 self._snapshot_lock.release()
 
-    def equipment_status(self, client):
+    def equipment_status(self, client, *, timeout: float = 2.0):
         self._check_projection(client)
         if not NATIVE_EQUIPMENT_CAPABILITIES.issubset((client.hello_result or {}).get("capabilities", ())):
             raise NteCoreRpcError({"code": -32001, "message": "当前原生组件不支持装备执行。",
                                    "data": {"domain_code": "NATIVE_CAPABILITY_MISSING"}})
-        status = client.call("equipment.status", {}, check_cancelled=lambda: self._check_projection(client))
+        status = client.call("equipment.status", {}, timeout=timeout,
+                             check_cancelled=lambda: self._check_projection(client))
         self._check_projection(client)
         if not isinstance(status, dict):
             raise NteCoreError("原生装备状态格式无效。")
