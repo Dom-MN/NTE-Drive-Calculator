@@ -55,16 +55,16 @@ def _snapshot_listening_message(
 
 def _snapshot_waiting_message(summary, has_character_list):
     if summary is None:
-        return "监听已就绪，等待进入游戏并接收背包数据。"
+        return tr("监听已就绪，等待进入游戏并接收背包数据。")
     source = summary.get("source")
     if is_visual_inventory_source(source):
-        previous = "当前为视觉扫描库存，不提供角色实例"
+        previous = tr("当前为视觉扫描库存，不提供角色实例")
     elif has_native_inventory_uids(source) and not has_character_list:
-        previous = "上次原生背包未附带独立角色列表"
+        previous = tr("上次原生背包未附带独立角色列表")
     elif not has_native_inventory_uids(source):
-        previous = "上次库存来源尚不支持原生角色身份"
+        previous = tr("上次库存来源尚不支持原生角色身份")
     else:
-        previous = "上次保存的背包仍可用于计算"
+        previous = tr("上次保存的背包仍可用于计算")
     return f"监听已就绪，等待本次背包数据；{previous}。"
 
 
@@ -171,7 +171,7 @@ def run_inventory_sync(service: Any) -> None:
             sync_stage = "waiting_capture_ready"
             service._publish(
                 "starting",
-                "正在连接 DLL 背包来源" if native else "正在初始化抓包，等待网卡就绪",
+                tr("正在连接 DLL 背包来源") if native else tr("正在初始化抓包，等待网卡就绪"),
                 running=True,
                 capturing=False,
                 last_snapshot_id=current_id,
@@ -232,7 +232,7 @@ def run_inventory_sync(service: Any) -> None:
                     if not native_status.get("native_snapshot_ready", False):
                         stabilizer.discard_pending()
                         service._take_latest_event()  # Do not re-offer an observation invalidated during this poll.
-                        message = str(native_status.get("message") or "等待 DLL 提供完整背包快照。")
+                        message = str(native_status.get("message") or tr("等待 DLL 提供完整背包快照。"))
                         if message != native_status_message:
                             service._publish("waiting", message, running=True, capturing=False, source_snapshot_ready=False)
                         native_status_message = message
@@ -318,7 +318,7 @@ def run_inventory_sync(service: Any) -> None:
                         )
                         service._publish(
                             "collecting",
-                            f"已接收 {result.item_count} 件，等待背包内容稳定",
+                            tr("已接收 {count} 件，等待背包内容稳定", count=result.item_count),
                             source_snapshot_ready=True,
                             running=True,
                             capturing=True,
@@ -359,7 +359,7 @@ def run_inventory_sync(service: Any) -> None:
                     # read here or let an unrelated character refresh delay saving.
                     stabilizer.discard_pending()
                     next_native_status = 0.0
-                    service._publish("waiting", "背包又有变化，正在合并更新。", running=True,
+                    service._publish("waiting", tr("背包又有变化，正在合并更新。"), running=True,
                                      capturing=False, source_snapshot_ready=False, pending_item_count=None)
                     continue
                 service._publish(
@@ -579,7 +579,7 @@ def _apply_native_profiles(service, status):
         except Exception as exc:
             log_event("WARNING", "inventory_sync.character_save_failed", "角色自动同步未保存",
                       service._operation_context, error_type=type(exc).__name__)
-            error = "角色自动同步未保存，已保留原养成；稍后自动重试。"
+            error = tr("角色自动同步未保存，已保留原养成；稍后自动重试。")
         else:
             error = result.message if result.warnings else None
             service._publish(service.state.phase, service.state.message,

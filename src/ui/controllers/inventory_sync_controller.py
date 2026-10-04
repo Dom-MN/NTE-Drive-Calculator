@@ -252,13 +252,13 @@ def _on_inventory_sync_state(self, notification):
         "starting":"启动中","waiting":"等待同步数据" if state.capture_source == "native" else "等待进入游戏","collecting":"接收中",
         "saving":"保存中","listening":"后台监听","error":"同步异常","stopped":"已停止",
     }.get(state.phase,state.phase)
-    set_status_badge(self.home_sync_badge,label,tone)
-    source_label = "DLL 同步" if state.capture_source == "native" else "抓包同步"
-    detail = source_label + " · " + ("同步未完成" if state.error else state.message)
+    set_status_badge(self.home_sync_badge,tr(label),tone)
+    source_label = tr("DLL 同步") if state.capture_source == "native" else tr("抓包同步")
+    detail = source_label + " · " + (tr("同步未完成") if state.error else tr(state.message))
     if state.character_sync_error and not hasattr(self, "home_character_sync_detail"):
-        detail += "\n" + state.character_sync_error
+        detail += "\n" + tr(state.character_sync_error)
     if state.pending_item_count is not None and not state.error:
-        detail+=f" · 当前 {state.pending_item_count} 件"
+        detail += " · " + tr("当前 {count} 件", count=state.pending_item_count)
     if state.error:
         detail += "\n" + inventory_sync_error_guidance(
             state.error_code, state.error, capture_source=state.capture_source,

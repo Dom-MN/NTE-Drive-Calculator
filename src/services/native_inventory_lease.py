@@ -1,6 +1,8 @@
 # 复用应用原生会话读取正式背包投影，不创建抓包进程或额外轮询线程。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from copy import deepcopy
 from contextlib import contextmanager
 from threading import Event
@@ -109,11 +111,11 @@ class NativeInventoryLease:
                     or error.message in {"not_ready", "source_changed", "snapshot_not_found", "disabled"}
                     or (error.code == -32001 and error.message == "control_timeout")):
                 return {"capture_status": "running", "native_snapshot_ready": False,
-                        "message": ("本次背包读取超时，等待游戏就绪后自动重试；已保存背包保持不变。"
+                        "message": (tr("本次背包读取超时，等待游戏就绪后自动重试；已保存背包保持不变。")
                                     if error.message == "control_timeout" else
-                                    "读取期间背包有变化，正在自动重读；已保存背包保持不变。"
+                                    tr("读取期间背包有变化，正在自动重读；已保存背包保持不变。")
                                     if error.message == "source_changed" else
-                                    "正在等待游戏提供本次完整背包；已保存背包保持不变。")}
+                                    tr("正在等待游戏提供本次完整背包；已保存背包保持不变。"))}
             raise
         self._check()
         if snapshot is not None:
@@ -129,7 +131,7 @@ class NativeInventoryLease:
             except (NativeSnapshotPending, NteCoreRpcError) as error:
                 if isinstance(error, NteCoreRpcError) and not self._pending_error(error):
                     raise
-                character_error = "角色状态尚未就绪，保留已保存养成。"
+                character_error = tr("角色状态尚未就绪，保留已保存养成。")
         self._check()
         current = self._change_status()
         self._snapshot_ready = current is None or self._changes.is_current(current, "inventory")
@@ -151,7 +153,7 @@ class NativeInventoryLease:
         return {"capture_status": "running", "native_snapshot_ready": self.snapshot_ready,
                 "native_change_pending": (not self.snapshot_ready and current is not None
                                           and bool(domain_status(current, "inventory").get("domainKey"))),
-                "message": "背包已同步，正在后台监听变化。" if self.snapshot_ready else "正在等待装备变化稳定。",
+                "message": tr("背包已同步，正在后台监听变化。") if self.snapshot_ready else tr("正在等待装备变化稳定。"),
                 **({"native_character_snapshot": character} if character is not None else {}),
                 **({"native_all_item_snapshot": all_items} if all_items is not None else {}),
                 **({"native_all_item_error": all_items_error} if all_items_error else {}),
