@@ -1,6 +1,8 @@
 # 分别核对实际部署的代理文件与实际登记工作区，不把随附包当作运行事实。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
@@ -55,7 +57,7 @@ def inspect_deployed_native_plugin(
         game_directory = game_executable(game_executable_path).parent
     except EquipmentPluginDeploymentError:
         game_directory = None
-        issues.append("无法核对游戏主程序位置；尚未检查原生部署文件。")
+        issues.append(tr("无法核对游戏主程序位置；尚未检查原生部署文件。"))
     for role, relative in NATIVE_PLUGIN_DEPLOYMENT_PATHS.items():
         source = bundle.roles.get(role, "")
         expected = bundle.files.get(source, "")
@@ -70,12 +72,12 @@ def inspect_deployed_native_plugin(
                         actual = hashlib.file_digest(stream, "sha256").hexdigest()
                     size = target.stat().st_size
                 else:
-                    issues.append(f"游戏目录缺少原生组件：{relative}")
+                    issues.append(tr("游戏目录缺少原生组件：{relative}", relative=relative))
             except OSError:
-                issues.append(f"无法读取实际原生组件：{relative}")
+                issues.append(tr("无法读取实际原生组件：{relative}", relative=relative))
         matches = bundle.ready and present and bool(actual) and actual == expected and size == expected_size
         if present and not matches:
-            issues.append(f"实际原生组件尚未与配套整包核对匹配：{relative}")
+            issues.append(tr("实际原生组件尚未与配套整包核对匹配：{relative}", relative=relative))
         recorded = records.get(relative, "")
         files[relative] = NativePluginFileInspection(
             relative, present, actual, size, expected, expected_size, bool(matches),

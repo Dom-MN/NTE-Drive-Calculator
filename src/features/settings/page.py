@@ -115,7 +115,7 @@ def _settings_paths(context: AppContext) -> SettingsPaths:
 
 
 def _build_capture_diagnostics_card(window):
-    card = window._card("采集排错")
+    card = window._card(tr("采集排错"))
     description = QLabel(tr("仅用于采集排错；设置将在下次连接或同步时生效。"))
     description.setWordWrap(True)
     description.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
@@ -140,7 +140,7 @@ def _build_capture_diagnostics_card(window):
 
     resize_capture_device_edit(window._sync_capture_device_edit.text())
     window._sync_capture_device_edit.textChanged.connect(resize_capture_device_edit)
-    form.addRow("抓取网卡:", window._sync_capture_device_edit)
+    form.addRow(tr("抓取网卡:"), window._sync_capture_device_edit)
     save_handler = getattr(window, "_save_capture_diagnostics", None)
 
     def save_capture_diagnostics() -> None:
@@ -173,7 +173,7 @@ def _build_capture_diagnostics_card(window):
             save_capture_diagnostics()
 
     window._sync_raw_capture_toggle.clicked.connect(save_raw_capture_diagnostics)
-    form.addRow("采集排错:", raw_capture_row)
+    form.addRow(tr("采集排错:"), raw_capture_row)
     card.layout().addLayout(form)
     return card
 
@@ -233,7 +233,7 @@ def _build_environment_card(window):
     window._equipment_plugin_loading_method_combo.currentIndexChanged.connect(
         window._equipment_plugin_loading_method_changed
     )
-    form.addRow("加载方式:", window._equipment_plugin_loading_method_combo)
+    form.addRow(tr("加载方式:"), window._equipment_plugin_loading_method_combo)
     window._equipment_plugin_game_executable_edit = QLineEdit()
     window._equipment_plugin_game_executable_edit.setPlaceholderText(
         tr("可手动粘贴 HTGame.exe 的完整文件地址")
@@ -313,7 +313,7 @@ def build_settings_page(
     mode_card = build_work_mode_card(window)
     layout.addWidget(mode_card)
 
-    log_card = window._card("工具设置")
+    log_card = window._card(tr("工具设置"))
     log_row = QHBoxLayout()
     log_row.addWidget(QLabel(tr("实时日志输出:")))
     log_toggle = QCheckBox(tr("启用运行日志"))

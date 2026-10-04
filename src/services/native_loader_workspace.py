@@ -1,6 +1,8 @@
 # 在独立运行目录仅准备无界面采集 DLL，复用正式文件事务并按记录核对清理。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
@@ -37,13 +39,13 @@ def inspect_native_loader_workspace(*, application_root, workspace_path) -> Nati
         target = directory / relative
         try:
             if target.is_symlink() or not target.resolve().is_relative_to(directory) or not target.is_file():
-                issues.append(f'Loader 运行目录尚未准备组件：{relative}')
+                issues.append(tr('Loader 运行目录尚未准备组件：{relative}', relative=relative))
                 continue
             with target.open('rb') as stream:
                 if hashlib.file_digest(stream, 'sha256').hexdigest() != digest:
-                    issues.append(f'Loader 运行目录组件不匹配：{relative}')
+                    issues.append(tr('Loader 运行目录组件不匹配：{relative}', relative=relative))
         except OSError:
-            issues.append(f'无法读取 Loader 运行目录组件：{relative}')
+            issues.append(tr('无法读取 Loader 运行目录组件：{relative}', relative=relative))
     return NativeLoaderWorkspaceInspection(directory, expected, tuple(issues))
 
 

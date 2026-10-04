@@ -1,6 +1,8 @@
 # 只读核对无界面采集 DLL、最小 D3D 入口与配套 Core 的发行声明。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from dataclasses import dataclass, field
 import hashlib
 import json
@@ -107,12 +109,12 @@ def _inspect_native_plugin_payload(root: Path, manifest: Path, payload: object) 
             seen.add(relative.casefold())
             files[relative], sizes[relative] = expected.casefold(), size
             if not path.is_file():
-                issues.append(f"原生整包缺少文件：{relative}")
+                issues.append(tr("原生整包缺少文件：{relative}", relative=relative))
                 continue
             with path.open("rb") as stream:
                 actual = hashlib.file_digest(stream, "sha256").hexdigest()
             if path.stat().st_size != size or actual != expected.casefold():
-                issues.append(f"原生整包文件大小或哈希不匹配：{relative}")
+                issues.append(tr("原生整包文件大小或哈希不匹配：{relative}", relative=relative))
         for role, relative in declared_roles.items():
             if not isinstance(role, str) or not isinstance(relative, str) or relative not in files:
                 raise ValueError("role binding")
@@ -124,7 +126,7 @@ def _inspect_native_plugin_payload(root: Path, manifest: Path, payload: object) 
             if Path(relative).name != Path(filename).name or sizes[relative] <= 0:
                 raise ValueError("program identity")
     except (OSError, UnicodeError, ValueError, TypeError):
-        issues.append("原生采集整包清单的布局、来源、输入摘要、能力或文件声明无效。")
+        issues.append(tr("原生采集整包清单的布局、来源、输入摘要、能力或文件声明无效。"))
     return NativePluginBundleInspection(
         manifest, MappingProxyType(files), MappingProxyType(roles), tuple(issues),
         file_sizes=MappingProxyType(sizes), input_digests=MappingProxyType(digests),
@@ -140,12 +142,12 @@ def inspect_native_plugin_bundle(application_root: str | Path) -> NativePluginBu
     manifest = source if source.exists() else root / "component-bundle.json"
     if not manifest.is_file():
         return NativePluginBundleInspection(manifest, MappingProxyType({}), MappingProxyType({}),
-                                            ("缺少 原生采集整包 component-bundle.json；尚无可核对的新组件交付。",))
+                                            (tr("缺少 原生采集整包 component-bundle.json；尚无可核对的新组件交付。"),))
     try:
         payload = json.loads(manifest.read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
     except (OSError, UnicodeError, ValueError):
         return NativePluginBundleInspection(manifest, MappingProxyType({}), MappingProxyType({}),
-                                            ("无法读取有效的 原生采集整包清单。",))
+                                            (tr("无法读取有效的 原生采集整包清单。"),))
     return _inspect_native_plugin_payload(root, manifest, payload)
 
 

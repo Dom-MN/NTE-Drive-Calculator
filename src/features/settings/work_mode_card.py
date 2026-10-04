@@ -571,12 +571,12 @@ def build_work_mode_card(window):
     controls.addWidget(current_label)
     combo = NoWheelComboBox()
     for key, label in MODE_LABELS.items():
-        combo.addItem(label, key)
+        combo.addItem(tr(label), key)
     combo.setCurrentIndex(combo.findData(service.settings.mode.value))
     combo.setFixedWidth(150)
     controls.addWidget(combo)
     check = QPushButton(tr("检测详情"))
-    check.setFixedWidth(96)
+    check.setMinimumWidth(96)
     check.clicked.connect(lambda: controller.check(show=True))
     controls.addWidget(check)
     controls.addStretch()
@@ -588,10 +588,9 @@ def build_work_mode_card(window):
     for key, title in MODE_LABELS.items():
         row = QHBoxLayout()
         row.setSpacing(8)
-        mode_label = QLabel(f"{title}：")
+        mode_label = QLabel(tr("{title}：", title=tr(title)))
         mode_label.setObjectName(f"workModeDescription_{key}")
-        mode_label.setFixedWidth(58)
-        detail = QLabel(MODE_DESCRIPTIONS[key])
+        detail = QLabel(tr(MODE_DESCRIPTIONS[key]))
         detail.setWordWrap(False)
         detail.setStyleSheet(f"color:{theme_color('#c9d1d9')}")
         row.addWidget(mode_label)
@@ -610,6 +609,13 @@ def build_work_mode_card(window):
 
     combo.currentIndexChanged.connect(refresh_mode_emphasis)
     refresh_mode_emphasis()
+    # Translated mode names differ in width; measure them bold and keep the
+    # descriptions in one column.
+    for label in mode_labels.values():
+        label.ensurePolished()
+    label_width = max(58, *(label.sizeHint().width() for label in mode_labels.values()))
+    for label in mode_labels.values():
+        label.setFixedWidth(label_width)
 
     # The detailed per-feature state now belongs to the explicit report dialog.
     # Retain a hidden projection target so the controller contract stays narrow.
@@ -637,7 +643,7 @@ def _confirmation_row(title: str, detail: str, tone: str, parent) -> QFrame:
     row.setSpacing(12)
     heading = QLabel(title, frame)
     heading.setObjectName(f"workModeConfirmation_{tone}")
-    heading.setFixedWidth(76)
+    heading.setMinimumWidth(76)
     tone_color = {"available": "#3fb950", "unavailable": "#8b949e", "after": "#58a6ff"}[tone]
     heading.setStyleSheet(
         f"color:{theme_color(tone_color)};font-weight:700"
@@ -673,10 +679,10 @@ def confirm_mode(parent, mode: str) -> bool:
     warning_row.addWidget(icon)
     warning_text = QVBoxLayout()
     warning_text.setSpacing(3)
-    warning_title = QLabel(copy["warning_title"], warning)
+    warning_title = QLabel(tr(copy["warning_title"]), warning)
     warning_title.setObjectName("workModeWarningTitle")
     warning_title.setStyleSheet(f"color:{theme_color('#f85149')};font-size:16px;font-weight:700")
-    warning_detail = QLabel(copy["warning_detail"], warning)
+    warning_detail = QLabel(tr(copy["warning_detail"]), warning)
     warning_detail.setObjectName("workModeWarningDetail")
     warning_detail.setWordWrap(True)
     warning_text.addWidget(warning_title)
@@ -684,11 +690,11 @@ def confirm_mode(parent, mode: str) -> bool:
     warning_row.addLayout(warning_text, 1)
     layout.addWidget(warning)
 
-    layout.addWidget(_confirmation_row(tr("可以使用"), copy["available"], "available", dialog))
-    layout.addWidget(_confirmation_row(tr("不可使用"), copy["unavailable"], "unavailable", dialog))
-    layout.addWidget(_confirmation_row(tr("切换后"), copy["after"], "after", dialog))
+    layout.addWidget(_confirmation_row(tr("可以使用"), tr(copy["available"]), "available", dialog))
+    layout.addWidget(_confirmation_row(tr("不可使用"), tr(copy["unavailable"]), "unavailable", dialog))
+    layout.addWidget(_confirmation_row(tr("切换后"), tr(copy["after"]), "after", dialog))
 
-    note = QLabel(copy["note"], dialog)
+    note = QLabel(tr(copy["note"]), dialog)
     note.setObjectName("workModeConfirmationNote")
     note.setWordWrap(True)
     note.setStyleSheet(f"color:{theme_color('#8b949e')};font-size:12px")
