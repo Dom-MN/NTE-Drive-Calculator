@@ -310,6 +310,9 @@ Localisation gates, on top of section 7:
 - `tests.test_i18n` — `test_every_tr_key_resolves` fails on a `tr()` key missing from `locales/en.json`.
 - `python tools/quality/i18n_coverage.py --scope ui` finds Chinese handed to a widget that was never
   wrapped at all. The test suite cannot see that.
+- `tests.test_i18n_sync_status` covers the sync status line, which renders `tr(state.message)` fed by
+  `_publish` literals, native status dicts and the text of every `NativeSnapshotPending` raised anywhere.
+  Those exceptions stay Chinese because they are logged; a new one only needs its `en.json` entry.
 - A new game term in `locales/glossary.en.json` is checked with
   `python tools/quality/verify_terms.py --locres <export>`. The export is game content and is never
   committed, so this is a manual check; nothing else can tell a coined name from a real one.

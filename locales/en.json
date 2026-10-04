@@ -4275,5 +4275,17 @@
   "DLL 同步": "DLL sync",
   "同步未完成": "Sync not finished",
   "当前 {count} 件": "{count} items now",
-  "等待同步数据": "Waiting for sync data"
+  "等待同步数据": "Waiting for sync data",
+  "请等待装备接口就绪后重试。": "Wait for the equipment interface to be ready, then retry.",
+  "物品读取期间来源发生变化，等待重新采集。": "The source changed while reading items; waiting to collect again.",
+  "全部物品集合尚未完成，保留上次归档。": "The full item set is not complete yet; keeping the last archive.",
+  "正在等待游戏提供完整的同步数据。": "Waiting for the game to provide complete sync data.",
+  "本次完整背包或角色装备关联尚未读取完成。": "The complete inventory or character equipment links have not finished reading.",
+  "尚未观测到背包或角色，等待登录数据就绪；保留已保存背包。": "No inventory or characters observed yet; waiting for login data. The saved inventory is kept.",
+  "当前组件尚未确认本次完整背包的字段映射，保留已保存背包。": "The current component has not confirmed the field mapping for this inventory; the saved inventory is kept.",
+  "原生快照尚未完成。": "The native snapshot is not complete yet.",
+  "同步读取期间来源发生变化，等待重新采集。": "The source changed during the sync read; waiting to collect again.",
+  "正在采集原生战报，结束后再刷新背包或角色状态。": "A native battle report is being captured; inventory and character state refresh after it ends.",
+  "当前组件未声明全部物品读取能力。": "The current component does not declare the full-item read capability.",
+  "读取期间游戏状态发生变化，正在重新同步。": "The game state changed during the read; syncing again."
 }
