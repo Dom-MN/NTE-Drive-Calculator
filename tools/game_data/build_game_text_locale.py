@@ -46,12 +46,18 @@ KEYED_SOURCES = (
     ("character", "name_text_table", "name_text_key", "name_zh"),
     ("item_quality_term", "grade_text_table", "grade_text_key", "grade_zh"),
     ("item_quality_term", "color_text_table", "color_text_key", "color_zh"),
+    # Catalogue terms: acquisition type, damage resistance, fork campaigns, items.
+    ("localized_term", "text_table", "text_key", None),
     # equipment_core_random_attribute is deliberately absent: its keys point at
     # ST_Fork buff rows that the export does not carry, so none of them resolve.
 )
 # Tables whose Chinese text has no key column but follows a naming convention.
 DERIVED_SOURCES = (
     ("fork_item", "fork_id", "ST_Fork", ("_des", "_context")),
+    # A monster's manual id is its key: the name lives in ST_AbyssBattle and the
+    # manual entry in ST_MonsterManual, with casing that differs from the database.
+    ("monster_catalog", "monster_manual_id", "ST_AbyssBattle", ("",)),
+    ("monster_catalog", "monster_manual_id", "ST_MonsterManual", ("_Found", "_Unfound")),
 )
 # fork_star_level has neither a key column nor a matching id: its pack id is
 # ``upgradestar_pack_<fork_id>`` while the string table uses ``buff_<fork_id>``.
@@ -88,14 +94,22 @@ def collect(connection: sqlite3.Connection, locres: dict[str, str]) -> tuple[dic
             else:
                 missing.append(full_key)
 
+    lowered = {key.lower(): value for key, value in locres.items()}
+    # Monsters missing from ST_AbyssBattle carry their name as an actor name,
+    # keyed by the manual id without its blueprint suffix.
+    for (manual_id,) in connection.execute("select monster_manual_id from monster_catalog"):
+        stem = str(manual_id).removesuffix("_BP").removesuffix("_bp")
+        full_key = f"ST_ActorName::{stem}_Name"
+        text = lowered.get(full_key.lower())
+        if text:
+            entries[full_key] = text
     for table, id_column, namespace, suffixes in DERIVED_SOURCES:
         for (identifier,) in connection.execute(f'select {id_column} from "{table}"'):
             for suffix in suffixes:
                 full_key = f"{namespace}::{identifier}{suffix}"
-                if full_key in locres:
-                    entries[full_key] = locres[full_key]
-
-    lowered = {key.lower(): value for key, value in locres.items()}
+                text = lowered.get(full_key.lower())
+                if text:
+                    entries[full_key] = text
     packs = connection.execute(
         "select distinct star_pack_id from fork_star_level where star_pack_id is not null"
     )

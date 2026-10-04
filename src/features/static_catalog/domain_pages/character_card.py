@@ -75,21 +75,21 @@ class CharacterGalleryCard(QFrame):
         ))
         metadata = self.release_metadata
         acquisition = (
-            metadata.acquisition_term.display_name
+            tr(metadata.acquisition_term.display_name)
             if (
                 metadata is not None
                 and metadata.acquisition_term is not None
                 and metadata.acquisition_term.display_name
             )
-            else "名称暂未提供"
+            else tr("名称暂未提供")
         )
         quality = (
             metadata.quality
             if metadata is not None and metadata.quality
-            else "品质未提供"
+            else tr("品质未提供")
         )
         availability = (
-            " · 待上线"
+            " · " + tr("待上线")
             if self.summary.classification == "scheduled_character"
             else ""
         )
@@ -163,17 +163,15 @@ class CharacterGalleryCard(QFrame):
         ))
         root.addWidget(name)
         root.addWidget(identity)
-        release_prefix = (
-            "预计上线 "
-            if self.summary.classification == "scheduled_character"
-            else "上线 "
+        release_date = (
+            metadata.release_date
+            if metadata is not None and metadata.release_date
+            else tr("当前正式数据未提供")
         )
         release = QLabel(
-            release_prefix + (
-                metadata.release_date
-                if metadata is not None and metadata.release_date
-                else tr("当前正式数据未提供")
-            ),
+            tr("预计上线 {date}", date=release_date)
+            if self.summary.classification == "scheduled_character"
+            else tr("上线 {date}", date=release_date),
             self,
         )
         release.setStyleSheet(themed_style(

@@ -8,6 +8,8 @@ confirmed stable quality/type/name order without inventing release dates.
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -340,7 +342,7 @@ class ForkItemDisplayNameService:
         return (
             term.display_name
             if term.display_name.endswith("级")
-            else f"{term.display_name}级"
+            else tr("{grade}级", grade=term.display_name)
         )
 
     def present_costs(

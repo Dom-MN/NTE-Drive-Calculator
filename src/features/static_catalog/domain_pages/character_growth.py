@@ -238,9 +238,9 @@ class CharacterGrowthView(QWidget):
         candidates = tuple(point for point in self._points if point.level == target)
         point = self._select_target(candidates)
         if point is None:
-            self._set_metric(self.preview_level, f"Lv.{target} · 无正式面板")
+            self._set_metric(self.preview_level, f"Lv.{target} · " + tr("无正式面板"))
             return
-        state = "突破后" if point.state == "breakthrough_after" else "突破前"
+        state = tr("突破后") if point.state == "breakthrough_after" else tr("突破前")
         if point.state not in {"breakthrough_before", "breakthrough_after"}:
             state = "等级面板"
         self._set_metric(self.preview_level, f"Lv.{target} · {state}")
@@ -270,14 +270,14 @@ class CharacterGrowthView(QWidget):
             to_level=int(self.end_level.currentData()),
             include_breakthroughs=self.include_breakthroughs.isChecked(),
         )
-        lines = [f"升级经验 · {projection.required_experience:,}"]
+        lines = [tr("升级经验 · {exp}", exp=f"{projection.required_experience:,}")]
         if projection.experience_books:
             book_line = self._format_requirements(projection.experience_books)
             overflow = (
-                f"（溢出 {projection.experience_overflow:,} 经验）"
+                tr("（溢出 {exp} 经验）", exp=f"{projection.experience_overflow:,}")
                 if projection.experience_overflow else "（无溢出）"
             )
-            lines.append(f"经验书 · {book_line} {overflow}")
+            lines.append(tr("经验书 · {books} {overflow}", books=book_line, overflow=overflow))
         if self.include_breakthroughs.isChecked():
             lines.append(
                 "突破材料 · " + (
@@ -312,7 +312,7 @@ class CharacterGrowthView(QWidget):
                 self._terminology,
                 entity_kind="item",
                 stable_id=item.item_id,
-                identity_label=f"材料 {index}",
+                identity_label=tr("材料 {index}", index=index),
                 context="progression_cost",
             )
             for index, item in enumerate(requirements, start=1)

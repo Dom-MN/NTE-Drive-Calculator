@@ -457,14 +457,14 @@ class StaticCatalogPage:
     def _update_navigation_buttons(self) -> None:
         if self._navigation_history:
             previous = self._navigation_history[-1]
-            text = f"‹ 返回{previous.title}"
-            tooltip = "返回刚才的页面并保留筛选、选中和滚动位置"
+            text = tr("‹ 返回{title}", title=tr(previous.title))
+            tooltip = tr("返回刚才的页面并保留筛选、选中和滚动位置")
         elif local_label := self._local_back_label():
-            text = f"‹ 返回{local_label}"
-            tooltip = f"返回{local_label}"
+            text = tr("‹ 返回{title}", title=tr(local_label))
+            tooltip = tr("返回{title}", title=tr(local_label))
         else:
-            text = "‹ 资料库"
-            tooltip = "返回游戏资料库"
+            text = tr("‹ 资料库")
+            tooltip = tr("返回游戏资料库")
         for button in self._navigation_buttons:
             button.setText(text)
             button.setToolTip(tooltip)

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import display_term, tr
+from src.i18n import display_term, display_text, tr
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QResizeEvent
@@ -124,9 +124,9 @@ class ForkProfileView(QWidget):
             "color:#f0f6fc;font-size:23px;font-weight:900"
         ))
         badges = QHBoxLayout()
-        self.quality_badge = self._badge("品质未提供", "#d29922")
-        self.type_badge = self._badge("类型未提供", "#58a6ff")
-        self.release_badge = self._badge("首发弧盘", "#8b949e")
+        self.quality_badge = self._badge(tr("品质未提供"), "#d29922")
+        self.type_badge = self._badge(tr("类型未提供"), "#58a6ff")
+        self.release_badge = self._badge(tr("首发弧盘"), "#8b949e")
         badges.addWidget(self.quality_badge)
         badges.addWidget(self.type_badge)
         badges.addWidget(self.release_badge)
@@ -163,7 +163,7 @@ class ForkProfileView(QWidget):
         return scroll, layout
 
     def _build_detail_tab(self) -> None:
-        controls = self._panel("等级与混频")
+        controls = self._panel(tr("等级与混频"))
         hint = QLabel(
             tr("选择 1–80 级；20/30/40/50/60/70 级会同时保留突破前与突破后。"),
             controls,
@@ -205,7 +205,7 @@ class ForkProfileView(QWidget):
         refinement_row = QHBoxLayout()
         self._refinement_buttons: dict[int, QPushButton] = {}
         for level in range(1, 6):
-            button = self._node_button(f"{'★' * level}\n混频 {level}")
+            button = self._node_button(f"{'★' * level}\n" + tr("混频 {level}", level=level))
             button.clicked.connect(
                 lambda _checked=False, value=level: self.set_refinement(value),
             )
@@ -214,11 +214,11 @@ class ForkProfileView(QWidget):
         controls.layout().addLayout(refinement_row)
         self._detail_layout.addWidget(controls)
 
-        self.panel_host = self._panel("面板")
+        self.panel_host = self._panel(tr("面板"))
         self.panel_grid = QGridLayout()
         self.panel_host.layout().addLayout(self.panel_grid)
         self._detail_layout.addWidget(self.panel_host)
-        self.refinement_host = self._panel("弧盘技能")
+        self.refinement_host = self._panel(tr("弧盘技能"))
         self.refinement_title = QLabel(tr("混频 1"), self.refinement_host)
         self.refinement_title.setStyleSheet(themed_style(
             "color:#a371f7;font-size:16px;font-weight:900"
@@ -231,18 +231,18 @@ class ForkProfileView(QWidget):
         self.refinement_host.layout().addWidget(self.refinement_title)
         self.refinement_host.layout().addWidget(self.refinement_description)
         self._detail_layout.addWidget(self.refinement_host)
-        self.effects_host = self._panel("效果说明")
+        self.effects_host = self._panel(tr("效果说明"))
         self.effects_layout = QVBoxLayout()
         self.effects_host.layout().addLayout(self.effects_layout)
         self._detail_layout.addWidget(self.effects_host)
-        self.characters_host = self._panel("归属角色与适配角色")
+        self.characters_host = self._panel(tr("归属角色与适配角色"))
         self.characters_grid = QGridLayout()
         self.characters_host.layout().addLayout(self.characters_grid)
         self._detail_layout.addWidget(self.characters_host)
         self._detail_layout.addStretch(1)
 
     def _build_cultivation_tab(self) -> None:
-        current = self._panel("当前等级养成信息")
+        current = self._panel(tr("当前等级养成信息"))
         self.current_level_cost = QLabel(tr("尚未选择弧盘"), current)
         self.current_level_cost.setWordWrap(True)
         self.current_level_cost.setStyleSheet(themed_style(
@@ -250,15 +250,15 @@ class ForkProfileView(QWidget):
         ))
         current.layout().addWidget(self.current_level_cost)
         self._cultivation_layout.addWidget(current)
-        self.exp_material_host = self._panel("升级经验材料")
+        self.exp_material_host = self._panel(tr("升级经验材料"))
         self.exp_material_grid = QGridLayout()
         self.exp_material_host.layout().addLayout(self.exp_material_grid)
         self._cultivation_layout.addWidget(self.exp_material_host)
-        self.breakthrough_host = self._panel("突破路线 · 消耗")
+        self.breakthrough_host = self._panel(tr("突破路线 · 消耗"))
         self.breakthrough_grid = QGridLayout()
         self.breakthrough_host.layout().addLayout(self.breakthrough_grid)
         self._cultivation_layout.addWidget(self.breakthrough_host)
-        self.refinement_cost_host = self._panel("混频 1–5 级消耗")
+        self.refinement_cost_host = self._panel(tr("混频 1–5 级消耗"))
         self.refinement_cost_grid = QGridLayout()
         self.refinement_cost_host.layout().addLayout(self.refinement_cost_grid)
         self._cultivation_layout.addWidget(self.refinement_cost_host)
@@ -284,10 +284,11 @@ class ForkProfileView(QWidget):
         self.quality_badge.setText(self._item_names.quality_name(summary.quality))
         self.type_badge.setText(display_term(summary.fork_type_name_zh) or tr("类型未提供"))
         campaign = self._display_campaigns.get(summary.fork_id)
-        campaign_title = campaign.title.display_name if campaign else "首发弧盘"
+        campaign_title = campaign.title.display_name if campaign else tr("首发弧盘")
         self.release_badge.setText(campaign_title or tr("名称暂未提供"))
         self.description.setText(
-            plain_text(summary.description_zh) or tr("说明 · 当前正式数据未提供")
+            plain_text(display_text("ST_Fork", f"{summary.fork_id}_des", summary.description_zh or ""))
+            or tr("说明 · 当前正式数据未提供")
         )
         art_path = self._asset_catalog.fork_icon(summary.fork_id)
         pixmap = QPixmap(str(art_path)) if art_path is not None else QPixmap()
@@ -345,10 +346,10 @@ class ForkProfileView(QWidget):
         for index, row in enumerate(choices):
             stage = int(row["stage"])
             cap = int(row["max_fork_level"])
-            state = "突破前" if index == 0 and len(choices) == 2 else "突破后"
+            state = tr("突破前") if index == 0 and len(choices) == 2 else tr("突破后")
             if len(choices) == 1:
-                state = f"阶段 {stage}"
-            button = self._node_button(f"{state} · 上限 {cap}")
+                state = tr("阶段 {stage}", stage=stage)
+            button = self._node_button(tr("{state} · 上限 {cap}", state=state, cap=cap))
             button.setProperty("forkStage", stage)
             button.setChecked(stage == self._stage)
             button.clicked.connect(
@@ -394,8 +395,8 @@ class ForkProfileView(QWidget):
             (row for row in detail.breakthroughs if row.stage == self._stage),
             None,
         )
-        stage_text = f"突破 {self._stage} 阶" if self._stage is not None else "突破阶段未提供"
-        exp_text = f"升级经验 {growth.need_exp}" if growth is not None else "升级经验未提供"
+        stage_text = tr("突破 {stage} 阶", stage=self._stage) if self._stage is not None else tr("突破阶段未提供")
+        exp_text = tr("升级经验 {exp}", exp=growth.need_exp) if growth is not None else tr("升级经验未提供")
         material_text = breakthrough_cost_text(stage, self._item_names)
         self.current_level_cost.setText(
             tr("Lv.{level} · {stage} · {exp}\n{material}\n"
@@ -409,14 +410,14 @@ class ForkProfileView(QWidget):
     def _render_panel(self, detail: ForkCatalogDetail) -> None:
         clear_layout(self.panel_grid)
         if not self._panel_values:
-            self.panel_grid.addWidget(self._gap("面板 · 当前正式数据未提供"), 0, 0)
+            self.panel_grid.addWidget(self._gap(tr("面板 · 当前正式数据未提供")), 0, 0)
             return
         names: dict[str, str] = {}
         percent: set[str] = set()
         for modifier in self._all_modifiers(detail):
             names.setdefault(
                 modifier.property_id,
-                modifier.property_name_zh or modifier.property_id,
+                display_term(modifier.property_name_zh) if modifier.property_name_zh else modifier.property_id,
             )
             if "%" in modifier.display_value:
                 percent.add(modifier.property_id)
@@ -445,8 +446,11 @@ class ForkProfileView(QWidget):
         if refinement is None:
             self.refinement_description.setText(tr("弧盘技能 · 当前正式数据未提供"))
         else:
-            title = refinement.title_zh or "技能标题未提供"
-            description = refinement_skill_text(refinement)
+            fork_id = detail.summary.fork_id
+            title = display_text("ST_Fork", f"buff_{fork_id}_name", refinement.title_zh or "") or tr("技能标题未提供")
+            description = refinement_skill_text(
+                refinement, display_text("ST_Fork", f"buff_{fork_id}_effect", ""),
+            )
             self.refinement_description.setText(f"{title}\n{description}")
         self._render_effects(detail, refinement)
 
@@ -463,8 +467,8 @@ class ForkProfileView(QWidget):
         presentation = present_effects(buffs)
         if presentation is None:
             message = (
-                "当前混频没有额外效果说明"
-                if refinement is not None else "当前混频技能尚未提供"
+                tr("当前混频没有额外效果说明")
+                if refinement is not None else tr("当前混频技能尚未提供")
             )
             self.effects_layout.addWidget(self._gap(message))
         else:
@@ -492,9 +496,9 @@ class ForkProfileView(QWidget):
             if any("cultivation_recommendation" in label for label in labels)
         }
         by_id = {item.character_id: item for item in self._characters}
-        owner_names = [by_id[item].name_zh for item in sorted(exclusive_ids) if item in by_id]
+        owner_names = [display_term(by_id[item].name_zh) for item in sorted(exclusive_ids) if item in by_id]
         recommended_names = [
-            by_id[item].name_zh for item in sorted(recommended_ids) if item in by_id
+            display_term(by_id[item].name_zh) for item in sorted(recommended_ids) if item in by_id
         ]
         if owner_names:
             self.owner_label.setText(tr("专属弧盘 · {names}", names=tr("、").join(owner_names)))
@@ -509,16 +513,16 @@ class ForkProfileView(QWidget):
         )
         if not compatible:
             self.characters_grid.addWidget(self._gap(
-                "适配角色 · 当前正式类型关系未提供",
+                tr("适配角色 · 当前正式类型关系未提供"),
             ), 0, 0)
             return
         for index, character in enumerate(compatible):
             if character.character_id in exclusive_ids:
-                relation = "专属"
+                relation = tr("专属")
             elif character.character_id in recommended_ids:
-                relation = "养成推荐"
+                relation = tr("养成推荐")
             else:
-                relation = "同类型可用"
+                relation = tr("同类型可用")
             card = ForkCharacterCard(
                 character,
                 relation_label=relation,
@@ -549,10 +553,10 @@ class ForkProfileView(QWidget):
             return
         for material in detail.experience_materials:
             costs = self._item_names.present_costs(material.costs)
-            detail_text = f"{material.experience_value:,} EXP/个"
+            detail_text = tr("{value} EXP/个", value=f"{material.experience_value:,}")
             cost_text = self._item_names.player_text(costs)
             if cost_text:
-                detail_text += f" · 使用消耗 {cost_text}"
+                detail_text += " · " + tr("使用消耗 {cost}", cost=cost_text)
             card = ProgressionMaterialCard(
                 name=material.name_zh or material.item_id,
                 amount_text=f"{material.experience_value:,} EXP",
@@ -564,7 +568,7 @@ class ForkProfileView(QWidget):
             )
             self._exp_material_cards.append(card)
         for stage in detail.breakthroughs:
-            card = self._panel(f"阶段 {stage.stage} · 上限 Lv.{stage.max_fork_level}")
+            card = self._panel(tr("阶段 {stage} · 上限 Lv.{level}", stage=stage.stage, level=stage.max_fork_level))
             displayed_costs = self._item_names.present_costs(
                 (*stage.item_costs, *stage.gold_costs)
             )
@@ -580,23 +584,23 @@ class ForkProfileView(QWidget):
                         parent=card,
                     ))
             else:
-                card.layout().addWidget(self._info_row("消耗", "暂未提供"))
-            modifier_text = "、".join(
-                f"{item.property_name_zh or item.property_id} {item.display_value}"
+                card.layout().addWidget(self._info_row(tr("消耗"), tr("暂未提供")))
+            modifier_text = tr("、").join(
+                f"{display_term(item.property_name_zh) if item.property_name_zh else item.property_id} {item.display_value}"
                 for item in stage.modifiers
-            ) or "面板修改未提供"
-            card.layout().addWidget(self._info_row("突破面板", modifier_text))
+            ) or tr("面板修改未提供")
+            card.layout().addWidget(self._info_row(tr("突破面板"), modifier_text))
             self._breakthrough_cards.append(card)
         for refinement in detail.refinement_levels:
-            card = self._panel(f"{'★' * refinement.level} · 混频 {refinement.level}")
+            card = self._panel(f"{'★' * refinement.level} · " + tr("混频 {level}", level=refinement.level))
             costs = self._item_names.present_raw(refinement.need_gold_raw)
             card.layout().addWidget(self._info_row(
-                "消耗",
-                self._item_names.player_text(costs) or "暂未提供",
+                tr("消耗"),
+                self._item_names.player_text(costs) or tr("暂未提供"),
             ))
             card.layout().addWidget(self._info_row(
-                "技能",
-                refinement.title_zh or "当前正式数据未提供",
+                tr("技能"),
+                refinement.title_zh or tr("当前正式数据未提供"),
             ))
             self._refinement_cost_cards.append(card)
         self._layout_cultivation_cards()

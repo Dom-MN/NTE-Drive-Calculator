@@ -61,8 +61,8 @@ def _acquisition_name(
         and release.acquisition_term is not None
         and release.acquisition_term.display_name
     ):
-        return release.acquisition_term.display_name
-    return "名称暂未提供"
+        return tr(release.acquisition_term.display_name)
+    return tr("名称暂未提供")
 
 
 class CharacterDetailView(QWidget):
@@ -149,9 +149,9 @@ class CharacterDetailView(QWidget):
             "color:#8b949e;font-size:10px;font-weight:700"
         ))
         badges = QHBoxLayout()
-        self.element_badge = self._badge("属性未提供", "#58a6ff")
-        self.availability_badge = self._badge("获取未提供", "#3fb950")
-        self.quality_badge = self._badge("品质未提供", "#d29922")
+        self.element_badge = self._badge(tr("属性未提供"), "#58a6ff")
+        self.availability_badge = self._badge(tr("获取未提供"), "#3fb950")
+        self.quality_badge = self._badge(tr("品质未提供"), "#d29922")
         badges.addWidget(self.element_badge)
         badges.addWidget(self.availability_badge)
         badges.addWidget(self.quality_badge)
@@ -279,10 +279,10 @@ class CharacterDetailView(QWidget):
         character = detail.character
         self.name.setText(display_term(character.name_zh))
         self.identity.setText(f"ID  {character.character_id}")
-        self.element_badge.setText(tr("{element}属性", element=character.element_label))
+        self.element_badge.setText(tr("{element}属性", element=display_term(character.element_label)))
         acquisition_label = _acquisition_name(release)
         if character.classification == "scheduled_character":
-            acquisition_label += " · 待上线"
+            acquisition_label += " · " + tr("待上线")
         self.availability_badge.setText(acquisition_label)
         self.quality_badge.setText(
             tr("{quality} 级", quality=release.quality)
@@ -290,12 +290,11 @@ class CharacterDetailView(QWidget):
             else tr("品质未提供")
         )
         if release is not None and release.release_date:
-            prefix = (
-                "预计上线 "
+            self.release_line.setText(
+                tr("预计上线 {date}", date=release.release_date)
                 if character.classification == "scheduled_character"
-                else "上线 "
+                else tr("上线 {date}", date=release.release_date)
             )
-            self.release_line.setText(prefix + release.release_date)
         else:
             self.release_line.setText(tr("上线信息未提供"))
         self.art.clear()
@@ -338,11 +337,11 @@ class CharacterDetailView(QWidget):
             character_id = variant.character_id
             actor_path = str(variant.actor_path or "").casefold()
             if "female" in actor_path:
-                label = "女性形象"
+                label = tr("女性形象")
             elif "male" in actor_path:
-                label = "男性形象"
+                label = tr("男性形象")
             else:
-                label = f"形象 {index}"
+                label = tr("形象 {index}", index=index)
             button = QPushButton(label, self.identity_panel)
             button.setCheckable(True)
             button.setChecked(character_id == active_character_id)
@@ -371,7 +370,7 @@ class CharacterDetailView(QWidget):
         ))
         self.overview_layout.addWidget(summary)
 
-        panel = self._panel("面板速览")
+        panel = self._panel(tr("面板速览"))
         panel_grid = QGridLayout()
         panel_grid.setHorizontalSpacing(8)
         panel_grid.setVerticalSpacing(8)
@@ -384,14 +383,14 @@ class CharacterDetailView(QWidget):
                 continue
             panel_grid.addWidget(self._detail_tile(
                 f"Lv.{level}",
-                f"生命 {_number(point.hp_base)}  ·  攻击 {_number(point.atk_base)}  ·  防御 {_number(point.def_base)}",
+                tr("生命 {hp}  ·  攻击 {atk}  ·  防御 {defense}", hp=_number(point.hp_base), atk=_number(point.atk_base), defense=_number(point.def_base)),
             ), panel_index // panel_columns, panel_index % panel_columns)
             panel_index += 1
         for column in range(panel_columns):
             panel_grid.setColumnStretch(column, 1)
         panel.layout().addLayout(panel_grid)
         if not growth.items:
-            panel.layout().addWidget(self._muted("当前正式数据未提供等级面板"))
+            panel.layout().addWidget(self._muted(tr("当前正式数据未提供等级面板")))
         self.overview_layout.addWidget(panel)
 
         self.overview_layout.addStretch(1)
@@ -400,9 +399,9 @@ class CharacterDetailView(QWidget):
         self._clear(self.affinity_layout)
         bonus = detail.likeability
         if bonus is None:
-            self.affinity_layout.addWidget(self._muted("当前正式数据未提供好感度属性"))
+            self.affinity_layout.addWidget(self._muted(tr("当前正式数据未提供好感度属性")))
         else:
-            hero = self._panel(f"好感度 Lv.{bonus.required_level} 奖励")
+            hero = self._panel(tr("好感度 Lv.{level} 奖励", level=bonus.required_level))
             for item in bonus.properties:
                 value = item.value * 100 if item.show_percent else item.value
                 suffix = "%" if item.show_percent else ""

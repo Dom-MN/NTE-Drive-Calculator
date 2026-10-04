@@ -131,7 +131,7 @@ class ForkGalleryCard(QFrame):
         badges.addWidget(quality)
         badges.addWidget(fork_type)
         badges.addStretch(1)
-        campaign_title = campaign.title.display_name if campaign else "首发"
+        campaign_title = campaign.title.display_name if campaign else tr("首发")
         limited = QLabel(
             campaign_title or tr("名称暂未提供"),
             self,
@@ -452,7 +452,7 @@ class ForkCatalogPage(QWidget):
         title: str,
         summaries: tuple[ForkCatalogSummary, ...],
     ) -> None:
-        heading = QLabel(title, self._gallery_host)
+        heading = QLabel(tr(title), self._gallery_host)
         heading.setStyleSheet(themed_style(
             "color:#c9d1d9;font-size:14px;font-weight:900;margin-top:6px"
         ))

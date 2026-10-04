@@ -99,10 +99,18 @@ at runtime `display_text(text_table, text_key, chinese_fallback)` looks them up 
 `locales/gametext.<lang>.json`.
 
 That file is generated from a locres export by `tools/game_data/build_game_text_locale.py`; only the
-generated result is committed, never the locres export itself. `fork_star_level` has no key column, so
-it is derived from the `upgradestar_pack_X` → `buff_X_effect` naming convention. Keys are stored and
-read in lower case to avoid missing lookups from case differences between the static database and the
-string tables.
+generated result is committed, never the locres export itself. Tables without a key column are joined
+by naming convention instead: `fork_star_level` through `upgradestar_pack_X` → `buff_X_effect`, and a
+monster through its manual id — the name is `ST_AbyssBattle::<id>`, falling back to
+`ST_ActorName::<id without _BP>_Name`, and the manual entry is `ST_MonsterManual::<id>_Found`. Keys are
+stored and read in lower case to avoid missing lookups from case differences between the static
+database and the string tables.
+
+Catalogue terms in `localized_term` (acquisition type, damage resistance, Arc campaigns, item quality)
+carry a key too; `StaticCatalogTerminologyService` resolves it once, so every caller of
+`LocalizedTerm.display_name` receives the interface language. Dungeons, high-risk commissions, feast
+stages, Beyond the Rails rings and regions have neither a key nor an id that matches one, so they stay
+Chinese: without the Chinese locres there is no verified way from the name to the official English.
 
 The English originals keep the same `{n}` placeholders, so refinement-value substitution holds in both
 languages.

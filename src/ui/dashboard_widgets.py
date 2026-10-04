@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
 def metric_card(title: str, value: str = "—", subtitle: str = "") -> tuple[QFrame, QLabel, QLabel]:
@@ -11,11 +13,11 @@ def metric_card(title: str, value: str = "—", subtitle: str = "") -> tuple[QFr
     layout = QVBoxLayout(card)
     layout.setContentsMargins(16, 13, 16, 13)
     layout.setSpacing(4)
-    title_label = QLabel(title)
+    title_label = QLabel(tr(title))
     title_label.setObjectName("dashboardMetricTitle")
     value_label = QLabel(value)
     value_label.setObjectName("dashboardMetricValue")
-    subtitle_label = QLabel(subtitle)
+    subtitle_label = QLabel(tr(subtitle) if subtitle else subtitle)
     subtitle_label.setObjectName("dashboardMetricSubtitle")
     subtitle_label.setWordWrap(True)
     layout.addWidget(title_label)

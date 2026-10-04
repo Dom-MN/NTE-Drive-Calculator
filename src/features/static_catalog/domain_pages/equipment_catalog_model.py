@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import display_text, tr
+
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -155,7 +157,9 @@ class ReleaseEquipmentCatalogSource:
                     item_id=str(row["item_id"]),
                     kind=str(row["kind"]),
                     quality=_quality_key(row["quality"]),
-                    name=str(row["name_zh"]),
+                    name=display_text(
+                        row.get("name_text_table"), row.get("name_text_key"), str(row["name_zh"]),
+                    ),
                     shape_id=str(row.get("geometry_id") or ""),
                     area=int(row.get("grid_count") or 0),
                     suit_id=str(row.get("suit_id") or ""),
@@ -169,7 +173,7 @@ class ReleaseEquipmentCatalogSource:
             shapes = tuple(
                 ShapeRecord(
                     shape_id=str(row["shape_id"]),
-                    name=str(row.get("name_zh") or "名称暂未提供"),
+                    name=str(row.get("name_zh") or tr("名称暂未提供")),
                     area=int(row["cell_count"]),
                     cells=tuple(
                         (int(cell["x"]), int(cell["y"]))
@@ -233,8 +237,11 @@ class ReleaseEquipmentCatalogSource:
                 effects.append(
                     SuitEffect(
                         required_count=int(raw["required_count"]),
-                        description=str(
-                            raw.get("description_zh") or "暂无正式说明"
+                        # The game's own string table, falling back to the stored Chinese.
+                        description=display_text(
+                            raw.get("description_text_table"),
+                            raw.get("description_text_key"),
+                            str(raw.get("description_zh") or tr("暂无正式说明")),
                         ),
                         modifiers=modifiers,
                         has_conditional_effect=bool(raw.get("buff_object_path")),
@@ -247,7 +254,9 @@ class ReleaseEquipmentCatalogSource:
             records.append(
                 SuitRecord(
                     suit_id=str(row["suit_id"]),
-                    name=str(row["name_zh"]),
+                    name=display_text(
+                        row.get("name_text_table"), row.get("name_text_key"), str(row["name_zh"]),
+                    ),
                     required_shape_ids=tuple(
                         str(value) for value in row["required_shape_ids"]
                     ),
@@ -362,7 +371,7 @@ class EquipmentCatalogPageController:
 
     def shape_name(self, shape_id: str) -> str:
         shape = self.shape(shape_id)
-        return shape.name if shape is not None else "名称暂未提供"
+        return shape.name if shape is not None else tr("名称暂未提供")
 
     def quality_name(self, quality_id: str) -> str:
         if self._terminology is None:
@@ -373,7 +382,7 @@ class EquipmentCatalogPageController:
         return (
             term.display_name
             if term.display_name.endswith("级")
-            else f"{term.display_name}级"
+            else tr("{grade}级", grade=term.display_name)
         )
 
     def graduations(self, suit_id: str) -> tuple[GraduationLink, ...]:

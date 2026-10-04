@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from pathlib import Path
 
 from src.features.static_catalog.domain_pages.monster_browse_models import (
@@ -55,8 +57,8 @@ class FeastCatalogBrowserMixin:
             "historical": "往期",
         }
         return BrowseCard(
-            period.display_label,
-            f"{len(period.challenge_ids)} 个挑战 · {period.schedule_label}",
+            tr(period.display_label),
+            tr("{count} 个挑战 · {schedule}", count=len(period.challenge_ids), schedule=tr(period.schedule_label)),
             state_label.get(period.release_state, period.release_state),
             self._feast_setup_icon(setup),
             lambda checked=False, value=period: self._open_feast_period(value),

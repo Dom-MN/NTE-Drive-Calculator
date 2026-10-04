@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -89,20 +91,19 @@ def object_name(path: str) -> str:
 
 def period_label(config_id: str) -> str:
     ordinal = str(config_id).rsplit("_", 1)[-1]
-    return f"第 {ordinal} 期" if ordinal.isdigit() else "正式期数"
+    return tr("第 {ordinal} 期", ordinal=ordinal) if ordinal.isdigit() else tr("正式期数")
 
 
 def home_badge(mode: str, entries: Iterable[CatalogEntry]) -> str:
     """Summarize one home category without duplicating records in the view."""
 
-    if mode == "outer_realm":
-        count = len({entry.primary_id for entry in entries})
-        return f"{count} 期正式配置"
+    count = len({entry.primary_id for entry in entries})
     labels = {
-        "official_illustrated": "名大世界敌人",
-        "feast": "名挑战对象",
-        "clone": "个副本",
-        "world_boss": "名追猎目标",
-        "high_risk": "项高危委托",
+        "outer_realm": "{count} 期正式配置",
+        "official_illustrated": "{count} 名大世界敌人",
+        "feast": "{count} 名挑战对象",
+        "clone": "{count} 个副本",
+        "world_boss": "{count} 名追猎目标",
+        "high_risk": "{count} 项高危委托",
     }
-    return f"{len({entry.primary_id for entry in entries})} {labels[mode]}"
+    return tr(labels[mode], count=count)

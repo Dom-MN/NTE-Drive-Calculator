@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import display_term
+from src.i18n import display_term, tr
 
 import re
 from dataclasses import dataclass
@@ -68,13 +68,19 @@ def plain_text(value: str | None) -> str:
     return " ".join(_MARKUP.sub("", value or "").replace("</>", "").split())
 
 
-def refinement_skill_text(refinement: ForkRefinementLevel) -> str:
-    """Substitute formal refinement values without exposing parameter keys."""
+def refinement_skill_text(refinement: ForkRefinementLevel, template: str | None = None) -> str:
+    """Substitute formal refinement values without exposing parameter keys.
 
-    text = plain_text(refinement.description_zh)
+    ``template`` is the game's own localized text when it has one; it carries
+    the same ``{0}`` placeholders as the stored Chinese. Its line breaks arrive
+    as a literal backslash-n, which plain text folds into a space.
+    """
+
+    source = template.replace("\\n", " ") if template else refinement.description_zh
+    text = plain_text(source)
     for index, parameter in enumerate(refinement.parameters):
         text = text.replace(f"{{{index}}}", parameter.display_value)
-    return text or "暂无技能说明"
+    return text or tr("暂无技能说明")
 
 
 def present_effects(
@@ -93,7 +99,10 @@ def present_effects(
         if buff.stack_limit_count is not None and buff.stack_limit_count > 0:
             stack_limits.append(buff.stack_limit_count)
         for modifier in buff.modifiers:
-            name = modifier.property_name_zh or modifier.property_id
+            name = (
+                display_term(modifier.property_name_zh)
+                if modifier.property_name_zh else modifier.property_id
+            )
             if name and name not in properties:
                 properties.append(name)
             has_condition = has_condition or bool(
@@ -105,6 +114,7 @@ def present_effects(
             event = _EVENT_LABELS.get(event_key)
             if not event:
                 continue
+            event = tr(event)
             effect_key = str(trigger.effect_type or "").rsplit("::", 1)[-1]
             target = removed if effect_key == "BUFF_REMOVE" else applied
             if event not in target:
@@ -112,19 +122,20 @@ def present_effects(
             has_condition = has_condition or bool(
                 trigger.application_requirement_asset_path
             )
+    separator = tr("、")
     timing_parts = []
     if applied:
-        timing_parts.append(f"{'、'.join(applied)}时生效")
+        timing_parts.append(tr("{events}时生效", events=separator.join(applied)))
     if removed:
-        timing_parts.append(f"{'、'.join(removed)}时结束")
+        timing_parts.append(tr("{events}时结束", events=separator.join(removed)))
     result = (
-        f"影响{'、'.join(properties)}，具体数值以当前混频技能说明为准"
-        if properties else "效果内容以当前混频技能说明为准"
+        tr("影响{properties}，具体数值以当前混频技能说明为准", properties=separator.join(properties))
+        if properties else tr("效果内容以当前混频技能说明为准")
     )
-    stacking = f"最多叠加 {max(stack_limits)} 层" if stack_limits else None
-    condition = "仅在技能说明所述的攻击或状态下生效" if has_condition else None
+    stacking = tr("最多叠加 {count} 层", count=max(stack_limits)) if stack_limits else None
+    condition = tr("仅在技能说明所述的攻击或状态下生效") if has_condition else None
     return ForkEffectPresentation(
-        timing="；".join(timing_parts) or "随技能说明所述条件生效",
+        timing=tr("；").join(timing_parts) or tr("随技能说明所述条件生效"),
         result=result,
         stacking=stacking,
         condition=condition,
@@ -138,7 +149,7 @@ def effect_tile(title: str, text: str) -> QFrame:
     ))
     layout = QVBoxLayout(card)
     layout.setContentsMargins(12, 9, 12, 9)
-    caption = QLabel(title, card)
+    caption = QLabel(tr(title), card)
     caption.setStyleSheet(themed_style(
         "color:#58a6ff;background:transparent;border:none;"
         "font-size:10px;font-weight:900"

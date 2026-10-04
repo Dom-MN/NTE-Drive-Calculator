@@ -85,8 +85,15 @@ percent_suffix = "%" if "%" in main_key else ""   # 取自键，不是显示名
 查 `locales/gametext.<lang>.json`。
 
 该文件由 `tools/game_data/build_game_text_locale.py` 从 locres 导出生成；只提交生成结果，
-locres 导出本身不入库。`fork_star_level` 没有键列，按 `upgradestar_pack_X` → `buff_X_effect`
-的命名约定推导；键统一小写存取，避免静态库与字符串表的大小写差异漏查。
+locres 导出本身不入库。没有键列的表按命名约定关联：`fork_star_level` 走
+`upgradestar_pack_X` → `buff_X_effect`；怪物以图鉴 id 为键，名称取 `ST_AbyssBattle::<id>`，
+缺失时取 `ST_ActorName::<去掉 _BP 的 id>_Name`，图鉴说明取 `ST_MonsterManual::<id>_Found`。
+键统一小写存取，避免静态库与字符串表的大小写差异漏查。
+
+`localized_term` 中的资料库术语（获取方式、伤害抗性、弧盘特刊、物品品质）同样带键，由
+`StaticCatalogTerminologyService` 统一解析，所有读取 `LocalizedTerm.display_name` 的位置都会得到
+界面语言。副本、高危委托、争锋关卡、轨外环线和地区既无键也无可对应的 id，保持中文：没有中文
+locres，就无法从名称可靠地找到官方英文。
 
 英文原文保留同样的 `{n}` 占位符，因此精炼数值替换在两种语言下都成立。
 

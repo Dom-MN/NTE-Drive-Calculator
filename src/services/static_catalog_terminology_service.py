@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import display_text, is_source_language
+
 from collections.abc import Mapping
 from typing import Protocol
 
@@ -138,6 +140,10 @@ class StaticCatalogTerminologyService:
                 source_kind=record.source_kind,
             )
         resolved_locale, display_name = selected
+        # The records hold Chinese only; the game's own string table supplies
+        # the interface language when the term carries its key.
+        if not is_source_language():
+            display_name = display_text(record.text_table, record.text_key, display_name)
         return LocalizedTerm(
             entity_kind=normalized_kind,
             requested_id=normalized_id,

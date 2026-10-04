@@ -80,7 +80,7 @@ class CharacterCatalogPageController:
     def acquisition_filter_options(self) -> tuple[tuple[str, str], ...]:
         return tuple(
             (
-                term.display_name or "名称暂未提供",
+                tr(term.display_name) if term.display_name else tr("名称暂未提供"),
                 term.requested_id,
             )
             for term in self._release_metadata.acquisition_terms()
@@ -342,8 +342,8 @@ class CharacterCatalogPage(QWidget):
         options: tuple[tuple[str, str, bool, str], ...],
     ) -> tuple[QHBoxLayout, QButtonGroup]:
         row = QHBoxLayout()
-        label = QLabel(title, parent)
-        label.setFixedWidth(46)
+        label = QLabel(tr(title), parent)
+        label.setMinimumWidth(46)
         label.setStyleSheet(themed_style(
             "color:#8b949e;font-size:10px;font-weight:800"
         ))
@@ -351,7 +351,7 @@ class CharacterCatalogPage(QWidget):
         group = QButtonGroup(parent)
         group.setExclusive(True)
         for index, (text, key, enabled, tooltip) in enumerate(options):
-            button = QPushButton(text, parent)
+            button = QPushButton(tr(text), parent)
             button.setProperty("filterChip", True)
             button.setProperty("filterKey", key)
             button.setCheckable(True)

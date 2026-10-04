@@ -48,7 +48,7 @@ class ArchiveCard(QFrame):
         art.setFixedHeight(96)
         set_art(art, model.icon, 92, unavailable=model.unavailable)
         layout.addWidget(art)
-        badge = QLabel(model.badge, self)
+        badge = QLabel(tr(model.badge), self)
         badge.setStyleSheet(themed_style(
             "color:#39d0d8;font-size:9px;font-weight:900;letter-spacing:1px"
         ))
@@ -175,9 +175,9 @@ def section_title(title: str, note: str) -> QWidget:
     host = QWidget()
     layout = QVBoxLayout(host)
     layout.setContentsMargins(0, 3, 0, 1)
-    heading = QLabel(title, host)
+    heading = QLabel(tr(title), host)
     heading.setStyleSheet(themed_style("color:#f0f6fc;font-size:16px;font-weight:900"))
-    copy = QLabel(note, host)
+    copy = QLabel(tr(note), host)
     copy.setWordWrap(True)
     copy.setStyleSheet(themed_style("color:#8b949e;font-size:10px"))
     layout.addWidget(heading)

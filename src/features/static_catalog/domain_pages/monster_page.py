@@ -222,7 +222,7 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
     @staticmethod
     def _filter_combo(default_text: str, parent: QWidget) -> QComboBox:
         combo = QComboBox(parent)
-        combo.addItem(default_text, "")
+        combo.addItem(tr(default_text), "")
         combo.setProperty("defaultText", default_text)
         return combo
 
@@ -313,7 +313,7 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
         title = season.entry.subtitle if season else _period_label(representative.primary_id)
         return BrowseCard(
             title,
-            f"{len(rows) // 2} 层 · 按大陆服开放时间更新",
+            tr("{count} 层 · 按大陆服开放时间更新", count=len(rows) // 2),
             state_label.get(representative.release_state, representative.release_state),
             self._first_icon(rows),
             lambda checked=False, values=rows: self._open_rotation(values),
@@ -341,8 +341,8 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
         cards = []
         for level, rows in levels.items():
             cards.append(BrowseCard(
-                f"第 {level} 层 · {rows[0].title}",
-                " / ".join(row.secondary_label or "名称暂未提供" for row in rows),
+                tr("第 {level} 层 · {title}", level=level, title=rows[0].title),
+                " / ".join(row.secondary_label or tr("名称暂未提供") for row in rows),
                 "层数",
                 self._first_icon(rows),
                 lambda checked=False, values=rows: self._open_outer_level(values),
@@ -350,9 +350,9 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
                 difficulty=level,
                 period=period_label,
             ))
-        sections.append(BrowseSection("层数", f"{len(cards)} 层", tuple(cards)))
+        sections.append(BrowseSection("层数", tr("{count} 层", count=len(cards)), tuple(cards)))
         self._show_state(BrowseState(
-            f"轨外之境 · {period_label}", "选择层数后查看上下半场与正式刷怪槽位。",
+            tr("轨外之境 · {period}", period=period_label), "选择层数后查看上下半场与正式刷怪槽位。",
             tuple(sections),
         ), push=True)
 
@@ -362,12 +362,12 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
             detail = self._controller.detail(entry.key)
             cards = self._monster_cards(detail, entry) if detail else ()
             sections.append(BrowseSection(
-                entry.secondary_label or "名称暂未提供",
+                entry.secondary_label or tr("名称暂未提供"),
                 "按刷怪槽位展示；身份未确认时不补猜名称。", cards,
             ))
         self._show_state(BrowseState(
             entries[0].title,
-            f"{_period_label(entries[0].primary_id)} · 第 {_key_parts(entries[0].key)[2]} 层",
+            tr("{period} · 第 {layer} 层", period=_period_label(entries[0].primary_id), layer=_key_parts(entries[0].key)[2]),
             tuple(sections),
         ), push=True)
 
@@ -381,14 +381,14 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
             else (lambda checked=False, rows=entries: self._open_tiers(mode, rows))
         )
         return BrowseCard(
-            entry.title, f"{len(entries)} 个难度 / 档位" if len(entries) > 1 else entry.subtitle,
+            entry.title, tr("{count} 个难度 / 档位", count=len(entries)) if len(entries) > 1 else entry.subtitle,
             _PLAY_LABELS[mode], self._first_icon(entries), action, formal_id=formal_id,
             category=self._entry_category(entry), region=self._entry_region(entry),
         )
 
     def _open_tiers(self, mode: str, entries: tuple[CatalogEntry, ...]) -> None:
         cards = tuple(BrowseCard(
-            f"难度 / 档位 {_key_parts(entry.key)[2]}", entry.subtitle, "正式档位",
+            tr("难度 / 档位 {tier}", tier=_key_parts(entry.key)[2]), entry.subtitle, "正式档位",
             self._formal_icon(self._controller.detail(entry.key)),
             lambda checked=False, row=entry: self._open_encounter(row),
             formal_id=entry.primary_id,
@@ -398,7 +398,7 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
         ) for entry in entries)
         self._show_state(BrowseState(
             entries[0].title, "选择正式难度 / 档位",
-            (BrowseSection("难度 / 档位", f"共 {len(cards)} 档", cards),),
+            (BrowseSection("难度 / 档位", tr("共 {count} 档", count=len(cards)), cards),),
         ), push=True)
 
     def _open_encounter(self, entry: CatalogEntry) -> None:
@@ -460,17 +460,17 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
                 localized_name = (
                     target_detail.entry.title
                     if target_detail and target_detail.entry.localization_available
-                    else "名称暂未提供"
+                    else tr("名称暂未提供")
                 )
             monster_level = fields.get("等级") or fields.get("配置等级")
             encounter_difficulty = self._controller.value(detail, "难度")
             layer = self._controller.value(detail, "层")
             if monster_level:
-                level_label = f"等级 {monster_level}"
+                level_label = tr("等级 {level}", level=monster_level)
             elif encounter_difficulty:
-                level_label = f"难度 {encounter_difficulty}"
+                level_label = tr("难度 {difficulty}", difficulty=encounter_difficulty)
             elif layer:
-                level_label = f"第 {layer} 层"
+                level_label = tr("第 {layer} 层", layer=layer)
             else:
                 level_label = ""
             context = MonsterContext(
@@ -488,7 +488,7 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
                 },
             )
             cards.append(BrowseCard(
-                localized_name, f"{section.title} · 数量 {fields.get('数量', '暂无数据')}",
+                localized_name, tr("{slot} · 数量 {count}", slot=tr(section.title), count=fields.get('数量') or tr('暂无数据')),
                 _PLAY_LABELS.get(entry.play_mode, entry.play_mode),
                 self._formal_icon(target_detail),
                 (lambda checked=False, value=target_detail, ctx=context: self.open_detail(value, ctx))
@@ -588,7 +588,7 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
             if card.category
         )))
         for index, category in enumerate(categories):
-            button = QPushButton(tr("全部") if not category else category, self.category_host)
+            button = QPushButton(tr("全部") if not category else tr(category), self.category_host)
             button.setCheckable(True)
             button.setChecked(index == 0)
             button.clicked.connect(
@@ -607,9 +607,9 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
     def _fill_combo(combo: QComboBox, values: Iterable[str]) -> None:
         default_text = str(combo.property("defaultText"))
         combo.clear()
-        combo.addItem(default_text, "")
+        combo.addItem(tr(default_text), "")
         for value in sorted({str(value) for value in values if value}):
-            combo.addItem(value, value)
+            combo.addItem(tr(value), value)
 
     def _set_category(self, category: str) -> None:
         self._category_filter = category
@@ -726,9 +726,9 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
     def catalog_back_label(self) -> str | None:
         current = self.stack.currentWidget()
         if current in {self.detail_view, self.feast_view}:
-            return self._active_state.title if self._active_state is not None else "玩法列表"
+            return self._active_state.title if self._active_state is not None else tr("玩法列表")
         if current is self.browser:
-            return self._history[-2].title if len(self._history) > 1 else "玩法分类"
+            return self._history[-2].title if len(self._history) > 1 else tr("玩法分类")
         return None
 
     def catalog_go_back(self) -> bool:
@@ -743,7 +743,7 @@ class MonsterCatalogPage(FeastCatalogBrowserMixin, QWidget):
 
     def _home_badge(self, mode: str) -> str:
         if mode == "feast":
-            return f"{len(self._controller.feast_periods())} 期活动"
+            return tr("{count} 期活动", count=len(self._controller.feast_periods()))
         return _home_badge(mode, self._controller.entries_for(mode))
 
 def build_monster_catalog_page(

@@ -90,7 +90,7 @@ class MechanicsGalleryCard(QFrame):
         root.setSpacing(7)
 
         top = QHBoxLayout()
-        eyebrow = QLabel(model.eyebrow, self)
+        eyebrow = QLabel(tr(model.eyebrow), self)
         eyebrow.setStyleSheet(themed_style(
             "color:#58a6ff;font-size:11px;font-weight:900;letter-spacing:1px;"
         ))
@@ -141,7 +141,7 @@ class FieldCard(QFrame):
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 10, 12, 10)
         root.setSpacing(9)
-        heading = QLabel(title, self)
+        heading = QLabel(tr(title), self)
         heading.setStyleSheet(themed_style(
             "color:#f0f6fc;font-size:16px;font-weight:900;"
         ))

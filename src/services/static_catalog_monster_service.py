@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import display_text, tr
+
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -63,6 +65,16 @@ _RELEASE_LABELS = {
     "scheduled": "待开放",
     "unscheduled": "未提供排期",
 }
+def _monster_name(manual_id: str, fallback: str) -> str:
+    """The game's own name for a monster, looked up by its manual id."""
+
+    stem = manual_id.removesuffix("_BP").removesuffix("_bp")
+    return display_text(
+        "ST_AbyssBattle", manual_id,
+        display_text("ST_ActorName", f"{stem}_Name", fallback),
+    )
+
+
 def _key(kind: str, *parts: object) -> str:
     encoded = [quote(str(part), safe="") for part in parts]
     return "|".join((kind, *encoded))
@@ -206,6 +218,9 @@ class StaticCatalogMonsterService(
 
     def _entry_from_row(self, row: dict[str, Any]) -> CatalogEntry:
         title, localization_available = _text_state(row.get("title_zh"), NAME_UNAVAILABLE)
+        if row.get("entity_kind") in {"manual_monster", "world_boss"}:
+            # The manual id is the monster's key in the game's own string table.
+            title = _monster_name(str(row.get("identity_1") or ""), title)
         play_mode = str(row.get("play_mode") or "")
         region, region_available = _text_state(
             row.get("region"), _PLAY_MODE_LABELS.get(play_mode, play_mode)
@@ -215,7 +230,7 @@ class StaticCatalogMonsterService(
             _PLAY_MODE_LABELS.get(play_mode, play_mode), region,
         )))
         if row.get("difficulty"):
-            subtitle_parts.append(f"难度 / 层：{row['difficulty']}")
+            subtitle_parts.append(tr("难度 / 层：{value}", value=row["difficulty"]))
         if release_state:
             subtitle_parts.append(_RELEASE_LABELS.get(release_state, release_state))
         key_parts = [row.get("identity_1", "")]
@@ -228,7 +243,8 @@ class StaticCatalogMonsterService(
             domain=str(row.get("domain") or ""),
             play_mode=play_mode,
             title=title,
-            subtitle=" · ".join(part for part in subtitle_parts if part),
+            # Labels are translated for display only; regions have no keyed source.
+            subtitle=" · ".join(tr(part) for part in subtitle_parts if part),
             primary_id=str(row.get("primary_id") or ""),
             secondary_id=str(row.get("secondary_id") or ""),
             resource_path=str(row.get("resource_path") or ""),
@@ -379,7 +395,8 @@ class StaticCatalogMonsterService(
             _key("world_boss" if world_boss else "manual_monster", manual_id),
             domain="encounter" if world_boss else "monster",
             play_mode=mode,
-            title_value=row.get("name_zh"),
+            # The manual id is the monster's key in the game's own string table.
+            title_value=_monster_name(manual_id, str(row.get("name_zh") or "")),
             fallback=NAME_UNAVAILABLE,
             subtitle=_PLAY_MODE_LABELS[mode],
             primary_id=manual_id,
