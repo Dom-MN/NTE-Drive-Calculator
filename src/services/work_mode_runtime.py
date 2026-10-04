@@ -1,6 +1,8 @@
 # 收集模式所需真实状态并执行已授权的组件生命周期，不接触账号业务数据。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from dataclasses import dataclass, replace, asdict
 from importlib.util import find_spec
 from pathlib import Path
@@ -44,16 +46,16 @@ def _cleanup_error_detail(error: Exception) -> str:
     cause = error.__cause__ if isinstance(error.__cause__, OSError) else error
     code = getattr(cause, "winerror", None)
     if code in {32, 33}:
-        reason = "组件文件被其他进程占用，请完全退出游戏及占用程序后重新检测。"
+        reason = tr("组件文件被其他进程占用，请完全退出游戏及占用程序后重新检测。")
     elif code == 5 or isinstance(cause, PermissionError):
-        reason = "权限不足，请检查游戏目录权限，或以管理员身份启动 Calc 后重新检测。"
+        reason = tr("权限不足，请检查游戏目录权限，或以管理员身份启动 Calc 后重新检测。")
     elif code in {2, 3} or isinstance(cause, FileNotFoundError):
-        reason = "清理目标路径已不存在，请重新检测游戏路径。"
+        reason = tr("清理目标路径已不存在，请重新检测游戏路径。")
     else:
         reason = str(error) or type(error).__name__
     filename = getattr(cause, "filename", None)
     evidence = ([f"文件：{Path(filename).name}"] if filename else []) + ([f"系统错误 {code}"] if code is not None else [])
-    return "组件清理失败：" + reason + ("（" + "；".join(evidence) + "）" if evidence else "")
+    return tr("组件清理失败：") + reason + ("（" + "；".join(evidence) + "）" if evidence else "")
 
 
 def _has_cleanup_record(record: dict) -> bool:
@@ -144,11 +146,11 @@ class WorkModeRuntime:
             if len(paths) == 1:
                 if persist:
                     self.policy.set_game_executable(paths[0])
-                self.path_detail = "" if persist else "已发现唯一游戏目录，请在环境设置中确认。"
+                self.path_detail = "" if persist else tr("已发现唯一游戏目录，请在环境设置中确认。")
             else:
                 self.path_detail = (
-                    "发现多个游戏目录，尚无法确认使用哪一个；请检测并选择 HTGame.exe。" if paths else
-                    "未找到游戏路径（HTGame.exe）。请点击自动检测或手动选择游戏主程序；后台会自动重试。"
+                    tr("发现多个游戏目录，尚无法确认使用哪一个；请检测并选择 HTGame.exe。") if paths else
+                    tr("未找到游戏路径（HTGame.exe）。请点击自动检测或手动选择游戏主程序；后台会自动重试。")
                 )
             return paths
 
@@ -181,13 +183,13 @@ class WorkModeRuntime:
             self.policy.require("native_load")
             if (self._closed or self.policy.operation_revision != expected_operation_revision
                     or self.native_session.battle_active):
-                raise PermissionError("原生组件部署上下文已改变，已停止操作。")
+                raise PermissionError(tr("原生组件部署上下文已改变，已停止操作。"))
             if frozen.pending_cleanup:
                 self.cleanup(allow_unrecorded_legacy_workspace=True)
                 if self.policy.settings.pending_cleanup:
                     raise EquipmentPluginDeploymentError(self.cleanup_detail)
                 if self.policy.operation_revision != expected_operation_revision:
-                    raise PermissionError("清理期间原生组件部署上下文已改变，已停止操作。")
+                    raise PermissionError(tr("清理期间原生组件部署上下文已改变，已停止操作。"))
             self.policy.require("native_load")
             return self.policy.operation_revision
 
@@ -237,7 +239,7 @@ class WorkModeRuntime:
         record = self.policy.deployment_record
         has_deployment = _has_cleanup_record(record)
         if self.native_session.battle_active:
-            self._record_cleanup(CheckState.WAITING, "正在收尾本场原生战报，随后清理。", notify=has_deployment)
+            self._record_cleanup(CheckState.WAITING, tr("正在收尾本场原生战报，随后清理。"), notify=has_deployment)
             return
         self.discover(force=False)
         record = self.policy.deployment_record
@@ -250,7 +252,7 @@ class WorkModeRuntime:
                           and not record.get("managed_files") and bool(record.get("native_workspace_root")))
         if not path and not workspace_only:
             detail = (
-                "原组件部署记录中的游戏路径无效，无法确认原清理目录；保留记录，不改用其他游戏目录。"
+                tr("原组件部署记录中的游戏路径无效，无法确认原清理目录；保留记录，不改用其他游戏目录。")
                 if recorded_path else self.path_detail
             )
             self._record_cleanup(CheckState.WAITING, detail, notify=has_deployment)
@@ -268,7 +270,7 @@ class WorkModeRuntime:
                 result = cleanup_native_plugin(
                     game_executable_path=path, managed_files=managed_files,
                     game_running=self._game_running,
-                ) if managed_files else NativePluginCleanupResult("cleaned", "没有待清理的游戏目录组件。")
+                ) if managed_files else NativePluginCleanupResult("cleaned", tr("没有待清理的游戏目录组件。"))
             self.cleanup_detail = result.detail
             if (result.status == "cleaned" and allow_unrecorded_legacy_workspace and path
                     and (legacy_game_proxy_present(Path(path).parent) or record.get("workspace_path"))):
@@ -276,7 +278,7 @@ class WorkModeRuntime:
                 registered, current = mod_workspace_registry_snapshot()
                 if registered and current and legacy_workspace:
                     if not Path(current).expanduser().is_absolute():
-                        raise EquipmentPluginDeploymentError("当前注册的 Mod 工作区路径无效，已保留部署记录。")
+                        raise EquipmentPluginDeploymentError(tr("当前注册的 Mod 工作区路径无效，已保留部署记录。"))
                     if Path(legacy_workspace).expanduser().resolve() != Path(current).expanduser().resolve():
                         record = {**record, "workspace_path": current}
                         self.policy.update_deployment(record)
@@ -307,8 +309,8 @@ class WorkModeRuntime:
         if running:
             self._record_cleanup(
                 CheckState.CLEANUP_PENDING if has_deployment or workspace else CheckState.WAITING,
-                "游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。"
-                if has_deployment or workspace else "游戏未关闭，尚未核对游戏目录是否有组件。请退出游戏后重新检测。",
+                tr("游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。")
+                if has_deployment or workspace else tr("游戏未关闭，尚未核对游戏目录是否有组件。请退出游戏后重新检测。"),
                 notify=bool(has_deployment or workspace),
             )
             return
@@ -328,12 +330,12 @@ class WorkModeRuntime:
             if registered and current:
                 registered_path = Path(current).expanduser()
                 if not registered_path.is_absolute():
-                    raise EquipmentPluginDeploymentError("当前注册的 Mod 工作区路径无效，已保留部署记录。")
+                    raise EquipmentPluginDeploymentError(tr("当前注册的 Mod 工作区路径无效，已保留部署记录。"))
                 if Path(workspace).expanduser().resolve() != registered_path.resolve():
                     if self._game_running():
                         self._record_cleanup(
                             CheckState.CLEANUP_PENDING,
-                            "游戏在清理前启动，加载配置尚未调整。请退出游戏后重新检测。",
+                            tr("游戏在清理前启动，加载配置尚未调整。请退出游戏后重新检测。"),
                             notify=True,
                         )
                         return
@@ -361,7 +363,7 @@ class WorkModeRuntime:
         method = self.policy.deployment_record.get("loading_method", "native-capture")
         self.policy.update_deployment({"loading_method": method})
         self.policy.set_cleanup_pending(False)
-        self.cleanup_detail = "已清理本程序组件及旧加载入口；未恢复历史 DLL 或加载配置。"
+        self.cleanup_detail = tr("已清理本程序组件及旧加载入口；未恢复历史 DLL 或加载配置。")
         self.invalidate()
 
     def _automatic_deploy(self, running: bool) -> None:
@@ -370,7 +372,7 @@ class WorkModeRuntime:
         if not self.policy.allowed("native_load", automatic=True):
             return
         if self._bundle is None or not self._bundle.ready:
-            self.cleanup_detail = "随附整套组件未通过核对，自动部署等待修复安装包。"
+            self.cleanup_detail = tr("随附整套组件未通过核对，自动部署等待修复安装包。")
             return
         self._automatic_native_deploy(running)
 
@@ -379,12 +381,12 @@ class WorkModeRuntime:
             self._automatic_native_loader(running)
             return
         if self.loader.snapshot().phase == "running":
-            self.cleanup_detail = "Loader 正在运行；停止当前 Loader 后才能部署 D3D 入口。"
+            self.cleanup_detail = tr("Loader 正在运行；停止当前 Loader 后才能部署 D3D 入口。")
             return
         if self._native_deployed is not None and self._native_deployed.files_compatible:
             return
         if running:
-            self.cleanup_detail = "游戏运行中，原生组件更新等待游戏退出。"
+            self.cleanup_detail = tr("游戏运行中，原生组件更新等待游戏退出。")
             return
         executable = self.policy.settings.game_executable
         if not executable or monotonic() - self._last_auto_attempt < 15:
@@ -398,7 +400,7 @@ class WorkModeRuntime:
             if (self._closed or self.policy.operation_revision != operation_revision or current != frozen
                     or self.policy.settings.game_executable != executable
                     or self.policy.settings.pending_cleanup or self.native_session.battle_active):
-                raise PermissionError("原生组件部署上下文已改变，已停止本次操作。")
+                raise PermissionError(tr("原生组件部署上下文已改变，已停止本次操作。"))
             self.policy.require(capability, automatic=True)
 
         try:
@@ -412,11 +414,11 @@ class WorkModeRuntime:
                 if self._native_deployed is not None else None,
             )
             self.save_deployment(deployed)
-            self.cleanup_detail = "原生组件已部署；启动游戏后重新核对连接和各项能力。"
+            self.cleanup_detail = tr("原生组件已部署；启动游戏后重新核对连接和各项能力。")
         except PluginDeploymentPendingCleanup as error:
             self.save_pending_deployment(error)
         except (EquipmentPluginDeploymentError, PermissionError, OSError) as error:
-            self.cleanup_detail = "自动原生组件部署失败：" + str(error)
+            self.cleanup_detail = tr("自动原生组件部署失败：") + str(error)
             self._auto_error = self.cleanup_detail
 
     def _restore_native_workspace(self, record) -> None:
@@ -449,11 +451,11 @@ class WorkModeRuntime:
         with self._lock:
             self.policy.require("native_load", automatic=automatic)
             if self._closed or self.native_session.battle_active:
-                raise ModPluginLoadingError("请先结束当前采集任务，再启动 Loader。")
+                raise ModPluginLoadingError(tr("请先结束当前采集任务，再启动 Loader。"))
             if self.policy.deployment_record.get("loading_method") != "loader":
-                raise ModPluginLoadingError("当前未选择 Loader 加载方式。")
+                raise ModPluginLoadingError(tr("当前未选择 Loader 加载方式。"))
             if self._game_running():
-                raise ModPluginLoadingWaiting("请先关闭启动器并完全退出游戏，再启动 Loader。")
+                raise ModPluginLoadingWaiting(tr("请先关闭启动器并完全退出游戏，再启动 Loader。"))
             frozen = self.policy.settings
             executable = frozen.game_executable
             operation_revision = self.policy.operation_revision
@@ -461,7 +463,7 @@ class WorkModeRuntime:
             if callable(launcher_running):
                 try:
                     if launcher_running(executable):
-                        raise ModPluginLoadingWaiting("官方启动器仍在运行；请关闭启动器和游戏后再启动 Loader。")
+                        raise ModPluginLoadingWaiting(tr("官方启动器仍在运行；请关闭启动器和游戏后再启动 Loader。"))
                 except (LauncherProcessProbeError, ModLoaderRuntimeError, OSError) as error:
                     raise ModPluginLoadingWaiting(str(error)) from error
 
@@ -473,7 +475,7 @@ class WorkModeRuntime:
                         or self.policy.settings.game_executable != executable
                         or self.policy.deployment_record.get("loading_method") != "loader"
                         or self.native_session.battle_active):
-                    raise PermissionError("Loader 启动上下文已改变，已停止操作。")
+                    raise PermissionError(tr("Loader 启动上下文已改变，已停止操作。"))
 
             self.loader.require_native_loader_supported()
             guard("native_load")
@@ -493,7 +495,7 @@ class WorkModeRuntime:
                 # Only cleanup-owned settings may change while handing off the entry.
                 if (replace(current, revision=0, deployment_json="{}", pending_cleanup=False, auto_sync_enabled=False)
                         != replace(frozen, revision=0, deployment_json="{}", pending_cleanup=False, auto_sync_enabled=False)):
-                    raise PermissionError("清理期间 Loader 启动上下文已改变，已停止操作。")
+                    raise PermissionError(tr("清理期间 Loader 启动上下文已改变，已停止操作。"))
                 frozen = current
                 guard("native_load")
 
@@ -515,10 +517,10 @@ class WorkModeRuntime:
                 finally:
                     self._save_native_loader_record(executable=executable, pending=self.loader.pending_native_workspace_path is not None)
                 if stop_error is not None:
-                    raise ModPluginLoadingError("Loader 启动已失效且停止失败；保留待清理状态：" + str(stop_error)) from error
+                    raise ModPluginLoadingError(tr("Loader 启动已失效且停止失败；保留待清理状态：") + str(stop_error)) from error
                 raise
             self._save_native_loader_record(executable=executable, pending=False)
-            self.cleanup_detail = "Loader 已开始等待游戏；宿主、插件和采集连接仍需逐项检测。"
+            self.cleanup_detail = tr("Loader 已开始等待游戏；宿主、插件和采集连接仍需逐项检测。")
             return result
 
     def _automatic_native_loader(self, running: bool) -> None:
@@ -532,7 +534,7 @@ class WorkModeRuntime:
         except ModPluginLoadingWaiting as error:
             self.cleanup_detail = str(error)
         except (EquipmentPluginDeploymentError, ModPluginLoadingError, PermissionError) as error:
-            self.cleanup_detail = "自动 Loader 启动失败：" + str(error)
+            self.cleanup_detail = tr("自动 Loader 启动失败：") + str(error)
             self._auto_error = self.cleanup_detail
 
     def _inspect_component_files(self, *, path_valid: bool, running: bool) -> None:
@@ -676,8 +678,8 @@ class WorkModeRuntime:
                                         else CheckState.CLEANUP_PENDING if settings.pending_cleanup
                                         else CheckState.AVAILABLE if current_package else CheckState.WAITING),
                 component_update_detail=(self._auto_error or ("；".join(self._bundle.issues) if self._bundle and self._bundle.issues
-                                         else "当前配套组件已部署。" if current_package
-                                         else self.cleanup_detail or "等待部署或更新当前配套组件。")),
+                                         else tr("当前配套组件已部署。") if current_package
+                                         else self.cleanup_detail or tr("等待部署或更新当前配套组件。"))),
                 game_path_valid=path_valid, game_running=running,
                 launcher_running=launcher_running, launcher_probe_error=launcher_error,
                 core_available=core_available,

@@ -8,6 +8,7 @@ import json
 import sys
 import pathlib
 import tempfile
+import re
 import unittest
 from pathlib import Path
 
@@ -520,6 +521,83 @@ class NavigationLabelTests(unittest.TestCase):
         ):
             with self.subTest(source=source):
                 self.assertEqual(expected, i18n.tr(source))
+
+
+class TranslatedLabelsAreNotKeysTests(unittest.TestCase):
+    """A translated label read back from a widget is no longer the Chinese key.
+
+    The suite pins the source language, so code that compares ``button.text()``
+    against Chinese passes every test and only breaks for an English user.
+    """
+
+    # Upstream dead code: the label it looks for no longer exists in any
+    # language, so it matches nothing either way.
+    ALLOWED = {("src/features/weighted_allocation/weighted_shell.py", "重置只影响当前界面")}
+    TEXT_GETTERS = {"text", "currentText", "windowTitle", "toolTip", "placeholderText",
+                    "title", "itemText", "tabText", "toPlainText", "labelText"}
+
+    def setUp(self) -> None:
+        self.addCleanup(i18n.set_language, i18n.DEFAULT_LANGUAGE)
+
+    def _reads_widget_text(self, node: ast.AST) -> bool:
+        return any(
+            isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+            and c.func.attr in self.TEXT_GETTERS
+            for c in ast.walk(node)
+        )
+
+    def test_no_widget_text_is_compared_with_a_chinese_literal(self) -> None:
+        cjk = re.compile(r"[一-鿿]")
+        violations = []
+        for path in sorted(SOURCE.rglob("*.py")):
+            rel = path.relative_to(ROOT).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Compare):
+                    continue
+                operands = [node.left, *node.comparators]
+                if not any(self._reads_widget_text(o) for o in operands):
+                    continue
+                # Comparing with tr("…") is the fix, not the fault.
+                translated = {
+                    id(c)
+                    for o in operands for call in ast.walk(o)
+                    if isinstance(call, ast.Call)
+                    and getattr(call.func, "id", "") in {"tr", "display_term"}
+                    for c in ast.walk(call)
+                }
+                for operand in operands:
+                    for c in ast.walk(operand):
+                        if id(c) in translated:
+                            continue
+                        if (isinstance(c, ast.Constant) and isinstance(c.value, str)
+                                and cjk.search(c.value)
+                                and (rel, c.value) not in self.ALLOWED):
+                            violations.append(f"{rel}:{node.lineno} {c.value}")
+        self.assertEqual([], violations)
+
+    def test_snapshot_activation_keeps_its_meaning_in_english(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.instance() or QApplication([])
+        i18n.set_language("en")
+        from src.features.battle_report.build_snapshot_control import (
+            BattleBuildSnapshotControl,
+        )
+
+        control = BattleBuildSnapshotControl()
+        received: list[bool] = []
+        control.activation_requested.connect(received.append)
+        control.set_state(has_edit=True, active=False)
+        label = i18n.tr("使用修改副本")
+        # The scenario only means something while the label is translated.
+        self.assertNotEqual("使用修改副本", label)
+        self.assertEqual(label, control.activation_button.text())
+        control.activation_button.click()
+        control.set_state(has_edit=True, active=True)
+        control.activation_button.click()
+        # Activating the edit copy, then restoring the original snapshot.
+        self.assertEqual([True, False], received)
 
 
 if __name__ == "__main__":

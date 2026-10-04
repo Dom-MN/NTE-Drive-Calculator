@@ -60,17 +60,17 @@ ISSUE_STATES = frozenset({"fault", "missing", "cleanup_pending"})
 
 def _check_state_label(item) -> str:
     if dict(item.facts).get("inspection_incomplete") is True:
-        return "未完成检测"
+        return tr("未完成检测")
     return STATE_LABELS[item.state.value]
 
 
 def _fact_value(value) -> str:
     if value is True:
-        return "是"
+        return tr("是")
     if value is False:
-        return "否"
+        return tr("否")
     if value is None:
-        return "未确认"
+        return tr("未确认")
     return str(value)
 
 
@@ -81,17 +81,17 @@ def report_text(report) -> str:
         row = f"{item.label}：{_check_state_label(item)}\n{item.detail}"
         facts = dict(item.facts)
         labels = (
-            ("game_running", "游戏进程"), ("core_available", "配套 Core"),
-            ("npcap", "Npcap"), ("listening", "抓包监听"),
-            ("files", "文件核对"), ("pipe", "管道"), ("handshake", "握手"),
-            ("supported", "能力声明"), ("snapshot", "快照"), ("ready", "业务就绪"),
-            ("complete", "完整性"), ("source_coverage", "来源覆盖"),
-            ("projection_complete", "字段投影完整"),
-            ("profile_projection_supported", "角色字段投影能力"),
+            ("game_running", tr("游戏进程")), ("core_available", tr("配套 Core")),
+            ("npcap", "Npcap"), ("listening", tr("抓包监听")),
+            ("files", tr("文件核对")), ("pipe", tr("管道")), ("handshake", tr("握手")),
+            ("supported", tr("能力声明")), ("snapshot", tr("快照")), ("ready", tr("业务就绪")),
+            ("complete", tr("完整性")), ("source_coverage", tr("来源覆盖")),
+            ("projection_complete", tr("字段投影完整")),
+            ("profile_projection_supported", tr("角色字段投影能力")),
         )
         values = [f"{label}：{_fact_value(facts[key])}" for key, label in labels if key in facts]
         if values:
-            row += "\n检测事实：" + " · ".join(values)
+            row += tr("\n检测事实：") + " · ".join(values)
         rows.append(row)
     return "\n\n".join(rows)
 
@@ -101,7 +101,10 @@ def report_summary(report) -> str:
     for item in report.features:
         label = _check_state_label(item)
         counts[label] = counts.get(label, 0) + 1
-    return " · ".join(f"{label} {count} 项" for label, count in counts.items()) or "暂无检测结果"
+    return " · ".join(
+        tr("{label} {count} 项", label=tr(label), count=count)
+        for label, count in counts.items()
+    ) or tr("暂无检测结果")
 
 
 def _report_groups(report):
@@ -370,16 +373,16 @@ class ModeReportDialog(QDialog):
         self.preflight_summary.setVisible(preview)
         if preview:
             self.preflight_summary.setText(tr("状态：正在核对\n下一步：核对完成后确认处理或前往环境设置。"))
-        self._set_primary_action("前往环境设置", self._open_environment_settings)
+        self._set_primary_action(tr("前往环境设置"), self._open_environment_settings)
         self._clear_actions()
         self.retry_button.setEnabled(False)
         self.copy_button.setEnabled(False)
         self._copy_text = ""
-        detail = ("正在核对开启同步所需条件；此步骤不会清理或部署组件…" if preview else
-                  "正在结束原生连接并清理游戏组件…" if mode in {"offline", "low"} else
-                  "正在检测环境并处理配套组件…")
-        closing = ("关闭窗口将保持自动同步关闭。" if preview else
-                   "关闭窗口不会取消已确认的模式切换和组件处理。")
+        detail = (tr("正在核对开启同步所需条件；此步骤不会清理或部署组件…") if preview else
+                  tr("正在结束原生连接并清理游戏组件…") if mode in {"offline", "low"} else
+                  tr("正在检测环境并处理配套组件…"))
+        closing = (tr("关闭窗口将保持自动同步关闭。") if preview else
+                   tr("关闭窗口不会取消已确认的模式切换和组件处理。"))
         pending = QLabel(detail + "\n" + closing, self.results)
         pending.setWordWrap(True)
         self.results_layout.addWidget(pending)
@@ -401,36 +404,36 @@ class ModeReportDialog(QDialog):
     def set_report(self, report):
         self.progress.hide()
         self._clear_actions()
-        self._set_primary_action("前往环境设置", self._open_environment_settings)
+        self._set_primary_action(tr("前往环境设置"), self._open_environment_settings)
         self.retry_button.setEnabled(True)
         self._set_result(report_text(report))
         self._render_report(report)
         available = {action for item in report.features for action in item.actions}
         if "manual_deploy" in available and not self._preview:
             self._settings_target = "deployment"
-            self._add_action("前往部署组件", self._open_environment_settings)
+            self._add_action(tr("前往部署组件"), self._open_environment_settings)
             self.settings_button.hide()
         elif "download_npcap" in available:
             def download():
                 self.parentWidget()._open_npcap_download()
-            self._add_action("下载 Npcap", download, close=True)
+            self._add_action(tr("下载 Npcap"), download, close=True)
             self.settings_button.hide()
         elif "detect_game_path" in available:
             def detect():
                 self._controller.detect_path()
-            self._add_action("重新检测路径", detect, close=True)
+            self._add_action(tr("重新检测路径"), detect, close=True)
             self.settings_button.hide()
 
     def set_error(self, detail):
         self.progress.hide()
         self._clear_actions()
-        self._set_primary_action("前往环境设置", self._open_environment_settings)
+        self._set_primary_action(tr("前往环境设置"), self._open_environment_settings)
         self.retry_button.setEnabled(True)
         self._set_result(detail)
         self._clear_results()
         self.overview.setText(tr("检测未完成 · 请重新检测"))
         self._add_result_section(
-            "需处理", [(('fault', '故障', '环境检测中断，请查看排查信息。'), ['环境检测'])],
+            tr("需处理"), [(('fault', tr('故障'), tr('环境检测中断，请查看排查信息。')), [tr('环境检测')])],
             "#f85149",
         )
         if self._preview:
@@ -452,10 +455,10 @@ class ModeReportDialog(QDialog):
             self._add_action(decision.action_label, self._open_environment_settings)
             self.settings_button.hide()
         elif decision.target == "mode":
-            self._set_primary_action("前往工作模式设置", self._open_environment_settings)
+            self._set_primary_action(tr("前往工作模式设置"), self._open_environment_settings)
         else:
-            self._set_primary_action("前往环境设置", self._open_environment_settings)
-        self._copy_text += "\n\n开启同步：" + decision.detail
+            self._set_primary_action(tr("前往环境设置"), self._open_environment_settings)
+        self._copy_text += tr("\n\n开启同步：") + decision.detail
         self.label.setText(self._copy_text)
         if decision.ready:
             self.settings_button.hide()
@@ -541,14 +544,14 @@ class CleanupResultDialog(QDialog):
     def set_result(self, *, pending: bool, state: str, detail: str):
         self.progress.hide()
         if state == "fault":
-            status = "清理未完成"
-            next_step = "按原因处理后，再点击“清理游戏目录”。"
+            status = tr("清理未完成")
+            next_step = tr("按原因处理后，再点击“清理游戏目录”。")
         elif not pending:
-            status = "已清理"
+            status = tr("已清理")
             next_step = (
-                "点击“继续升级引导”返回引导窗口；关闭后也可从工作台继续。"
+                tr("点击“继续升级引导”返回引导窗口；关闭后也可从工作台继续。")
                 if self._continue_upgrade else
-                "如需重新同步，请确认工作模式后再开启自动同步。"
+                tr("如需重新同步，请确认工作模式后再开启自动同步。")
             )
         else:
             status = tr("等待继续清理")
@@ -561,7 +564,7 @@ class CleanupResultDialog(QDialog):
 def build_work_mode_card(window):
     controller = window.work_mode_controller
     service = window.work_mode_service
-    card = window._card("工作模式")
+    card = window._card(tr("工作模式"))
     controls = QHBoxLayout()
     controls.setSpacing(10)
     current_label = QLabel(tr("当前模式："))
@@ -681,9 +684,9 @@ def confirm_mode(parent, mode: str) -> bool:
     warning_row.addLayout(warning_text, 1)
     layout.addWidget(warning)
 
-    layout.addWidget(_confirmation_row("可以使用", copy["available"], "available", dialog))
-    layout.addWidget(_confirmation_row("不可使用", copy["unavailable"], "unavailable", dialog))
-    layout.addWidget(_confirmation_row("切换后", copy["after"], "after", dialog))
+    layout.addWidget(_confirmation_row(tr("可以使用"), copy["available"], "available", dialog))
+    layout.addWidget(_confirmation_row(tr("不可使用"), copy["unavailable"], "unavailable", dialog))
+    layout.addWidget(_confirmation_row(tr("切换后"), copy["after"], "after", dialog))
 
     note = QLabel(copy["note"], dialog)
     note.setObjectName("workModeConfirmationNote")
@@ -696,7 +699,7 @@ def confirm_mode(parent, mode: str) -> bool:
     cancel.setText(tr("取消"))
     cancel.setFixedSize(88, 38)
     consent = buttons.addButton(
-        "确认切换" if mode == "offline" else "确认风险并切换",
+        tr("确认切换") if mode == "offline" else tr("确认风险并切换"),
         QDialogButtonBox.AcceptRole,
     )
     consent.setObjectName("workModeConfirm" if mode == "offline" else "workModeRiskConsent")

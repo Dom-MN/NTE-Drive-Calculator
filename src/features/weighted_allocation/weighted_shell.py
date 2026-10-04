@@ -177,7 +177,7 @@ def build_weighted_allocation_page(window) -> QWidget:
 
 def _hide_legacy_selector_controls(selector: RoleSelector) -> None:
     for button in selector.findChildren(QPushButton):
-        if button.text() in {"恢复", "保存", "读取", "重置"}:
+        if button.text() in {tr("恢复"), tr("保存"), tr("读取"), tr("重置")}:
             button.hide()
         elif button.text() == "?":
             button.hide()

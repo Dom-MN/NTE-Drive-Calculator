@@ -1,6 +1,8 @@
 # 将检测异常转换为可复制的固定诊断，避免泄露外部响应、账号数据和本机路径。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from concurrent.futures import CancelledError
 import math
 from pathlib import Path
@@ -74,15 +76,15 @@ def detection_failure_detail(error: Exception, *, record: bool = False) -> str:
     location = _failure_location(error)
     if location:
         evidence.append(f'代码位置：{location}')
-    reason = '检测发生未识别异常，尚不能确定是连接、组件还是业务数据问题。'
-    next_step = _COPY_HINT
+    reason = tr('检测发生未识别异常，尚不能确定是连接、组件还是业务数据问题。')
+    next_step = tr(_COPY_HINT)
     cause = error.__cause__ if isinstance(error.__cause__, OSError) else error
     winerror = getattr(cause, 'winerror', None)
     if isinstance(winerror, int):
         evidence.append(f'Windows 错误码：{winerror}')
 
     if isinstance(error, NteCoreProcessError):
-        reason = '采集 Core 启动或运行失败，未能完成本次检测。'
+        reason = tr('采集 Core 启动或运行失败，未能完成本次检测。')
         if isinstance(error.return_code, int):
             evidence.append(f'Core 退出码：{error.return_code}')
         if str(error) in _PROCESS_MESSAGES:
@@ -101,14 +103,14 @@ def detection_failure_detail(error: Exception, *, record: bool = False) -> str:
                     evidence.append(f'原因码：{code}')
                     break
     elif isinstance(error, NteCoreTimeoutError):
-        reason = '等待采集 Core 响应超时，本次检测未完成；超时本身不能证明组件没有加载。'
-        method = error.method if error.method in _METHODS else '未识别接口'
+        reason = tr('等待采集 Core 响应超时，本次检测未完成；超时本身不能证明组件没有加载。')
+        method = error.method if error.method in _METHODS else tr('未识别接口')
         evidence.append(f'超时接口：{method}')
         if isinstance(error.timeout, (int, float)) and math.isfinite(error.timeout):
             evidence.append(f'等待上限：{error.timeout:g} 秒')
-        next_step = '确认已进入可操作角色的场景，并结束其他工具的采集连接；若仍失败，' + _COPY_HINT
+        next_step = tr('确认已进入可操作角色的场景，并结束其他工具的采集连接；若仍失败，') + tr(_COPY_HINT)
     elif isinstance(error, NteCoreRpcError):
-        reason = '采集 Core 返回业务错误，本次检测未完成。'
+        reason = tr('采集 Core 返回业务错误，本次检测未完成。')
         evidence.append(f'RPC 错误码：{error.code}')
         known_reason = error.data.get('reason')
         if isinstance(known_reason, str) and known_reason in (
@@ -117,28 +119,31 @@ def detection_failure_detail(error: Exception, *, record: bool = False) -> str:
             reason = native_capture_readiness_message(error)
             evidence.append(f'原因码：{known_reason}')
         elif error.domain_code in {'MODS_PLUGIN_BUSY', 'EQUIPMENT_PLUGIN_BUSY'}:
-            reason = '游戏内组件正在处理其他请求。'
-            next_step = '结束其他工具的采集或操作任务后重新检测；若仍失败，' + _COPY_HINT
+            reason = tr('游戏内组件正在处理其他请求。')
+            next_step = tr('结束其他工具的采集或操作任务后重新检测；若仍失败，') + tr(_COPY_HINT)
             evidence.append(f'原因码：{error.domain_code}')
         elif error.code == -32601:
-            reason = '采集 Core 不支持本次检测接口，需要核对 Calc、Core 与 DLL 是否配套。'
+            reason = tr('采集 Core 不支持本次检测接口，需要核对 Calc、Core 与 DLL 是否配套。')
     elif isinstance(error, NteCoreNotFoundError):
-        reason = '未找到可用的采集 Core 执行文件。'
-        next_step = '核对 Calc 安装是否完整，以及安全软件是否隔离了 nte-core.exe。'
+        reason = tr('未找到可用的采集 Core 执行文件。')
+        next_step = tr('核对 Calc 安装是否完整，以及安全软件是否隔离了 nte-core.exe。')
     elif isinstance(error, NteCoreProtocolError):
-        reason = '采集响应未通过协议或数据格式校验，不能作为有效业务结果。'
-        next_step = '核对 Calc、Core、DLL 是否来自同一配套发布包，并确认支持当前游戏版本；' + _COPY_HINT
+        reason = tr('采集响应未通过协议或数据格式校验，不能作为有效业务结果。')
+        next_step = tr('核对 Calc、Core、DLL 是否来自同一配套发布包，并确认支持当前游戏版本；') + tr(_COPY_HINT)
     elif isinstance(error, CancelledError):
-        reason = '检测已取消，本次没有完整结果。'
-        next_step = '等待当前任务结束后重新检测。'
+        reason = tr('检测已取消，本次没有完整结果。')
+        next_step = tr('等待当前任务结束后重新检测。')
     elif isinstance(error, PermissionError):
-        reason = '检测所需授权或访问权限被拒绝。'
-        next_step = '核对已确认的工作模式、暂停状态及 Calc 与游戏的运行权限。'
+        reason = tr('检测所需授权或访问权限被拒绝。')
+        next_step = tr('核对已确认的工作模式、暂停状态及 Calc 与游戏的运行权限。')
     if winerror == 5 or (isinstance(cause, OSError) and cause.errno == 13):
-        reason = 'Windows 拒绝访问检测所需的进程、文件或连接。'
-        next_step = '核对 Calc 与游戏的 Windows 用户和权限，以及文件访问权限。'
+        reason = tr('Windows 拒绝访问检测所需的进程、文件或连接。')
+        next_step = tr('核对 Calc 与游戏的 Windows 用户和权限，以及文件访问权限。')
 
-    detail = f'原因：{reason}\n下一步：{next_step}\n诊断：' + '；'.join(evidence)
+    detail = (
+        tr('原因：{reason}\n下一步：{next_step}', reason=reason, next_step=next_step)
+        + '\n诊断：' + '；'.join(evidence)
+    )
     if record:
         from src.utils.logger import logger
         logger.warning('environment.detection_failed | {}', detail.replace('\n', ' | '))

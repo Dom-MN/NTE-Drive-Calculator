@@ -44,6 +44,8 @@ class BattleBuildSnapshotControl(QWidget):
         self.environment_button.setEnabled(False)
         self.environment_button.hide()
         self.activation_button = QPushButton(tr("恢复原始快照"))
+        # What a click means; never read back from the translated label.
+        self._activation_uses_edit = False
         self.activation_button.clicked.connect(self._request_activation)
         self.activation_button.setEnabled(False)
         self.activation_button.hide()
@@ -68,6 +70,7 @@ class BattleBuildSnapshotControl(QWidget):
             text = "当前已恢复原始快照；修改副本仍保留，可继续编辑或重新启用。"
         self.status.setText(text)
         self.edit_button.setToolTip(text)
+        self._activation_uses_edit = not active
         self.activation_button.setText(
             tr("恢复原始快照") if active else tr("使用修改副本")
         )
@@ -85,6 +88,4 @@ class BattleBuildSnapshotControl(QWidget):
         )
 
     def _request_activation(self) -> None:
-        self.activation_requested.emit(
-            self.activation_button.text() == "使用修改副本"
-        )
+        self.activation_requested.emit(self._activation_uses_edit)

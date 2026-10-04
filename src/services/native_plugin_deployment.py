@@ -1,6 +1,8 @@
 # 按正式布局直接替换原生采集组件，不保留旧文件备份，按固定文件名清理。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from dataclasses import dataclass
 from collections.abc import Mapping
 import hashlib
@@ -67,12 +69,12 @@ def _digest(path: Path) -> str:
 
 def _target(directory: Path, relative: str) -> Path:
     if relative not in NATIVE_PLUGIN_DEPLOYMENT_PATHS.values():
-        raise EquipmentPluginDeploymentError('组件记录包含正式布局之外的文件。')
+        raise EquipmentPluginDeploymentError(tr('组件记录包含正式布局之外的文件。'))
     target = directory / relative
     if target.is_symlink() or not target.resolve().is_relative_to(directory):
-        raise EquipmentPluginDeploymentError('组件目标不是可管理的游戏目录普通文件。')
+        raise EquipmentPluginDeploymentError(tr('组件目标不是可管理的游戏目录普通文件。'))
     if target.exists() and not target.is_file():
-        raise EquipmentPluginDeploymentError('组件目标位置不是普通文件。')
+        raise EquipmentPluginDeploymentError(tr('组件目标位置不是普通文件。'))
     return target
 
 
@@ -84,7 +86,7 @@ def _manual_cleanup_target(directory: Path, relative: str) -> Path:
         return target
     if (not stat.S_ISREG(info.st_mode)
             or getattr(info, 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0)):
-        raise EquipmentPluginDeploymentError('组件目标不是可管理的游戏目录普通文件。')
+        raise EquipmentPluginDeploymentError(tr('组件目标不是可管理的游戏目录普通文件。'))
     return target
 
 
@@ -96,13 +98,13 @@ def _replace_file(source: Path, target: Path, digest: str, require_idle, *, suff
     try:
         shutil.copy2(source, temporary)
         if _digest(temporary) != digest:
-            raise EquipmentPluginDeploymentError('组件临时文件校验失败，未替换目标文件。')
+            raise EquipmentPluginDeploymentError(tr('组件临时文件校验失败，未替换目标文件。'))
         require_idle()
         if target.is_symlink() or (target.exists() and not target.is_file()):
-            raise EquipmentPluginDeploymentError('组件目标在暂存期间改变类型，未覆盖现场文件。')
+            raise EquipmentPluginDeploymentError(tr('组件目标在暂存期间改变类型，未覆盖现场文件。'))
         current = _digest(target) if target.exists() else None
         if current != expected_target:
-            raise EquipmentPluginDeploymentError('组件目标在暂存期间发生变化，未覆盖现场文件。')
+            raise EquipmentPluginDeploymentError(tr('组件目标在暂存期间发生变化，未覆盖现场文件。'))
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
@@ -120,7 +122,7 @@ def deploy_native_component_files(
     def require_idle() -> None:
         require_operation(operation_guard, 'native_load')
         if probe():
-            raise EquipmentPluginDeploymentError('游戏正在运行，整套组件部署需等待游戏完全退出。')
+            raise EquipmentPluginDeploymentError(tr('游戏正在运行，整套组件部署需等待游戏完全退出。'))
 
     require_idle()
     root = Path(application_root).expanduser().resolve()
@@ -130,7 +132,7 @@ def deploy_native_component_files(
     directory = Path(directory_path).expanduser().resolve()
     if (not component_roles or len(set(component_roles)) != len(component_roles)
             or any(role not in {'capture_plugin', 'host'} for role in component_roles)):
-        raise EquipmentPluginDeploymentError('部署请求包含无效的采集组件角色。')
+        raise EquipmentPluginDeploymentError(tr('部署请求包含无效的采集组件角色。'))
     order = tuple(role for role in ('capture_plugin', 'host') if role in component_roles)
     sources, targets, expected = {}, {}, {}
     for role in order:
@@ -138,16 +140,16 @@ def deploy_native_component_files(
         source = root / bundle.roles[role]
         target = _target(directory, relative)
         if source.resolve() == target.resolve():
-            raise EquipmentPluginDeploymentError('随附组件与游戏部署位置相同，无法建立部署事务。')
+            raise EquipmentPluginDeploymentError(tr('随附组件与游戏部署位置相同，无法建立部署事务。'))
         sources[relative], targets[relative] = source, target
         expected[relative] = bundle.files[bundle.roles[role]]
     if expected_existing_files is not None:
         if set(expected_existing_files) != set(targets):
-            raise EquipmentPluginDeploymentError('自动部署缺少完整的目标文件核对记录。')
+            raise EquipmentPluginDeploymentError(tr('自动部署缺少完整的目标文件核对记录。'))
         for relative, target in targets.items():
             previous = _digest(target) if target.exists() else None
             if previous != expected_existing_files[relative]:
-                raise EquipmentPluginDeploymentError('组件目标在自动检测后发生变化，未覆盖现场文件。')
+                raise EquipmentPluginDeploymentError(tr('组件目标在自动检测后发生变化，未覆盖现场文件。'))
     require_idle()
     originals: dict[str, str | None] = {}
     written: dict[str, str] = {}
@@ -159,11 +161,11 @@ def deploy_native_component_files(
         for relative, source in sources.items():
             require_idle()
             if _digest(source) != expected[relative]:
-                raise EquipmentPluginDeploymentError('随附组件在部署前发生变化，已停止部署。')
+                raise EquipmentPluginDeploymentError(tr('随附组件在部署前发生变化，已停止部署。'))
             target = targets[relative]
             previous = _digest(target) if target.exists() else None
             if expected_existing_files is not None and previous != expected_existing_files[relative]:
-                raise EquipmentPluginDeploymentError('组件目标在自动检测后发生变化，未覆盖现场文件。')
+                raise EquipmentPluginDeploymentError(tr('组件目标在自动检测后发生变化，未覆盖现场文件。'))
             originals[relative] = previous
         if cleanup_legacy_proxy and 'host' in order:
             remove_legacy_game_proxy(game_directory=directory, require_idle=require_idle)
@@ -172,12 +174,12 @@ def deploy_native_component_files(
             target = _target(directory, relative)
             previous = originals[relative]
             if (_digest(target) if target.exists() else None) != previous:
-                raise EquipmentPluginDeploymentError('游戏目录组件在部署前发生变化，已停止部署。')
+                raise EquipmentPluginDeploymentError(tr('游戏目录组件在部署前发生变化，已停止部署。'))
             target.parent.mkdir(parents=True, exist_ok=True)
             _replace_file(sources[relative], target, expected[relative], require_idle, suffix='.new', expected_target=previous)
             written[relative] = expected[relative]
             if _digest(target) != expected[relative]:
-                raise EquipmentPluginDeploymentError('组件写入后校验失败。')
+                raise EquipmentPluginDeploymentError(tr('组件写入后校验失败。'))
         require_idle()
         return result()
     except Exception as error:
@@ -188,18 +190,18 @@ def deploy_native_component_files(
                     require_idle()
                     target = _target(directory, relative)
                     if not target.is_file() or _digest(target) != written[relative]:
-                        raise EquipmentPluginDeploymentError('本次写入的组件已经变化，未覆盖现场文件。')
+                        raise EquipmentPluginDeploymentError(tr('本次写入的组件已经变化，未覆盖现场文件。'))
                     require_idle()
                     target.unlink()
                     written.pop(relative)
             except Exception as rollback_error:
                 raise NativeComponentFilesPendingCleanup(
-                    '组件部署未完成；已保留本次实际写入记录，等待游戏退出后清理。',
+                    tr('组件部署未完成；已保留本次实际写入记录，等待游戏退出后清理。'),
                     deployment=result(),
                 ) from rollback_error
         if isinstance(error, (EquipmentPluginDeploymentError, PermissionError)):
             raise
-        raise EquipmentPluginDeploymentError('原生组件部署失败，本次已写入的新组件已移除；未恢复旧组件，请重新部署。') from error
+        raise EquipmentPluginDeploymentError(tr('原生组件部署失败，本次已写入的新组件已移除；未恢复旧组件，请重新部署。')) from error
 
 
 def deploy_native_plugin(
@@ -237,10 +239,10 @@ def cleanup_native_component_files(
 ) -> NativePluginCleanupResult:
     probe = game_running or game_process_running
     if probe():
-        return NativePluginCleanupResult('waiting_game_exit', '游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。')
+        return NativePluginCleanupResult('waiting_game_exit', tr('游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。'))
     directory = Path(directory_path).expanduser()
     if not directory.is_absolute():
-        raise EquipmentPluginDeploymentError('组件清理目录必须是已记录的绝对路径。')
+        raise EquipmentPluginDeploymentError(tr('组件清理目录必须是已记录的绝对路径。'))
     directory = directory.resolve()
     files = dict(managed_files)
     try:
@@ -252,17 +254,17 @@ def cleanup_native_component_files(
         ordered = sorted(files, key=lambda relative: relative != NATIVE_PLUGIN_DEPLOYMENT_PATHS['host'])
         for relative in ordered:
             if probe():
-                return NativePluginCleanupResult('waiting_game_exit', '游戏在清理过程中启动，剩余组件尚未清理。请完全退出游戏后重新检测。')
+                return NativePluginCleanupResult('waiting_game_exit', tr('游戏在清理过程中启动，剩余组件尚未清理。请完全退出游戏后重新检测。'))
             target = _target(directory, relative)
             if target.exists():
                 target.unlink()
     except EquipmentPluginDeploymentError as error:
         return NativePluginCleanupResult('conflict', str(error))
     except OSError as error:
-        raise EquipmentPluginDeploymentError('无法清理已记录组件，请保持游戏关闭并重试。') from error
+        raise EquipmentPluginDeploymentError(tr('无法清理已记录组件，请保持游戏关闭并重试。')) from error
     if probe():
-        return NativePluginCleanupResult('waiting_game_exit', '组件文件已清理，游戏仍需退出以结束已加载会话。')
-    return NativePluginCleanupResult('cleaned', '已按固定文件名清理本程序记录的原生组件。')
+        return NativePluginCleanupResult('waiting_game_exit', tr('组件文件已清理，游戏仍需退出以结束已加载会话。'))
+    return NativePluginCleanupResult('cleaned', tr('已按固定文件名清理本程序记录的原生组件。'))
 
 
 def cleanup_native_plugin(
@@ -271,7 +273,7 @@ def cleanup_native_plugin(
 ) -> NativePluginCleanupResult:
     executable = Path(str(game_executable_path).strip().strip('"')).expanduser()
     if not executable.is_absolute() or executable.name.casefold() != GAME_EXECUTABLE_NAME.casefold():
-        raise EquipmentPluginDeploymentError('清理记录中的游戏主程序路径无效。')
+        raise EquipmentPluginDeploymentError(tr('清理记录中的游戏主程序路径无效。'))
     return cleanup_native_component_files(directory_path=executable.parent,
                                           managed_files=managed_files, game_running=game_running)
 
@@ -283,10 +285,10 @@ def cleanup_manual_native_plugin(
     """Explicit cleanup may adopt only bundled or reviewed predecessor DLLs."""
     probe = game_running or game_process_running
     if probe():
-        return NativePluginCleanupResult('waiting_game_exit', '游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。')
+        return NativePluginCleanupResult('waiting_game_exit', tr('游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。'))
     executable = Path(str(game_executable_path).strip().strip('"')).expanduser()
     if not executable.is_absolute() or executable.name.casefold() != GAME_EXECUTABLE_NAME.casefold():
-        raise EquipmentPluginDeploymentError('清理记录中的游戏主程序路径无效。')
+        raise EquipmentPluginDeploymentError(tr('清理记录中的游戏主程序路径无效。'))
     directory = executable.parent.resolve()
     recorded = dict(managed_files)
     bundle = inspect_native_plugin_bundle(application_root)
@@ -307,23 +309,25 @@ def cleanup_manual_native_plugin(
             digest = _digest(target)
             if relative not in recorded and digest not in allowed.get(relative, set()):
                 return NativePluginCleanupResult(
-                    'conflict', f'游戏目录中的 {relative} 来源未确认，已保留文件；请核对组件归属。',
+                    'conflict', tr('游戏目录中的 {relative} 来源未确认，已保留文件；请核对组件归属。',
+                   relative=relative),
                 )
             observed[relative] = digest
         ordered = sorted(observed, key=lambda relative: relative != NATIVE_PLUGIN_DEPLOYMENT_PATHS['host'])
         for relative in ordered:
             if probe():
-                return NativePluginCleanupResult('waiting_game_exit', '游戏在清理过程中启动，剩余组件尚未清理。请完全退出游戏后重新检测。')
+                return NativePluginCleanupResult('waiting_game_exit', tr('游戏在清理过程中启动，剩余组件尚未清理。请完全退出游戏后重新检测。'))
             target = _manual_cleanup_target(directory, relative)
             if not target.exists():
                 continue
             if _digest(target) != observed[relative]:
-                return NativePluginCleanupResult('conflict', f'{relative} 在核对后发生变化，已保留剩余组件。')
+                return NativePluginCleanupResult(
+            'conflict', tr('{relative} 在核对后发生变化，已保留剩余组件。', relative=relative))
             target.unlink()
     except EquipmentPluginDeploymentError as error:
         return NativePluginCleanupResult('conflict', str(error))
     except OSError as error:
-        raise EquipmentPluginDeploymentError('无法清理游戏目录原生组件，请保持游戏关闭并重试。') from error
+        raise EquipmentPluginDeploymentError(tr('无法清理游戏目录原生组件，请保持游戏关闭并重试。')) from error
     if probe():
-        return NativePluginCleanupResult('waiting_game_exit', '组件文件已清理，游戏仍需退出以结束已加载会话。')
-    return NativePluginCleanupResult('cleaned', '已清理有部署记录或经整包哈希确认的游戏目录原生组件。')
+        return NativePluginCleanupResult('waiting_game_exit', tr('组件文件已清理，游戏仍需退出以结束已加载会话。'))
+    return NativePluginCleanupResult('cleaned', tr('已清理有部署记录或经整包哈希确认的游戏目录原生组件。'))
