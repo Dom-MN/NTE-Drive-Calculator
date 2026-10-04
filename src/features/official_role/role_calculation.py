@@ -278,7 +278,8 @@ def _build_margin_group(
         }
         rate = graduation_rate(graduation_detail, margin_context)
         graduation_label.setText(
-            f"空幕直伤毕业率 : {rate:.1f}%" if rate is not None else "空幕直伤毕业率 : --"
+            tr("空幕直伤毕业率 : {rate:.1f}%", rate=rate) if rate is not None
+            else tr("空幕直伤毕业率 : --")
         )
         if not margins:
             note = QLabel(tr("当前角色状态尚无可计算的官方直伤技能或装备上下文。"))

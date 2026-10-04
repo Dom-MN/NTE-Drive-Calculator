@@ -383,11 +383,14 @@ class CultivationBatchTargetCard(QFrame):
 
     def _set_fork_visual(self) -> None:
         seed = self._fork_seed
-        self.fork_name.setText(seed.fork_name if seed is not None else "尚未选择弧盘")
+        self.fork_name.setText(
+            seed.fork_name if seed is not None else tr("尚未选择弧盘"))
         self.fork_note.setText(
-            "当前角色使用的弧盘" if seed is not None else "选择弧盘后可设置等级与突破"
+            tr("当前角色使用的弧盘") if seed is not None
+            else tr("选择弧盘后可设置等级与突破")
         )
-        self.fork_button.setText("更换弧盘" if seed is not None else "选择弧盘")
+        self.fork_button.setText(
+            tr("更换弧盘") if seed is not None else tr("选择弧盘"))
         path = self._fork_icon_lookup(seed.fork_id) if seed and self._fork_icon_lookup else None
         pixmap = asset_pixmap(path, 68, self.fork_icon.devicePixelRatioF())
         self.fork_icon.clear()
@@ -495,7 +498,7 @@ class CultivationBatchTargetCard(QFrame):
         self.summary.setText(" · ".join(parts))
 
     def _set_expanded(self, expanded: bool) -> None:
-        self.edit.setText("收起" if expanded else "编辑")
+        self.edit.setText(tr("收起") if expanded else tr("编辑"))
         self._apply_style(expanded)
         self.body.setVisible(expanded)
         self._reflow_sections()
@@ -539,7 +542,7 @@ def _set_stages(combo: QComboBox, level: int, preferred: object) -> None:
     combo.blockSignals(True)
     combo.clear()
     for stage in options:
-        combo.addItem(f"突破 {stage}", stage)
+        combo.addItem(tr("突破 {stage}", stage=stage), stage)
     selected = previous if previous in options else options[0]
     combo.setCurrentIndex(options.index(selected))
     combo.blockSignals(False)

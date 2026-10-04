@@ -367,7 +367,7 @@ def _on_vision_done(self, stats):
             QMessageBox.warning(
                 self.dialog_parent,
                 tr("补录失败"),
-                f"本次扫描未生成背包记录：{exc}",
+                tr("本次扫描未生成背包记录：{exc}", exc=exc),
             )
             return
     success_count = int(stats.get("success_count", 0) or 0)
@@ -398,7 +398,7 @@ def _on_vision_done(self, stats):
         QMessageBox.warning(
             self.dialog_parent,
             tr("扫描结果不完整"),
-            f"{exc}\n本次结果未替换当前背包。",
+            tr("{exc}\n本次结果未替换当前背包。", exc=exc),
         )
         return
     except Exception as exc:
@@ -414,7 +414,7 @@ def _on_vision_done(self, stats):
         QMessageBox.warning(
             self.dialog_parent,
             tr("库存写入失败"),
-            f"本次扫描未生成背包记录：{exc}",
+            tr("本次扫描未生成背包记录：{exc}", exc=exc),
         )
         return
     if isinstance(vision_snapshot_id, int) and vision_snapshot_id > 0:
@@ -476,7 +476,8 @@ def _on_vision_done(self, stats):
         QMessageBox.information(
             self.dialog_parent,
             tr("库存数据已生成"),
-            summary + "\n\n本次未配置角色优先级，仅更新了背包记录，未进行配装计算。",
+            tr("{summary}\n\n本次未配置角色优先级，仅更新了背包记录，未进行配装计算。",
+               summary=summary),
         )
         self._pending_parse_only = False
         return

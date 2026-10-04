@@ -76,7 +76,7 @@ class CultivationStaminaControls(QFrame):
         self.identification_level.clear()
         for level in levels:
             suffix = "（当前）" if level == projection.native_level else "（下调）"
-            self.identification_level.addItem(f"鉴别 {level} {suffix}", level)
+            self.identification_level.addItem(tr("鉴别 {level} {suffix}", level=level, suffix=suffix), level)
         selected = previous if previous in levels else projection.native_level
         self.identification_level.setCurrentIndex(levels.index(selected))
         self.identification_level.blockSignals(False)

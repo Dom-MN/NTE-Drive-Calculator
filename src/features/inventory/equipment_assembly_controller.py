@@ -274,14 +274,17 @@ def _start_nte_core_equipment_apply(
                 QMessageBox.warning(
                     self,
                     tr("装备插件不可用"),
-                    f"任务 #{report.get('job_id')} 在 [{report['failed_role']}] 停止。\n"
-                    f"{reason}\n\n"
-                    "请先确认：\n"
-                    "1. 先完全退出游戏，再在“设置 → 环境配置”重新部署与当前 nte-core 匹配的 "
-                    "原生采集组件；\n"
-                    "2. 部署完成后启动游戏并进入游戏场景，从工作台重启同步，等待“持续监听”；\n"
-                    "3. 完成上述检查后，再点击右上角“极速装配”重新执行。\n\n"
-                    f"此前已确认 {len(applied)} 个角色；任务日志已保存。此次不会立即重试。",
+                    tr(
+                        "任务 #{job} 在 [{role}] 停止。\n{reason}\n\n"
+                        "请先确认：\n"
+                        "1. 先完全退出游戏，再在“设置 → 环境配置”重新部署与当前 nte-core 匹配的 "
+                        "原生采集组件；\n"
+                        "2. 部署完成后启动游戏并进入游戏场景，从工作台重启同步，等待“持续监听”；\n"
+                        "3. 完成上述检查后，再点击右上角“极速装配”重新执行。\n\n"
+                        "此前已确认 {applied} 个角色；任务日志已保存。此次不会立即重试。",
+                        job=report.get("job_id"), role=display_term(report["failed_role"]),
+                        reason=reason, applied=len(applied),
+                    ),
                 )
                 return
             reason = _equipment_failure_details(failure_kind, error_message)
@@ -468,7 +471,7 @@ def _preview_nte_core_assemble_all_roles(
                 elif summary and is_visual_inventory_source(summary.get("source")):
                     visual_roles.append(role_name)
     except Exception as exc:
-        QMessageBox.warning(self, tr("极速装配"), f"读取已保存方案失败：{exc}")
+        QMessageBox.warning(self, tr("极速装配"), tr("读取已保存方案失败：{exc}", exc=exc))
         return
     if nte_slot_ids:
         selected_slot_ids = list(nte_slot_ids)

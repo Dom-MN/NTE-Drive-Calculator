@@ -49,7 +49,8 @@ def prompt_operation_settings(
     dialog.setWindowTitle(title)
     layout = QVBoxLayout(dialog)
     text = QLabel(
-        feature + "\n\n" + detail + "\n\n完成后，请返回并重新点击此功能；本次操作不会自动继续。",
+        tr("{feature}\n\n{detail}\n\n完成后，请返回并重新点击此功能；本次操作不会自动继续。",
+           feature=feature, detail=detail),
         dialog,
     )
     text.setTextFormat(Qt.PlainText)

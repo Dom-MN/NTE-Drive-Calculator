@@ -159,7 +159,7 @@ class PluginsPage(QWidget):
             raw_status = self.service.status_for(key)
             toggle.blockSignals(True)
             toggle.setChecked(checked)
-            toggle.setText("已开启" if checked else "已关闭")
+            toggle.setText(tr("已开启") if checked else tr("已关闭"))
             toggle.setEnabled(allowed or checked)
             toggle.blockSignals(False)
             text, tone = self._status_presentation(raw_status, checked)
@@ -181,10 +181,11 @@ class PluginsPage(QWidget):
         self.notice.setText(
             self.service.load_error
             or next((status for status in active_statuses if status not in known_statuses), "")
-            or ("退出 Calc 后停止显示；下次启动时恢复已保存设置。" if allowed else
-                "当前模式不支持插件；请切换到中风险或开发模式。")
+            or (tr("退出 Calc 后停止显示；下次启动时恢复已保存设置。") if allowed else
+                tr("当前模式不支持插件；请切换到中风险或开发模式。"))
         )
-        self.environment_button.setText("检测与部署" if allowed else "工作模式设置")
+        self.environment_button.setText(
+            tr("检测与部署") if allowed else tr("工作模式设置"))
         if result is not None and self._refresh_pending:
             self._refresh_pending = False
             self.refresh_button.setText(tr("刷新状态"))

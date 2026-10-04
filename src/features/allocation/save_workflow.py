@@ -48,7 +48,7 @@ def show_allocation_save_success(parent, saved_count: int) -> None:
     summary.addWidget(mark)
     text = QVBoxLayout()
     text.setSpacing(2)
-    headline = QLabel(f"已保存 {saved_count} 个方案", dialog)
+    headline = QLabel(tr("已保存 {saved_count} 个方案", saved_count=saved_count), dialog)
     headline.setObjectName("allocationSaveSuccessHeadline")
     headline.setStyleSheet(f"color:{theme_color('#f0f6fc')};font-size:16px;font-weight:700")
     text.addWidget(headline)
@@ -58,8 +58,9 @@ def show_allocation_save_success(parent, saved_count: int) -> None:
     summary.addLayout(text, 1)
     layout.addLayout(summary)
     support = QLabel(
-        f'<a href="{SUPPORT_US_URL}" style="color:{theme_color("#58a6ff")};'
-        'text-decoration:underline;">觉得计算器好用？支持我们吧</a>',
+        tr('<a href="{url}" style="color:{color};'
+           'text-decoration:underline;">觉得计算器好用？支持我们吧</a>',
+           url=SUPPORT_US_URL, color=theme_color("#58a6ff")),
         dialog,
     )
     support.setObjectName("allocationSaveSupportLink")
@@ -192,7 +193,7 @@ def save_allocation(owner, *, show_message=True):
         if dialog is not None:
             dialog.close()
         if saved_count:
-            QMessageBox.warning(owner.dialog_parent, tr("方案已保存"), f"页面刷新失败，请重新进入页面。\n{error}")
+            QMessageBox.warning(owner.dialog_parent, tr("方案已保存"), tr("页面刷新失败，请重新进入页面。\n{error}", error=error))
             return True
         QMessageBox.critical(owner.dialog_parent, tr("保存失败"), str(error))
         return False

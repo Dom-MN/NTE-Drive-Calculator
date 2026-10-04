@@ -207,8 +207,8 @@ class CultivationSingleEditor(QWidget):
         self._set_image(self.role_icon, image, name[:1] or "?")
 
     def set_fork(self, name: str | None, image: str | Path | None) -> None:
-        self.fork_name.setText(name or "尚未选择弧盘")
-        self.fork_button.setText("更换弧盘" if name else "选择弧盘")
+        self.fork_name.setText(name or tr("尚未选择弧盘"))
+        self.fork_button.setText(tr("更换弧盘") if name else tr("选择弧盘"))
         self._set_image(self.fork_icon, image, "弧")
 
     def set_skills(self, seed: CultivationSeed) -> None:

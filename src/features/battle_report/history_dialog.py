@@ -193,7 +193,8 @@ class BattleReportHistoryDialog(QDialog):
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(5, 8, 5, 8)
-        badge = QLabel("手动" if entry.retention_kind == "manual" else "自动")
+        badge = QLabel(
+            tr("手动") if entry.retention_kind == "manual" else tr("自动"))
         badge.setAlignment(Qt.AlignCenter)
         badge.setStyleSheet(
             themed_style(

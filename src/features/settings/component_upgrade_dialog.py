@@ -51,7 +51,7 @@ class ComponentUpgradeDialog(QDialog):
         self.technical_toggle.setFlat(True)
         self.technical_toggle.setFocusPolicy(Qt.StrongFocus)
         layout.addWidget(self.technical_toggle)
-        self.technical = QLabel(detail or "本次没有额外诊断信息。", self)
+        self.technical = QLabel(detail or tr("本次没有额外诊断信息。"), self)
         self.technical.setObjectName("componentUpgradeTechnical")
         self.technical.setTextFormat(Qt.PlainText)
         self.technical.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
@@ -76,7 +76,8 @@ class ComponentUpgradeDialog(QDialog):
     def _toggle_technical(self):
         visible = not self.technical.isVisible()
         self.technical.setVisible(visible)
-        self.technical_toggle.setText("收起核对依据 ▴" if visible else "查看核对依据 ▾")
+        self.technical_toggle.setText(
+            tr("收起核对依据 ▴") if visible else tr("查看核对依据 ▾"))
         fit_dialog_to_available_screen(self, QSize(600, 400 if visible else 310))
 
     def show_stage(self, stage: str, *, method: str) -> None:
@@ -87,10 +88,10 @@ class ComponentUpgradeDialog(QDialog):
             for position, label in enumerate(_STEP_LABELS)
         ))
         self.title.setText(title)
-        self.reason.setText("原因：" + reason)
+        self.reason.setText(tr("原因：{reason}", reason=reason))
         if stage == "deploy":
             next_step = next_step.replace("D3D 或 Loader", "Loader" if method == "loader" else "D3D")
-        self.next_step.setText("下一步：" + next_step)
+        self.next_step.setText(tr("下一步：{next_step}", next_step=next_step))
         self.action.setText(action)
 
     def _act(self) -> None:

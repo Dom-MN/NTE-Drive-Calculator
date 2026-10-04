@@ -312,7 +312,7 @@ def _on_warehouse_load_error(self, token, error):
     self.warehouse_model.set_items([])
     self.warehouse_summary.setText(tr("读取失败"))
     self.warehouse_source_notice.hide()
-    self.warehouse_hint.setText(f"仓库读取失败：{error}")
+    self.warehouse_hint.setText(tr("仓库读取失败：{error}", error=error))
     self.warehouse_hint.show()
     logger.error(f"读取仓库稳定快照失败: {error}")
 
@@ -329,14 +329,13 @@ def _apply_warehouse_filters(self):
     total = len(getattr(self, "_warehouse_all_items", []))
     self.warehouse_summary.setText(tr("显示 {shown} / {total} 件", shown=len(filtered), total=total) )
     active_count = getattr(self, "_warehouse_filter_spec", WarehouseFilterSpec() ).active_group_count
-    self.warehouse_filter_btn.setText(
-        tr("筛选 ({count})", count=active_count) if active_count else tr("筛选")
-    )
+    self.warehouse_filter_btn.setText(tr("筛选 ({count})", count=active_count) if active_count else tr("筛选") )
     if filtered:
         self.warehouse_hint.hide()
     else:
         self.warehouse_hint.setText(
-            "背包为空，请先完成同步。" if total == 0 else "没有符合当前筛选条件的装备。"
+            tr("背包为空，请先完成同步。") if total == 0
+            else tr("没有符合当前筛选条件的装备。")
         )
         self.warehouse_hint.show()
 

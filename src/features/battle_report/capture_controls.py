@@ -74,7 +74,7 @@ class BattleCaptureControlsMixin:
             QMessageBox.warning(
                 self._dialog_parent,
                 tr("无法开始战报"),
-                f"读取抓包设置失败，未启动战报采集：{error}",
+                tr("读取抓包设置失败，未启动战报采集：{error}", error=error),
             )
             if preserve_inventory_pause:
                 self._restore_inventory_sync()
@@ -98,7 +98,7 @@ class BattleCaptureControlsMixin:
                 QMessageBox.warning(
                     self._dialog_parent,
                     tr("无法开始战报"),
-                    f"停止背包同步失败，未启动战报采集：{error}",
+                    tr("停止背包同步失败，未启动战报采集：{error}", error=error),
                 )
                 return
         self._overlay_capture_active = True

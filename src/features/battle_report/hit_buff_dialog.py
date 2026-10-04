@@ -38,7 +38,7 @@ class BattleHitBuffDialog(HitInspectionDialog):
         replay: BattleHitReplayResult | None = None,
         projection=None, participant_names=None, target_resolutions=(),
     ) -> None:
-        self.setWindowTitle(f"逐击详情 · Hit #{hit.sequence} · {hit.character_name}")
+        self.setWindowTitle(tr("逐击详情 · Hit #{sequence} · {character_name}", sequence=hit.sequence, character_name=hit.character_name))
         self.inspection.set_hit(hit, replay, projection, participant_names=participant_names, target_resolutions=target_resolutions)
         hp_before = "—" if hit.target_hp_before is None else f"{hit.target_hp_before:,.0f}"
         hp_after = "—" if hit.target_hp_after is None else f"{hit.target_hp_after:,.0f}"

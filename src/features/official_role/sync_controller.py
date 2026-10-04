@@ -97,7 +97,7 @@ class CharacterProfileSyncController(QObject):
 
     def _set_busy(self, busy: bool) -> None:
         if self._button is not None:
-            self._button.setText('取消同步' if busy else '同步状态')
+            self._button.setText(tr("取消同步") if busy else tr("同步状态"))
         if busy:
             self._enabled_states = tuple(control.isEnabled() for control in self._edit_controls)
             for control in self._edit_controls:

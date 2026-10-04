@@ -171,7 +171,7 @@ def _save_capture_diagnostics(self):
         settings=self._account_settings.save("sync",values)
         return settings
     except Exception as exc:
-        QMessageBox.warning(self,tr("采集排错"),f"保存失败：{exc}")
+        QMessageBox.warning(self,tr("采集排错"),tr("保存失败：{exc}", exc=exc))
         return None
 
 def _maybe_auto_start_inventory_sync(self):
@@ -264,7 +264,8 @@ def _on_inventory_sync_state(self, notification):
             state.error_code, state.error, capture_source=state.capture_source,
         ).replace("处理：", "下一步：")
         self.home_sync_detail.setToolTip(
-            f"错误码：{state.error_code or '未分类'}；详细排查请打开“检测详情”或查看账号日志。"
+            tr("错误码：{code}；详细排查请打开“检测详情”或查看账号日志。",
+               code=state.error_code or tr("未分类"))
         )
     else:
         self.home_sync_detail.setToolTip("")

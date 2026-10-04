@@ -30,7 +30,7 @@ def configure_rewind_role_score_card(
     if role.calculation_score is None:
         label.setText(tr("暂无计算方案"))
         label.setStyleSheet(themed_style("color:#8b949e;font-size:10px;border:none;background:transparent;padding:0"))
-        card.setToolTip(f"{role.name}\n尚无已保存的计算配装评分")
+        card.setToolTip(tr("{name}\n尚无已保存的计算配装评分", name=role.name))
         return label
     grade = loadout_total_grade(role.calculation_score)
     color = GRADE_COLORS.get(grade, "#58a6ff")

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -54,7 +56,7 @@ class ProgressionMaterialCard(QFrame):
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pixmap = QPixmap(str(icon_path or ""))
         if pixmap.isNull():
-            icon.setText((str(name).strip() or "材")[:1])
+            icon.setText((str(name).strip() or tr("材"))[:1])
         else:
             icon.setPixmap(pixmap.scaled(
                 50 if compact else 42,

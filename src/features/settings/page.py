@@ -116,7 +116,7 @@ def _settings_paths(context: AppContext) -> SettingsPaths:
 
 def _build_capture_diagnostics_card(window):
     card = window._card("采集排错")
-    description = QLabel("仅用于采集排错；设置将在下次连接或同步时生效。")
+    description = QLabel(tr("仅用于采集排错；设置将在下次连接或同步时生效。"))
     description.setWordWrap(True)
     description.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
     card.layout().addWidget(description)
@@ -128,7 +128,7 @@ def _build_capture_diagnostics_card(window):
     if not settings:
         raise RuntimeError("无法读取静态数据库中的设置默认值。")
     window._sync_capture_device_edit = QLineEdit()
-    window._sync_capture_device_edit.setPlaceholderText("仅在自动选择网卡失败时填写")
+    window._sync_capture_device_edit.setPlaceholderText(tr("仅在自动选择网卡失败时填写"))
     window._sync_capture_device_edit.setText(settings.get("capture_device_id") or "")
 
     def resize_capture_device_edit(text: str) -> None:
@@ -149,16 +149,16 @@ def _build_capture_diagnostics_card(window):
 
     window._sync_capture_device_edit.editingFinished.connect(save_capture_diagnostics)
 
-    window._sync_raw_capture_toggle = QCheckBox("保存原始采集数据（排错）")
+    window._sync_raw_capture_toggle = QCheckBox(tr("保存原始采集数据（排错）"))
     window._sync_raw_capture_toggle.setChecked(
         bool(settings["raw_capture_enabled"])
     )
     window._sync_raw_capture_toggle.setToolTip(
-        "排错时开启；数据保存在当前账号日志目录并自动轮换，可能占用较多磁盘空间。"
+        tr("排错时开启；数据保存在当前账号日志目录并自动轮换，可能占用较多磁盘空间。")
     )
     raw_capture_row = QHBoxLayout()
     raw_capture_row.addWidget(window._sync_raw_capture_toggle)
-    raw_capture_open_button = QPushButton("打开原始数据目录")
+    raw_capture_open_button = QPushButton(tr("打开原始数据目录"))
     window._sync_raw_capture_open_button = raw_capture_open_button
     raw_capture_open_handler = getattr(window, "_open_raw_capture_directory", None)
     if callable(raw_capture_open_handler):
@@ -181,11 +181,11 @@ def _build_capture_diagnostics_card(window):
 def _build_environment_card(window):
     card = window._card(tr("环境配置"))
     window._environment_configuration_card = card
-    npcap_title = QLabel("Npcap · 数据同步、战报采集")
+    npcap_title = QLabel(tr("Npcap · 数据同步、战报采集"))
     npcap_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(npcap_title)
     npcap_row = QHBoxLayout()
-    npcap_install_button = QPushButton("下载 Npcap 1.88")
+    npcap_install_button = QPushButton(tr("下载 Npcap 1.88"))
     window._npcap_install_button = npcap_install_button
     npcap_install_button.clicked.connect(window._open_npcap_download)
     npcap_row.addWidget(npcap_install_button)
@@ -198,12 +198,12 @@ def _build_environment_card(window):
     npcap_row.addStretch()
     card.layout().addLayout(npcap_row)
 
-    equipment_title = QLabel("游戏内组件 · 极速装配、弃置锁定、插件、功能强化")
+    equipment_title = QLabel(tr("游戏内组件 · 极速装配、弃置锁定、插件、功能强化"))
     equipment_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(equipment_title)
     equipment_description = QLabel(
-        "<span style='color:#d29922'><b>风险提示：</b>组件会加载到游戏中，"
-        "可能触发游戏保护或兼容问题。</span>"
+        tr("<span style='color:#d29922'><b>风险提示：</b>组件会加载到游戏中，"
+        "可能触发游戏保护或兼容问题。</span>")
     )
     equipment_description.setTextFormat(Qt.RichText)
     equipment_description.setWordWrap(True)
@@ -214,10 +214,10 @@ def _build_environment_card(window):
     form = QFormLayout()
     window._equipment_plugin_loading_method_combo = NoWheelComboBox()
     window._equipment_plugin_loading_method_combo.addItem(
-        "D3D 采集代理", "native-capture"
+        tr("D3D 采集代理"), "native-capture"
     )
     window._equipment_plugin_loading_method_combo.addItem(
-        "原生 Loader（备用）", "loader"
+        tr("原生 Loader（备用）"), "loader"
     )
     loading_method = str(
         window.work_mode_service.deployment_record.get("loading_method")
@@ -272,7 +272,7 @@ def _build_environment_card(window):
         window._activate_equipment_plugin_loading_method
     )
     actions.addWidget(window._equipment_plugin_primary_button)
-    window._equipment_plugin_stop_button = QPushButton("清理游戏目录")
+    window._equipment_plugin_stop_button = QPushButton(tr("清理游戏目录"))
     window._equipment_plugin_stop_button.setObjectName("btnDanger")
     window._equipment_plugin_stop_button.clicked.connect(
         window._deactivate_equipment_plugin_loading_method

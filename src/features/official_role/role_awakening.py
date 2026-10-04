@@ -67,7 +67,8 @@ def _build_awakening_group(
         check = QCheckBox(f"{index}. {title}")
         check.setChecked(effect_id in selected_ids)
         layout.addWidget(check)
-        description = QLabel(_plain_effect_text(effect.get("description_zh")) or "暂无效果说明")
+        description = QLabel(
+            _plain_effect_text(effect.get("description_zh")) or tr("暂无效果说明"))
         description.setWordWrap(True)
         description.setContentsMargins(24, 0, 8, 2)
         description.setStyleSheet("color:#8b949e;")

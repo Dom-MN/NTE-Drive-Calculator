@@ -15,17 +15,18 @@ class SyncRetryDialog(QDialog):
         self._begun = False
         self._ready = False
         self._invalid = False
-        self.setWindowTitle("重启游戏数据同步" if native else "重启背包同步")
+        self.setWindowTitle(
+            tr("重启游戏数据同步") if native else tr("重启背包同步"))
         layout = QVBoxLayout(self)
         self.detail = QLabel(
-            (
+            tr(
                 "同步异常或数据未更新时，可在这里重新建立同步连接。\n\n"
                 "如需部署或更新组件，请先完全退出游戏，部署完成后再启动游戏。"
                 "请登录并进入游戏场景，再点击“开始重启同步”，等待同步完成。"
             ) if native else (
-                "同步异常或数据未更新时，可在这里重新建立同步连接。\n\n"
-                "请先退回游戏登录界面，再点击“开始重启同步”；"
-                "等待准备完成后，重新登录游戏。"
+                tr("同步异常或数据未更新时，可在这里重新建立同步连接。\n\n"
+                   "请先退回游戏登录界面，再点击“开始重启同步”；"
+                   "等待准备完成后，重新登录游戏。")
             ),
             self,
         )
@@ -90,7 +91,9 @@ class SyncRetryDialog(QDialog):
             if service is not None:
                 self.update_state(service.state)
             else:
-                self.detail.setText("正在准备读取背包与角色数据。请进入游戏场景，等待同步完成。" if self.native else "正在准备监听，请暂时停留在登录页。")
+                self.detail.setText(
+                    tr("正在准备读取背包与角色数据。请进入游戏场景，等待同步完成。")
+                    if self.native else tr("正在准备监听，请暂时停留在登录页。"))
 
     def update_state(self, state):
         if not self._begun or self._invalid:
@@ -104,9 +107,11 @@ class SyncRetryDialog(QDialog):
                 state.error_code, state.error,
                 capture_source="native" if self.native else "packet",
             ).replace("处理：", "下一步：")
-            self.detail.setText("状态：重启同步未完成，已保存背包仍可用。\n" + guidance)
+            self.detail.setText(tr("状态：重启同步未完成，已保存背包仍可用。\n{guidance}",
+                                   guidance=guidance))
             self.detail.setToolTip(
-                f"错误码：{state.error_code or '未分类'}；详细原因见检测详情或账号日志。"
+                tr("错误码：{code}；详细原因见检测详情或账号日志。",
+                   code=state.error_code or tr("未分类"))
             )
             self._begun = False
             self.begin.setEnabled(True)
@@ -126,8 +131,9 @@ class SyncRetryDialog(QDialog):
             self.dismiss.setText(tr("关闭"))
         else:
             self.detail.setText(
-                state.message + "\n\n请进入游戏场景，等待同步完成。" if self.native
-                else state.message + "\n\n请保持在登录界面，等待准备完成。"
+                tr("{message}\n\n请进入游戏场景，等待同步完成。", message=state.message)
+                if self.native
+                else tr("{message}\n\n请保持在登录界面，等待准备完成。", message=state.message)
             )
 
     def context_changed(self):

@@ -237,7 +237,7 @@ class CultivationBatchContent(QWidget):
                 if character_id not in existing:
                     seeds[character_id] = self._service.load_seed(character_id)
         except Exception as exc:
-            QMessageBox.warning(self, tr("多角色养成"), f"读取角色养成状态失败：{exc}")
+            QMessageBox.warning(self, tr("多角色养成"), tr("读取角色养成状态失败：{exc}", exc=exc))
             return
         for card in tuple(self._cards):
             if card.character_id not in retained:
@@ -257,7 +257,7 @@ class CultivationBatchContent(QWidget):
         try:
             seed = self._service.load_seed(character_id)
         except Exception as exc:
-            QMessageBox.warning(self, tr("多角色养成"), f"读取角色养成状态失败：{exc}")
+            QMessageBox.warning(self, tr("多角色养成"), tr("读取角色养成状态失败：{exc}", exc=exc))
             return
         self._append_target(seed)
         self._refresh_target_state()
@@ -317,7 +317,7 @@ class CultivationBatchContent(QWidget):
             if not self._forks:
                 self._forks = self._service.list_forks()
         except Exception as exc:
-            QMessageBox.warning(self, tr("多角色养成"), f"读取弧盘列表失败：{exc}")
+            QMessageBox.warning(self, tr("多角色养成"), tr("读取弧盘列表失败：{exc}", exc=exc))
             return
         selected = select_cultivation_item(
             self,
@@ -341,7 +341,7 @@ class CultivationBatchContent(QWidget):
                 character_id=card.character_id,
             ))
         except Exception as exc:
-            QMessageBox.warning(self, tr("多角色养成"), f"读取弧盘养成状态失败：{exc}")
+            QMessageBox.warning(self, tr("多角色养成"), tr("读取弧盘养成状态失败：{exc}", exc=exc))
 
     def calculate(self) -> None:
         if not self._cards:
@@ -402,9 +402,9 @@ class CultivationBatchContent(QWidget):
         if not busy and self._last_plan is not None and self.isVisible():
             self._calculate_button.setFocus(Qt.FocusReason.OtherFocusReason)
         self._calculate_button.setText(
-            "正在计算中" if busy else (
-                "重新计算多角色材料与体力" if self._materials_dirty
-                else "计算多角色材料与体力"
+            tr("正在计算中") if busy else (
+                tr("重新计算多角色材料与体力") if self._materials_dirty
+                else tr("计算多角色材料与体力")
             )
         )
 
@@ -498,13 +498,13 @@ class CultivationBatchContent(QWidget):
         layout.addLayout(header)
         if plan.gaps:
             warning = QLabel(
-                f"存在 {len(plan.gaps)} 项正式数据缺口，合计仅包含已识别材料。",
+                tr("存在 {gaps_len} 项正式数据缺口，合计仅包含已识别材料。", gaps_len=len(plan.gaps)),
                 panel,
             )
             warning.setStyleSheet(themed_style("color:#d29922;font-weight:800"))
             layout.addWidget(warning)
         if plan.saved_stamina:
-            saved = QLabel(f"相比分角色分别刷取，合并方案节省 {plan.saved_stamina:,} 体力", panel)
+            saved = QLabel(tr("相比分角色分别刷取，合并方案节省 {saved_stamina:,} 体力", saved_stamina=plan.saved_stamina), panel)
             saved.setStyleSheet(themed_style("color:#3fb950;font-weight:800"))
             layout.addWidget(saved)
         remaining_totals = self._visible(plan.remaining_totals)
@@ -544,7 +544,7 @@ class CultivationBatchContent(QWidget):
         root.setSpacing(0)
         toggle = QToolButton(panel)
         toggle.setObjectName("cultivationBatchTargetResultToggle")
-        toggle.setText(f"{target.plan.character_name} · {len(target.plan.sections)} 项明细")
+        toggle.setText(tr("{character_name} · {sections_len} 项明细", character_name=target.plan.character_name, sections_len=len(target.plan.sections)))
         toggle.setCheckable(True)
         toggle.setChecked(target.line_id in self._expanded_results)
         toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -720,7 +720,7 @@ class CultivationBatchContent(QWidget):
 
     def _refresh_target_state(self) -> None:
         count = len(self._cards)
-        self._count.setText(f"已选 {count} 名")
+        self._count.setText(tr("已选 {count} 名", count=count))
         self._empty.setVisible(count == 0)
         self._cards_host.setVisible(count > 0)
         self._add_button.setEnabled(bool(self._roles))

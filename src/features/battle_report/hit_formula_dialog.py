@@ -42,7 +42,7 @@ class BattleHitFormulaDialog(HitInspectionDialog):
         related_analysis: BattleAnalysisSnapshot | None = None,
         projection=None, related_hit_details=None, participant_names=None, target_resolutions=(),
     ) -> None:
-        self.setWindowTitle(f"逐击伤害公式 · Hit #{hit.sequence} · {hit.character_name}")
+        self.setWindowTitle(tr("逐击伤害公式 · Hit #{sequence} · {character_name}", sequence=hit.sequence, character_name=hit.character_name))
         self.inspection.set_hit(hit, replay, projection, participant_names=participant_names, target_resolutions=target_resolutions)
         sections = [BattleHitReplayExplanationService.build(
             hit,

@@ -158,7 +158,7 @@ class CultivationImageSelector(QDialog):
             card.setChecked(checked)
 
     def _refresh_count(self, *_args: object) -> None:
-        self._count.setText(f"已选 {len(self.selected_ids())} 名")
+        self._count.setText(tr("已选 {selected_ids_len} 名", selected_ids_len=len(self.selected_ids())))
 
 
 def select_cultivation_item(

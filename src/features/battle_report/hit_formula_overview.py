@@ -232,21 +232,24 @@ class HitFormulaOverview(QWidget):
         monster, portrait_basis = target_portrait_identity(hit, raw, target_resolutions)
         victim_icon = (catalog.monster_variant_icon(monster) or catalog.monster_family_icon(monster)) if catalog and monster else None
         self.victim.set_person(hit.target_name or "未知目标", victim_icon)
-        self.victim.setToolTip(f"头像来源：{portrait_basis}" + (f"\n怪物标识：{monster}" if monster else "")
-                              + ("\n暂无对应头像资源" if monster and victim_icon is None else ""))
+        self.victim.setToolTip(tr("头像来源：{portrait_basis}", portrait_basis=portrait_basis) + (tr("\n怪物标识：{monster}", monster=monster) if monster else "")
+                              + (tr("\n暂无对应头像资源")
+                                 if monster and victim_icon is None else ""))
         self.hit_identity.setText(f"Hit #{hit.sequence} · {hit.relative_time_us / 1_000_000:.3f} s")
-        self.hit_identity.setToolTip(f"命中 ID：{hit.event_id}\n技能标识：{hit.ability_id or '未取得'}")
+        self.hit_identity.setToolTip(
+            tr("命中 ID：{event_id}\n技能标识：{ability_id}",
+               event_id=hit.event_id, ability_id=hit.ability_id or tr("未取得")))
         self.skill_name.setText(battle_hit_skill_label(hit.damage_name, hit.skill_name, hit.ability_id))
-        self.skill_name.setToolTip(f"技能：{hit.skill_name}\n伤害项：{hit.damage_name}\n命中 ID：{hit.event_id}")
+        self.skill_name.setToolTip(tr("技能：{skill_name}\n伤害项：{damage_name}\n命中 ID：{event_id}", skill_name=hit.skill_name, damage_name=hit.damage_name, event_id=hit.event_id))
         crit = "" if replay is None else {
             "critical": "暴击", "non_critical": "未暴击", "not_applicable": "不适用暴击",
             "ambiguous": "暴击待定", "unreplayable": "暴击未知",
         }.get(replay.critical_state, "暴击未知")
-        self.skill_meta.setText(" · ".join(x for x in ("" if replay is None else f"{replay.formula_type}公式", crit) if x))
+        self.skill_meta.setText(" · ".join(x for x in ("" if replay is None else tr("{formula_type}公式", formula_type=replay.formula_type), crit) if x))
         panel = None if replay is None else replay.formula_panel_character_id
         self.formula_party.setVisible(panel not in (None, 0, hit.character_id))
         name = (participant_names or {}).get(panel, str(panel))
-        self.formula_party.setText(f"公式属性方 · {name}    查看本击属性 ›")
+        self.formula_party.setText(tr("公式属性方 · {name}    查看本击属性 ›", name=name))
         selected = None if replay is None else replay.selected_damage
         observed = hit.damage if replay is None else getattr(replay, "observed_damage", hit.damage)
         self.calculated.setText("—" if selected is None else f"{selected:,.0f}")
@@ -257,7 +260,9 @@ class HitFormulaOverview(QWidget):
         error = None if replay is None else getattr(replay, "signed_error_percent", None)
         if selected is not None and error is not None:
             self.delta.setText(f"{selected - observed:+,.2f}\n({error:+.2f}%)")
-        self.delta.setToolTip("公式 − 实测" if error is None else f"公式相对实测：{error:+.4f}%")
+        self.delta.setToolTip(
+            tr("公式 − 实测") if error is None
+            else tr("公式相对实测：{error:+.4f}%", error=error))
         for grid in (self.factor_grid, self.extra_grid):
             while grid.count():
                 item = grid.takeAt(0)
@@ -269,16 +274,21 @@ class HitFormulaOverview(QWidget):
         elif not operator:
             self.expression.setText(tr("计算因子如下；当前类型的组合关系见因子详情。"))
         else:
-            self.expression.setText("伤害 = " + f" {operator} ".join(factor_name(f) for f in primary))
-        self.formula_title.setText(f"本击总公式 · {len(primary)} 项" if primary else "本击总公式")
+            self.expression.setText(tr(
+                "伤害 = {expression}",
+                expression=f" {operator} ".join(factor_name(f) for f in primary)))
+        self.formula_title.setText(
+            tr("本击总公式 · {primary_len} 项", primary_len=len(primary))
+            if primary else tr("本击总公式"))
         for i, factor in enumerate(primary):
             self._tiles.append(self._tile(factor, factor_value(factor, replay.critical_state), operator if i else ""))
         for factor in extras:
             self._extra_tiles.append(self._tile(factor, factor_value(factor, replay.critical_state), ""))
         self.extra_title.setVisible(bool(extras))
-        self.settlement.setText("" if selected is None else f"核心结算结果 {selected:,.0f} · 点击各项查看完整精度与依据")
+        self.settlement.setText("" if selected is None else tr("核心结算结果 {selected:,.0f} · 点击各项查看完整精度与依据", selected=selected))
         if replay is not None and replay.critical_state in {"non_critical", "not_applicable"} and any(f.factor_id == "critical" for f in primary):
-            self.settlement.setText(self.settlement.text() + "；本击暴击倍率采用 1")
+            self.settlement.setText(
+                tr("{text}；本击暴击倍率采用 1", text=self.settlement.text()))
         self._columns = 0
         self._reflow()
 

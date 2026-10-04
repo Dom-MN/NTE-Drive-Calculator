@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
@@ -87,9 +89,10 @@ def participation_toggle(parent: QWidget, label: str) -> QToolButton:
     toggle.setObjectName("cultivationParticipationToggle")
     toggle.setCheckable(True)
     toggle.setChecked(True)
-    toggle.setToolTip(f"{label}：参与计算（点击关闭）")
+    toggle.setToolTip(tr("{label}：参与计算（点击关闭）", label=label))
     toggle.toggled.connect(lambda enabled: toggle.setToolTip(
-        f"{label}：{'参与计算（点击关闭）' if enabled else '不参与计算（点击开启）'}"
+        tr("{label}：{state}", label=label,
+           state=tr("参与计算（点击关闭）") if enabled else tr("不参与计算（点击开启）"))
     ))
     toggle.setCursor(Qt.CursorShape.PointingHandCursor)
     toggle.setFixedSize(36, 26)

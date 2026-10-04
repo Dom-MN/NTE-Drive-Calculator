@@ -647,7 +647,8 @@ def _build_fork_group(
             gain = (current["damage"] / baseline["damage"] - 1.0) * 100.0
             margin_label.setText(tr("直伤收益: {value}%", value=f"{gain:+.2f}"))
         else:
-            margin_label.setText("直伤收益：待验证" if limited_catalog else "直伤收益: --")
+            margin_label.setText(
+                tr("直伤收益：待验证") if limited_catalog else tr("直伤收益: --"))
         star_rows = list((fork or {}).get("star_levels") or ())
         star = next(
             (row for row in star_rows if int(row.get("star_level") or 0) == refinement.currentData()),

@@ -365,7 +365,8 @@ class AutoSyncController(QObject):
         self.window.home_sync_source_label.hide()
         title = getattr(self.window, "home_sync_title", None)
         if title is not None:
-            title.setText("背包同步" if online and not native else "游戏数据同步")
+            title.setText(
+                tr("背包同步") if online and not native else tr("游戏数据同步"))
         service = self.window._inventory_sync_service
         state = service.state if service is not None else None
         role_detail = getattr(self.window, "home_character_sync_detail", None)
@@ -376,15 +377,16 @@ class AutoSyncController(QObject):
                 role_detail.setText(error)
         battle = self.window.battle_report_controller.is_running()
         button = self.window.home_restart_sync_button
-        button.setText("恢复自动同步" if settings.paused else
-                       "重启同步" if settings.auto_sync_enabled else "开启自动同步")
+        button.setText(tr("恢复自动同步") if settings.paused else
+                       tr("重启同步") if settings.auto_sync_enabled
+                       else tr("开启自动同步"))
         button.setToolTip(
-            "先核对同步条件；组件已准备好且清理完成时恢复同步，无需重选工作模式。"
+            tr("先核对同步条件；组件已准备好且清理完成时恢复同步，无需重选工作模式。")
             if settings.paused else
-            "停止当前同步连接并重新建立；用于同步异常或背包未更新。已保存数据不会删除。"
+            tr("停止当前同步连接并重新建立；用于同步异常或背包未更新。已保存数据不会删除。")
             if settings.auto_sync_enabled else
-            "先显示环境检测，确认准备后进入游戏场景自动读取并保存数据。" if native else
-            "先显示抓包条件检测，确认后登录游戏并自动保存数据。"
+            tr("先显示环境检测，确认准备后进入游戏场景自动读取并保存数据。") if native else
+            tr("先显示抓包条件检测，确认后登录游戏并自动保存数据。")
         )
         button.setEnabled(not self._stopping and (not battle or not settings.auto_sync_enabled))
         hint = "请先结束战报，再重启同步。" if battle and settings.auto_sync_enabled else ""

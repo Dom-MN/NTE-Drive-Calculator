@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Sequence
 
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
@@ -297,7 +299,7 @@ def render_buff_benefit_results(
         )
         for column, value in enumerate(values):
             item = QTableWidgetItem(value)
-            item.setToolTip(f"{tooltip}\n原始效果标识：{result.buff_asset_path}")
+            item.setToolTip(tr("{tooltip}\n原始效果标识：{buff_asset_path}", tooltip=tooltip, buff_asset_path=result.buff_asset_path))
             table.setItem(row_index, column, item)
         row_index += 1
     for result in unattributed:
@@ -329,7 +331,7 @@ def render_buff_benefit_results(
         tooltip = f"{result.explanation}\n{_quantification_tooltip(result.quantification)}"
         for column, value in enumerate(values):
             item = QTableWidgetItem(value)
-            item.setToolTip(f"{tooltip}\n原始效果标识：{result.buff_asset_path}")
+            item.setToolTip(tr("{tooltip}\n原始效果标识：{buff_asset_path}", tooltip=tooltip, buff_asset_path=result.buff_asset_path))
             table.setItem(row_index, column, item)
         row_index += 1
     for result in uncovered:
@@ -357,7 +359,7 @@ def render_buff_benefit_results(
         )
         for column, value in enumerate(values):
             item = QTableWidgetItem(value)
-            item.setToolTip(f"{tooltip}\n原始效果标识：{result.buff_asset_path}")
+            item.setToolTip(tr("{tooltip}\n原始效果标识：{buff_asset_path}", tooltip=tooltip, buff_asset_path=result.buff_asset_path))
             table.setItem(row_index, column, item)
         row_index += 1
 

@@ -361,7 +361,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
             item = QFrame()
             item.setFixedSize(self._priority_role_frame_width(name), 48)
             item.setCursor(Qt.PointingHandCursor)
-            item.setToolTip(f"{name}：点击头像或角色名移回待选区")
+            item.setToolTip(tr("{name}：点击头像或角色名移回待选区", name=name))
             item.mousePressEvent = (
                 lambda event, role=name: self._toggle(role)
                 if event.button() == Qt.LeftButton else event.ignore()
@@ -380,7 +380,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
 
             name_btn = PriorityRoleButton(self, name, index)
             name_btn.setObjectName("priorityRoleName")
-            name_btn.setToolTip(f"{name}：点击移出当前优先级；向后拖拽调整优先级")
+            name_btn.setToolTip(tr("{name}：点击移出当前优先级；向后拖拽调整优先级", name=name))
             name_btn.setFixedWidth(self._priority_role_name_width())
             name_btn.setStyleSheet(
                 themed_style(

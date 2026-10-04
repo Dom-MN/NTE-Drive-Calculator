@@ -277,7 +277,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         except Exception as error:
             stop_error = self._stop_after_failed_revocation(before)
             self.refresh_controls(reset_selection=True)
-            QMessageBox.warning(self.window, tr("工作模式"), f"模式设置或收尾未完成：{error}{stop_error}")
+            QMessageBox.warning(self.window, tr("工作模式"), tr("模式设置或收尾未完成：{error}{stop_error}", error=error, stop_error=stop_error))
 
     def set_raw_capture_draft(self, enabled: bool) -> None:
         if not enabled or self.operation_entry("diagnostics", "保存原始抓包"):
@@ -341,7 +341,8 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
                 self._report_dialog.finished.connect(self._dismiss_report)
             self._report_dialog.begin(self.policy.settings.mode.value, preview=preview)
             if self._controls:
-                self._controls[1].setText("正在核对同步条件…" if preview else "正在检测并处理组件…")
+                self._controls[1].setText(
+                    tr("正在核对同步条件…") if preview else tr("正在检测并处理组件…"))
         expected = self.policy.settings.revision, self.window.app_context.generation
 
         def perform():
@@ -480,7 +481,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
                 self._selector_settings = selection
         button = getattr(self.window, "work_mode_button", None)
         if button is not None:
-            button.setText("模式：" + MODE_LABELS[settings.mode.value])
+            button.setText(tr("模式：{mode}", mode=tr(MODE_LABELS[settings.mode.value])))
         self.window.battle_report_controller.set_work_mode_presentation()
 
     def _apply(self, result) -> None:
@@ -733,6 +734,6 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         if detail:
             QMessageBox.information(
                 self.window, tr("游戏组件清理提示"),
-                detail + "\n\nCalc 退出后不会继续后台监控。按上述原因处理后，重新打开 Calc "
-                "继续核对和清理；无需重装或清空账号数据。",
+                tr("{detail}\n\nCalc 退出后不会继续后台监控。按上述原因处理后，重新打开 Calc "
+                   "继续核对和清理；无需重装或清空账号数据。", detail=detail),
             )

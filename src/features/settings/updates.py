@@ -224,10 +224,10 @@ def show_update_dialog(parent, style_sheet: str, info: dict, app_version: str) -
     header.setSpacing(12)
     heading = QVBoxLayout()
     heading.setSpacing(6)
-    title = QLabel(f"发现新版本 {latest}")
+    title = QLabel(tr("发现新版本 {latest}", latest=latest))
     title.setStyleSheet(themed_style("font-size:21px;font-weight:600;color:#f0f6fc"))
     heading.addWidget(title)
-    subtitle = QLabel(f"当前版本 {app_version}  →  最新版本 {latest}")
+    subtitle = QLabel(tr("当前版本 {app_version}  →  最新版本 {latest}", app_version=app_version, latest=latest))
     subtitle.setStyleSheet(themed_style("color:#8b949e"))
     heading.addWidget(subtitle)
     header.addLayout(heading)
@@ -235,7 +235,8 @@ def show_update_dialog(parent, style_sheet: str, info: dict, app_version: str) -
     release_url = str(info.get("release_url") or "").strip()
     if release_url.lower().startswith(("https://", "http://")):
         link = QLabel(
-            f'<a href="{escape(release_url, quote=True)}">查看 GitHub 发布页 ↗</a>'
+            tr('<a href="{url}">查看 GitHub 发布页 ↗</a>',
+               url=escape(release_url, quote=True))
         )
         link.setOpenExternalLinks(True)
         link.setTextInteractionFlags(Qt.TextBrowserInteraction)

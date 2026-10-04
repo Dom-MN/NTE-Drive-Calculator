@@ -478,7 +478,7 @@ class CultivationCalculatorContent(QWidget):
                 if plan.fork_experience_overflow else ""
             )
             self._result_layout.addWidget(QLabel(
-                f"弧盘升级经验 {plan.fork_required_experience:,}{overflow}",
+                tr("弧盘升级经验 {fork_required_experience:,}{overflow}", fork_required_experience=plan.fork_required_experience, overflow=overflow),
                 self._result_body,
             ))
         total = QFrame(self._result_body)
@@ -559,7 +559,7 @@ class CultivationCalculatorContent(QWidget):
         layout.setSpacing(0)
         toggle = QToolButton(panel)
         toggle.setObjectName("cultivationCalculatorDetailsToggle")
-        toggle.setText(f"计算明细 · {len(plan.sections)}项")
+        toggle.setText(tr("计算明细 · {sections_len}项", sections_len=len(plan.sections)))
         toggle.setCheckable(True)
         toggle.setChecked(self._details_expanded)
         toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -614,8 +614,8 @@ class CultivationCalculatorContent(QWidget):
                 card_layout.addWidget(grid)
             else:
                 values = QLabel(
-                    "本模块没有需消耗体力刷取的材料"
-                    if self._material_scope == "stamina" else "无额外材料",
+                    tr("本模块没有需消耗体力刷取的材料")
+                    if self._material_scope == "stamina" else tr("无额外材料"),
                     card,
                 )
                 values.setStyleSheet(themed_style("color:#8b949e"))

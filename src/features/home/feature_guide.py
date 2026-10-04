@@ -110,7 +110,7 @@ class FeatureGuideDialog(QDialog):
     def __init__(self, parent: QWidget, guide: FeatureGuide, navigate: Callable[[str], None]):
         super().__init__(parent)
         self.setObjectName("featureGuideDialog")
-        self.setWindowTitle(guide.title + " · 功能说明")
+        self.setWindowTitle(tr("{title} · 功能说明", title=guide.title))
         self.setWindowModality(Qt.WindowModal)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 16)
@@ -120,7 +120,7 @@ class FeatureGuideDialog(QDialog):
         heading.setObjectName("featureGuideDialogTitle")
         heading.setStyleSheet(themed_style("font-size:18px;font-weight:700;color:#f0f6fc"))
         layout.addWidget(heading)
-        entry = QLabel("入口：" + guide.entry, self)
+        entry = QLabel(tr("入口：{entry}", entry=guide.entry), self)
         entry.setObjectName("featureGuideEntry")
         entry.setWordWrap(True)
         layout.addWidget(entry)

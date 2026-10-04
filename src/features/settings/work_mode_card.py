@@ -156,6 +156,9 @@ def prompt_offline_sync_mode(parent) -> bool:
     return dialog.exec() == QDialog.Accepted
 
 
+# 服务层诊断文本的分隔标记：这是匹配键，不是展示文案，必须保持中文。
+_DIAGNOSTIC_MARKER = "\n诊断："
+
 class ModeReportDialog(QDialog):
     """Keep the explicit check visible from queued work through its final report."""
 
@@ -250,7 +253,8 @@ class ModeReportDialog(QDialog):
     def _toggle_diagnostics(self, expanded):
         self.label.setVisible(expanded)
         self.diagnostic_toggle.setText(
-            "收起排查信息（开发/反馈用）" if expanded else "展开排查信息（开发/反馈用）"
+            tr("收起排查信息（开发/反馈用）") if expanded
+            else tr("展开排查信息（开发/反馈用）")
         )
 
     def _clear_results(self):
@@ -265,7 +269,11 @@ class ModeReportDialog(QDialog):
     def _add_result_section(self, title, groups, tone):
         if not groups:
             return
-        heading = QLabel(f"{title}（{sum(len(labels) for _key, labels in groups)} 项）", self.results)
+        heading = QLabel(
+            tr("{title}（{count} 项）",
+               title=title, count=sum(len(labels) for _key, labels in groups)),
+            self.results,
+        )
         heading.setStyleSheet(f"color:{theme_color(tone)};font-weight:700;font-size:13px")
         self.results_layout.addWidget(heading)
         for (state, state_label, detail), labels in groups:
@@ -289,8 +297,11 @@ class ModeReportDialog(QDialog):
             label.setStyleSheet(f"color:{color};font-weight:700")
             body.addWidget(label)
             # Keep typed evidence in the copyable folded report, not in the
-            # user-facing issue card.
-            explanation = QLabel(str(detail).split("\n诊断：", 1)[0], row)
+            # user-facing issue card. The marker splits text the service
+            # produced, so it is a key and stays Chinese; lifting it out of
+            # the QLabel argument also keeps the coverage scan honest.
+            user_text = str(detail).split(_DIAGNOSTIC_MARKER, 1)[0]
+            explanation = QLabel(user_text, row)
             explanation.setWordWrap(True)
             body.addWidget(explanation)
             self.results_layout.addWidget(row)
@@ -302,15 +313,18 @@ class ModeReportDialog(QDialog):
         waiting_count = sum(len(labels) for _key, labels in waiting)
         ready_count = sum(len(labels) for _key, labels in available)
         if problem_count:
-            self.overview.setText(f"需处理 {problem_count} 项 · 等待 {waiting_count} 项 · 已就绪 {ready_count} 项")
+            self.overview.setText(tr(
+                "需处理 {problems} 项 · 等待 {waiting} 项 · 已就绪 {ready} 项",
+                problems=problem_count, waiting=waiting_count, ready=ready_count))
         elif waiting_count:
-            self.overview.setText(f"等待 {waiting_count} 项 · 已就绪 {ready_count} 项")
+            self.overview.setText(tr("等待 {waiting} 项 · 已就绪 {ready} 项",
+                                     waiting=waiting_count, ready=ready_count))
         else:
-            self.overview.setText(f"全部 {ready_count} 项已就绪")
-        self._add_result_section("需处理", issues, "#f85149")
-        self._add_result_section("等待或待核对", waiting, "#58a6ff")
+            self.overview.setText(tr("全部 {ready} 项已就绪", ready=ready_count))
+        self._add_result_section(tr("需处理"), issues, "#f85149")
+        self._add_result_section(tr("等待或待核对"), waiting, "#58a6ff")
         if available:
-            heading = QLabel(f"已就绪（{ready_count} 项）", self.results)
+            heading = QLabel(tr("已就绪（{ready} 项）", ready=ready_count), self.results)
             heading.setStyleSheet(f"color:{theme_color('#3fb950')};font-weight:700;font-size:13px")
             self.results_layout.addWidget(heading)
             names = QLabel("、".join(label for _key, labels in available for label in labels), self.results)
@@ -340,11 +354,12 @@ class ModeReportDialog(QDialog):
             button.deleteLater()
 
     def begin(self, mode, *, preview=False):
-        self.setWindowTitle(f"{MODE_LABELS[mode]}模式检测")
+        self.setWindowTitle(tr("{mode}模式检测", mode=tr(MODE_LABELS[mode])))
         self._settings_target = "deployment"
         self._preview = preview
         self._clear_results()
-        self.overview.setText("正在核对同步条件…" if preview else "正在检测环境…")
+        self.overview.setText(
+            tr("正在核对同步条件…") if preview else tr("正在检测环境…"))
         self.metadata.clear()
         self.diagnostic_toggle.setChecked(False)
         self.diagnostic_toggle.hide()
@@ -427,10 +442,11 @@ class ModeReportDialog(QDialog):
         self._settings_target = decision.target
         self._clear_actions()
         self.preflight_summary.setText(
-            ("状态：可开启同步" if decision.ready else "状态：等待处理") +
-            "\n原因：" + decision.detail +
-            ("\n下一步：自动开启同步。" if decision.ready else
-             "\n下一步：" + (decision.action_label or "处理后重新检测。"))
+            tr("状态：{status}\n原因：{detail}\n下一步：{next_step}",
+               status=tr("可开启同步") if decision.ready else tr("等待处理"),
+               detail=decision.detail,
+               next_step=tr("自动开启同步。") if decision.ready
+               else (decision.action_label or tr("处理后重新检测。")))
         )
         if decision.action_label:
             self._add_action(decision.action_label, self._open_environment_settings)
@@ -450,14 +466,15 @@ class ModeReportDialog(QDialog):
         self.retry_button.setEnabled(True)
         self.preflight_summary.show()
         self.preflight_summary.setText(
-            ("状态：同步已开启" if ready else "状态：自动同步仍关闭") +
-            "\n原因：" + detail +
-            ("\n下一步：启动并进入游戏场景，等待数据就绪。" if ready else
-             "\n下一步：查看检测详情或前往环境设置后重试。")
+            tr("状态：{status}\n原因：{detail}\n下一步：{next_step}",
+               status=tr("同步已开启") if ready else tr("自动同步仍关闭"),
+               detail=detail,
+               next_step=tr("启动并进入游戏场景，等待数据就绪。") if ready
+               else tr("查看检测详情或前往环境设置后重试。"))
         )
         self._clear_results()
         self._set_result(self.preflight_summary.text())
-        self.overview.setText("同步已开启" if ready else "同步仍关闭")
+        self.overview.setText(tr("同步已开启") if ready else tr("同步仍关闭"))
         self.settings_button.setVisible(not ready)
 
     def _set_result(self, detail):
@@ -534,9 +551,10 @@ class CleanupResultDialog(QDialog):
                 "如需重新同步，请确认工作模式后再开启自动同步。"
             )
         else:
-            status = "等待继续清理"
-            next_step = "按原因处理后重试；游戏运行时请先退出游戏。"
-        self.message.setText(f"状态：{status}\n原因：{detail}\n下一步：{next_step}")
+            status = tr("等待继续清理")
+            next_step = tr("按原因处理后重试；游戏运行时请先退出游戏。")
+        self.message.setText(tr("状态：{status}\n原因：{detail}\n下一步：{next_step}",
+                                status=status, detail=detail, next_step=next_step))
         self.continue_button.setVisible(self._continue_upgrade and not pending and state != "fault")
 
 
@@ -632,7 +650,7 @@ def confirm_mode(parent, mode: str) -> bool:
     copy = MODE_CONFIRMATIONS[mode]
     dialog = QDialog(parent)
     dialog.setObjectName("workModeConfirmationDialog")
-    dialog.setWindowTitle("确认切换到" + MODE_LABELS[mode] + "模式")
+    dialog.setWindowTitle(tr("确认切换到{mode}模式", mode=tr(MODE_LABELS[mode])))
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(22, 20, 22, 18)
     layout.setSpacing(12)

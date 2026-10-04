@@ -398,8 +398,10 @@ class ForkProfileView(QWidget):
         exp_text = f"升级经验 {growth.need_exp}" if growth is not None else "升级经验未提供"
         material_text = breakthrough_cost_text(stage, self._item_names)
         self.current_level_cost.setText(
-            f"Lv.{self._level} · {stage_text} · {exp_text}\n{material_text}\n"
-            "单级经验来自正式等级曲线；可用升级材料规格见下方。"
+            tr("Lv.{level} · {stage} · {exp}\n{material}\n"
+               "单级经验来自正式等级曲线；可用升级材料规格见下方。",
+               level=self._level, stage=stage_text, exp=exp_text,
+               material=material_text)
         )
         self._refresh_refinement()
         self._refresh_node_states()

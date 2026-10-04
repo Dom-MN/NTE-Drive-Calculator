@@ -479,13 +479,21 @@ class BattleReportPage(QWidget):
             )
             subtitles = getattr(self, "metric_subtitles", {})
             if subtitles:
-                subtitles["dps"].setText("真实时间（时停证据不完整）" if metrics.partial_clock else "有效时间")
-                subtitles["duration"].setText("时停覆盖不完整，未扣时停" if metrics.partial_clock else "扣除停表（括号为真实时长）")
+                subtitles["dps"].setText(
+                    tr("真实时间（时停证据不完整）") if metrics.partial_clock
+                    else tr("有效时间"))
+                subtitles["duration"].setText(
+                    tr("时停覆盖不完整，未扣时停") if metrics.partial_clock
+                    else tr("扣除停表（括号为真实时长）"))
                 for key in ("damage", "taken"):
                     if key in subtitles:
-                        subtitles[key].setText("当前范围已记录值（覆盖不完整）" if metrics.incomplete_scope else "当前分析范围")
+                        subtitles[key].setText(
+                            tr("当前范围已记录值（覆盖不完整）") if metrics.incomplete_scope
+                            else tr("当前分析范围"))
                 if metrics.incomplete_scope:
-                    subtitles["dps"].setText("已记录伤害 / " + ("真实时间" if metrics.partial_clock else "有效时间"))
+                    subtitles["dps"].setText(tr(
+                        "已记录伤害 / {clock}",
+                        clock=tr("真实时间") if metrics.partial_clock else tr("有效时间")))
         self.long_analysis_view.set_analysis(
             analysis,
             selected_character_id=selected_character_id,

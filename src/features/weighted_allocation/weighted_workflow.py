@@ -197,7 +197,7 @@ def _on_done(
     window.weighted_save_button.setEnabled(bool(preview.result.unified.selected))
     captured_at = preview.context.snapshot.captured_at_utc
     scope_note = "；当前仅进行装备评分与分配" if preview.equipment_only else ""
-    window.weighted_status_label.setText(f"计算完成。背包数据截至 {captured_at}{scope_note}")
+    window.weighted_status_label.setText(tr("计算完成。背包数据截至 {captured_at}{scope_note}", captured_at=captured_at, scope_note=scope_note))
     render_weighted_allocation_result(
         window,
         preview,
@@ -693,7 +693,7 @@ def _validated_weighted_preview(
         return None
     dependencies = weighted_allocation_dependencies(window)
     if preview.user_database_path != dependencies.user_database_path:
-        QMessageBox.warning(window, tr("账号已切换"), f"请在当前账号重新计算后再{action_name}。")
+        QMessageBox.warning(window, tr("账号已切换"), tr("请在当前账号重新计算后再{action_name}。", action_name=action_name))
         return None
     static_path = dependencies.static_database_path
     if (
@@ -704,7 +704,7 @@ def _validated_weighted_preview(
         or (static_path.stat().st_size, static_path.stat().st_mtime_ns)
         != preview.static_file_identity
     ):
-        QMessageBox.warning(window, tr("静态数据已更新"), f"请重新计算后再{action_name}。")
+        QMessageBox.warning(window, tr("静态数据已更新"), tr("请重新计算后再{action_name}。", action_name=action_name))
         return None
     return preview
 

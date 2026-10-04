@@ -113,17 +113,24 @@ def refresh_native_plugin_status(window) -> None:
         combo.blockSignals(False)
     primary = getattr(window, "_equipment_plugin_primary_button", None)
     if primary is not None:
-        primary.setText("启动原生 Loader" if combo is not None and combo.currentData() == "loader" else "部署原生组件")
+        primary.setText(
+            tr("启动原生 Loader")
+            if combo is not None and combo.currentData() == "loader"
+            else tr("部署原生组件"))
     label = getattr(window, "_equipment_plugin_status_label", None)
     if label is not None:
         if not bundle.ready:
-            label.setText("组件未准备好：" + "；".join(bundle.issues))
+            label.setText(tr("组件未准备好：{issues}",
+                             issues=tr("；").join(bundle.issues)))
         elif combo is not None and combo.currentData() == "loader":
             try:
                 service = window._mod_plugin_loading_service
                 workspace = service.inspect_native_workspace()
-                label.setText("组件已准备好，启动游戏后会自动检查连接和可用功能。"
-                              if workspace.files_compatible else "组件未准备好：" + "；".join(workspace.issues))
+                label.setText(
+                    tr("组件已准备好，启动游戏后会自动检查连接和可用功能。")
+                    if workspace.files_compatible
+                    else tr("组件未准备好：{issues}",
+                            issues=tr("；").join(workspace.issues)))
             except (EquipmentPluginDeploymentError, ModPluginLoadingError):
                 label.setText(tr("Loader 工作区核对未完成；请查看检测详情。"))
         else:
@@ -133,8 +140,10 @@ def refresh_native_plugin_status(window) -> None:
                 recorded_files=window.work_mode_service.deployment_record.get("managed_files", {}),
                 bundle_inspection=bundle,
             )
-            label.setText("组件已准备好，启动游戏后会自动检查连接和可用功能。"
-                          if result.files_compatible else "组件未准备好：" + "；".join(result.issues))
+            label.setText(
+                tr("组件已准备好，启动游戏后会自动检查连接和可用功能。")
+                if result.files_compatible
+                else tr("组件未准备好：{issues}", issues=tr("；").join(result.issues)))
 
 
 def _confirm_d3d_deployment(window) -> bool:
@@ -274,8 +283,8 @@ def start_native_loader_from_settings(window) -> None:
         window._refresh_equipment_plugin_status()
         QMessageBox.warning(
             window, tr("Loader 等待关闭程序"),
-            "状态：尚未启动 Loader\n原因：" + str(error) +
-            "\n下一步：完全退出启动器和游戏，再点击“启动原生 Loader”。",
+            tr("状态：尚未启动 Loader\n原因：{error}\n"
+               "下一步：完全退出启动器和游戏，再点击“启动原生 Loader”。", error=error),
         )
     except (EquipmentPluginDeploymentError, ModPluginLoadingError, PermissionError) as error:
         window._refresh_equipment_plugin_status()

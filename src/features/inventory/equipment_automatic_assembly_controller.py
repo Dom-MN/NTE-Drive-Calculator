@@ -185,7 +185,7 @@ def _start_automatic_equipment_assembly(
             slot_ids=slot_ids,
         )
     except Exception as exc:
-        QMessageBox.warning(window, tr("自动装配"), f"读取已保存方案失败：{exc}")
+        QMessageBox.warning(window, tr("自动装配"), tr("读取已保存方案失败：{exc}", exc=exc))
         return
 
     execution_role_names = list(state)
@@ -390,7 +390,7 @@ def _preview_automatic_assemble_all_roles(
         QMessageBox.warning(
             window,
             tr("自动装配"),
-            f"读取已保存方案失败：{exc}",
+            tr("读取已保存方案失败：{exc}", exc=exc),
         )
         return
     if not selections:

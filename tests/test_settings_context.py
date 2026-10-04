@@ -128,8 +128,10 @@ class SettingsContextTests(unittest.TestCase):
 
     def test_capture_device_placeholder_explains_when_manual_input_is_needed(self):
         source = Path("src/features/settings/page.py").read_text(encoding="utf-8")
+        # The fork wraps UI copy in tr(), so the placeholder is matched on its
+        # Chinese source string, which is also the catalogue key.
         self.assertIn(
-            'setPlaceholderText("仅在自动选择网卡失败时填写")',
+            'setPlaceholderText(tr("仅在自动选择网卡失败时填写"))',
             source,
         )
 

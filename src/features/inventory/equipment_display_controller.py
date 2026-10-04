@@ -601,7 +601,7 @@ def _import_game_loadout(self: Any, role_name: str) -> None:
         QMessageBox.warning(self, tr("导入游戏内方案"), str(exc))
         return
     logger.info(f"已导入游戏内配装 role={role_name}, plan_id={plan_id}")
-    QMessageBox.information(self, tr("导入游戏内方案"), f"[{role_name}] 已导入为计算器配装方案。")
+    QMessageBox.information(self, tr("导入游戏内方案"), tr("[{role_name}] 已导入为计算器配装方案。", role_name=role_name))
     self.invalidate_saved_equipment_cache()
     self._refresh_equip(restore_role_name=role_name)
 

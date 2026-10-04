@@ -374,7 +374,7 @@ def _local_snapshot_time(value: str) -> str:
 def refresh_home_page(window, dashboard: dict[str, Any]) -> None:
     account = dashboard["account"]
     inventory = dashboard.get("inventory")
-    window.home_account_label.setText(f"当前账号：{account['account_name']} · 背包、角色养成与配装方案独立保存")
+    window.home_account_label.setText(tr("当前账号：{account} · 背包、角色养成与配装方案独立保存", account=account['account_name']))
 
     values = {
         "inventory": int(inventory["stored_item_count"]) if inventory else 0,
@@ -389,7 +389,8 @@ def refresh_home_page(window, dashboard: dict[str, Any]) -> None:
 
     synced_count = int(dashboard["characters"]["synced_count"])
     window.home_metric_labels["characters"][1].setText(
-        f"当前账号已同步 {synced_count} 个角色" if synced_count else "当前账号尚未同步角色"
+        tr("当前账号已同步 {synced_count} 个角色", synced_count=synced_count)
+        if synced_count else tr("当前账号尚未同步角色")
     )
     profile_count = int(dashboard["characters"]["profile_count"])
     role_detail = (f"角色养成：已保存 {profile_count} 个角色的已确认养成字段。" if profile_count else
@@ -400,13 +401,14 @@ def refresh_home_page(window, dashboard: dict[str, Any]) -> None:
     inventory_subtitle = window.home_metric_labels["inventory"][1]
     if inventory:
         saved_time = _local_snapshot_time(inventory["captured_at_utc"])
-        inventory_subtitle.setText(f"快照 #{inventory['snapshot_id']} · {saved_time}")
+        inventory_subtitle.setText(tr("快照 #{inventory} · {saved_time}", inventory=inventory['snapshot_id'], saved_time=saved_time))
     else:
         inventory_subtitle.setText(tr("等待首次同步"))
     if inventory:
         window.home_last_sync_label.setText(
-            f"上次保存（本地时间）：{saved_time} · 驱动 {inventory['module_count']} 件"
-            f" · 空幕 {inventory['core_count']} 件"
+            tr("上次保存（本地时间）：{saved} · 驱动 {modules} 件 · 空幕 {cores} 件",
+               saved=saved_time, modules=inventory["module_count"],
+               cores=inventory["core_count"])
         )
         window.home_last_sync_label.setToolTip(
             tr("当前背包快照的保存时间。同步内容未变化时沿用已有快照，保存时间不会更新；本次同步状态见上方。")

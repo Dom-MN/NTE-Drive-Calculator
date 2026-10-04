@@ -428,7 +428,8 @@ class BattleLongAnalysisView(
         self._analysis = analysis
         partial_clock = getattr(analysis, "time_stop_source_kind", "") == "nte_core_partial"
         self.time_mode_combo.setEnabled(not partial_clock)
-        self.time_mode_combo.setToolTip("时停证据不完整，当前使用包含时停的真实时间" if partial_clock else "")
+        self.time_mode_combo.setToolTip(
+            tr("时停证据不完整，当前使用包含时停的真实时间") if partial_clock else "")
         if partial_clock:
             self.time_mode_combo.setCurrentIndex(self.time_mode_combo.findData(ELAPSED_TIME_MODE))
         self._hit_details = hit_details

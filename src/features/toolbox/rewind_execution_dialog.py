@@ -46,7 +46,7 @@ class RewindExecutionDialog(QDialog):
         root = QVBoxLayout(self)
         root.setSpacing(12)
         prerequisite = QLabel(
-            f"执行期间可按设置中的全局停止键{self._stop_hotkey_label()}停止。"
+            tr("执行期间可按设置中的全局停止键{stop_hotkey_label}停止。", stop_hotkey_label=self._stop_hotkey_label())
         )
         prerequisite.setObjectName("rewindStopNotice")
         prerequisite.setWordWrap(True)

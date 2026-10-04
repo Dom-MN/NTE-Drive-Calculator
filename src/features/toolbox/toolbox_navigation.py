@@ -76,7 +76,7 @@ class CultivationToolboxNavigation:
                 QMessageBox.warning(
                     self.dialog_parent,
                     tr("养成计算器"),
-                    f"读取养成数据失败：{exc}",
+                    tr("读取养成数据失败：{exc}", exc=exc),
                 )
                 return
             self.page = CultivationCalculatorPage(

@@ -73,17 +73,18 @@ class BattleCaptureComparisonPanel(QFrame):
         summary = state.summary
         labels["damage"].setText(_number(summary.total_damage) if summary else "—")
         labels["records"].setText(f"{summary.total_hits:,}" if summary else "—")
-        labels["duration"].setText(f"{_number(summary.duration_seconds, 2)} 秒" if summary else "—")
+        labels["duration"].setText(tr("{number} 秒", number=_number(summary.duration_seconds, 2)) if summary else "—")
         labels["clock"].setText(
-            _CLOCK_NAMES.get(summary.dps_time_mode, f"未识别（{summary.dps_time_mode}）")
-            if summary else "等待采样"
+            _CLOCK_NAMES.get(summary.dps_time_mode, tr("未识别（{dps_time_mode}）", dps_time_mode=summary.dps_time_mode))
+            if summary else tr("等待采样")
         )
         labels["dps"].setText(_number(summary.total_dps, 2) if summary else "—")
         status = _PHASE_NAMES.get(state.phase, state.phase)
         details = state.error or state.message
         labels["status"].setText(f"{status} · {details}" if details else status)
         labels["record_id"].setText(
-            str(state.battle_record_id) if state.battle_record_id is not None else "尚未保存"
+            str(state.battle_record_id) if state.battle_record_id is not None
+            else tr("尚未保存")
         )
 
     def set_snapshot(self, snapshot: BattleCaptureComparisonState | None) -> None:
@@ -102,8 +103,8 @@ class BattleCaptureComparisonPanel(QFrame):
                   "本次对照已结束" if snapshot.finished else
                   "正在结束本次对照" if snapshot.stop_requested else "本次对照进行中")
         self.notice.setText(
-            prefix + "；两路独立记录，各用自己的采样时段。结束不代表来源覆盖完整。"
-            "记录数可能包含受击记录，不等于造成伤害的命中数。"
+            tr("{prefix}；两路独立记录，各用自己的采样时段。结束不代表来源覆盖完整。"
+               "记录数可能包含受击记录，不等于造成伤害的命中数。", prefix=prefix)
         )
         native, packet = snapshot.native.summary, snapshot.packet.summary
         if native is None or packet is None:
@@ -112,11 +113,11 @@ class BattleCaptureComparisonPanel(QFrame):
             self.dps_difference.setText(tr("DPS 差：等待双方采样"))
             return
         difference = native.total_damage - packet.total_damage
-        self.damage_difference.setText(f"已收到总伤差（DLL − 抓包）：{_number(difference)}")
+        self.damage_difference.setText(tr("已收到总伤差（DLL − 抓包）：{number}", number=_number(difference)))
         ratio = native.total_damage / packet.total_damage if packet.total_damage > 0 else None
         self.damage_ratio.setText(
-            f"DLL / 抓包总伤比例：{_number(ratio * 100, 2)}%"
-            if ratio is not None else "DLL / 抓包总伤比例：未定义（抓包总伤为 0）"
+            tr("DLL / 抓包总伤比例：{number}%", number=_number(ratio * 100, 2))
+            if ratio is not None else tr("DLL / 抓包总伤比例：未定义（抓包总伤为 0）")
         )
         if snapshot.interrupted or snapshot.native.error or snapshot.packet.error:
             self.dps_difference.setText(tr("DPS 差：对照中断或存在异常，保留双方实际值"))
@@ -128,5 +129,5 @@ class BattleCaptureComparisonPanel(QFrame):
             self.dps_difference.setText(tr("DPS 差：等待双方有效计时"))
         else:
             self.dps_difference.setText(
-                f"DPS 差（DLL − 抓包，各自采样时段）：{_number(native.total_dps - packet.total_dps, 2)}"
+                tr("DPS 差（DLL − 抓包，各自采样时段）：{number}", number=_number(native.total_dps - packet.total_dps, 2))
             )

@@ -481,7 +481,8 @@ def _refresh_equip(self, *, restore_role_name=None):
         game_mode = getattr(self, "_equipment_mode", "saved") == "game"
         if not retain_view:
             loading = QLabel(
-                "正在读取游戏内装备…" if game_mode else "正在读取已保存的配装…"
+                tr("正在读取游戏内装备…") if game_mode
+                else tr("正在读取已保存的配装…")
             )
             loading.setStyleSheet(themed_style("color:#8b949e;padding:24px"))
             loading.setAlignment(Qt.AlignCenter)
