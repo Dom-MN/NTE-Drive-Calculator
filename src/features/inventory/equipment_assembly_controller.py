@@ -3,17 +3,18 @@
 
 from __future__ import annotations
 
-from src.features.input_operation_entry import request_input_entry, show_input_unavailable
+from src.features.input_operation_entry import request_input_entry, show_input_unavailable, show_sync_required
 
 from collections.abc import Callable
 from concurrent.futures import CancelledError
 from threading import Event
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtWidgets import QMessageBox, QProgressBar, QProgressDialog
 
 from src.app.workers import WorkerThread
+from src.app.window_geometry import fit_dialog_to_available_screen
 from src.observability.context import OperationContext
 from src.integrations.nte_core import is_mods_plugin_unavailable_error
 from src.features.inventory.equipment_assembly_dialogs import (
@@ -156,14 +157,20 @@ def _start_nte_core_equipment_apply(
         return
     sync = getattr(self, "_inventory_sync_service", None)
     if sync is None or not sync.is_running:
-        show_input_unavailable(
-            self, "极速装配", "同步连接未开启。\n请到工作台开启“自动同步”，进入游戏场景并等待同步就绪。", target="home",
-        )
+        show_sync_required(self, "极速装配")
         return
     current_worker = getattr(self, "_equipment_apply_worker", None)
     if current_worker is not None and current_worker.isRunning():
         QMessageBox.information(self, "正在装配", "已有装配任务正在执行，请等待指令下发完成。")
         return
+    hotkey_manager = getattr(self, "global_hotkey_manager", None)
+    hotkey_owner = "fast_equipment_apply"
+    if getattr(hotkey_manager, "active_owner", None) not in (None, hotkey_owner):
+        QMessageBox.information(self, "极速装配", "当前全局停止键正由其他任务使用，请先停止该任务。")
+        return
+    configuration = getattr(hotkey_manager, "configuration", None)
+    stop_hotkey = str(getattr(configuration, "stop", "F12"))
+    stop_hint = f"关闭此窗口或按 {stop_hotkey} 停止后续装配。"
 
     # Freeze all account dependencies on the controller thread, before work starts.
     app_context = getattr(self, "app_context", None)
@@ -202,27 +209,32 @@ def _start_nte_core_equipment_apply(
         "show_progress_bar": True,
     }
     progress_dialog = QProgressDialog(
-        progress_state["message"],
-        "停止后续装配",
+        f"{progress_state['message']}\n{stop_hint}",
+        "",
         0,
         progress_state["total"],
         self,
     )
     progress_dialog.setWindowTitle("极速装配进度")
+    progress_dialog.setCancelButton(None)
     progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
     progress_dialog.setAutoClose(False)
     progress_dialog.setAutoReset(False)
     progress_dialog.setMinimumDuration(0)
     progress_dialog.setValue(0)
-    progress_dialog.show()
+    fit_dialog_to_available_screen(progress_dialog, QSize(540, 160))
 
     progress_timer = QTimer(progress_dialog)
 
     def update_progress_dialog() -> None:
+        if cancel_event.is_set():
+            progress_timer.stop()
+            progress_dialog.close()
+            return
         total = max(1, int(progress_state.get("total", 1)))
         progress_dialog.setMaximum(total)
         progress_dialog.setValue(min(total, max(0, int(progress_state.get("current", 0)))))
-        progress_dialog.setLabelText(str(progress_state.get("message") or "正在极速装配…"))
+        progress_dialog.setLabelText(f"{progress_state.get('message') or '正在极速装配…'}\n{stop_hint}")
         progress_bar = progress_dialog.findChild(QProgressBar)
         if progress_bar is not None:
             progress_bar.setVisible(bool(progress_state.get("show_progress_bar", True)))
@@ -238,9 +250,13 @@ def _start_nte_core_equipment_apply(
         cancel_event.set()
 
     progress_dialog.canceled.connect(request_cancel)
+    progress_dialog.rejected.connect(request_cancel)
 
     def close_progress_dialog() -> None:
+        if hotkey_manager is not None:
+            hotkey_manager.stop(owner=hotkey_owner)
         progress_dialog.canceled.disconnect(request_cancel)
+        progress_dialog.rejected.disconnect(request_cancel)
         progress_timer.stop()
         progress_dialog.close()
         progress_dialog.deleteLater()
@@ -366,7 +382,14 @@ def _start_nte_core_equipment_apply(
 
     worker.result_ready.connect(on_result)
     worker.error.connect(on_error)
-    worker.start()
+    try:
+        if hotkey_manager is not None:
+            hotkey_manager.start(owner=hotkey_owner, on_stop=request_cancel)
+        progress_dialog.show()
+        worker.start()
+    except Exception:
+        close_progress_dialog()
+        raise
 
 
 def _confirm_automatic_assembly_fallback(
