@@ -199,7 +199,7 @@ def test_plugin_cards_remain_editable_across_modes_and_themes(tmp_path, monkeypa
     routes = []
     page = PluginsPage(
         service=service, request_apply=lambda: applied.append(True),
-        open_settings=routes.append,
+        show_detection=lambda: routes.append("detection"),
     )
     page.resize(820, 540)
     for theme in ("black", "dark", "light"):
@@ -214,7 +214,8 @@ def test_plugin_cards_remain_editable_across_modes_and_themes(tmp_path, monkeypa
     assert page.cards["cooldown"][0].isEnabled()  # Can still turn the saved selection off.
     assert not page.cards["enemy_bars"][0].isEnabled()
     page.environment_button.click()
-    assert routes == ["mode"]
+    assert page.environment_button.text() == "检测详情"
+    assert routes == ["detection"]
     page.close()
 
 
@@ -229,12 +230,12 @@ def test_plugin_page_uses_inline_options_and_clear_status_labels(tmp_path, monke
     applied = []
     page = PluginsPage(
         service=service, request_apply=lambda: applied.append(True),
-        open_settings=lambda _target: None,
+        show_detection=lambda: None,
     )
     labels = {label.text() for label in page.findChildren(QLabel)}
     buttons = {button.text() for button in page.findChildren(QPushButton)}
     assert {"技能冷却", "敌人状态", "等待启动游戏"} <= labels
-    assert {"刷新状态", "检测与部署"} <= buttons
+    assert {"刷新状态", "检测详情"} <= buttons
     assert "设置" not in buttons
     assert set(page.option_boxes["cooldown"]) == {"ready_cue"}
     assert set(page.option_boxes["enemy_bars"]) == {"hp", "unbalance"}
@@ -254,7 +255,7 @@ def test_refresh_button_reports_progress_until_observation_arrives(tmp_path, mon
     requested = []
     page = PluginsPage(
         service=service, request_apply=lambda: requested.append(True),
-        open_settings=lambda _target: None,
+        show_detection=lambda: None,
     )
     page.refresh_button.click()
     assert requested == [True]
@@ -275,10 +276,38 @@ def test_enemy_display_never_stays_enabled_without_content(tmp_path, monkeypatch
     service.update(hp=False, unbalance=False)
     page = PluginsPage(
         service=service, request_apply=lambda: None,
-        open_settings=lambda _target: None,
+        show_detection=lambda: None,
     )
     page.cards["enemy_bars"][0].click()
     assert service.settings.enemy_bars and service.settings.hp
     page.option_boxes["enemy_bars"]["hp"].click()
     assert not service.settings.enemy_bars
     page.close()
+
+
+def test_plugin_detection_uses_settings_explicit_check_and_processing_entry(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from unittest.mock import Mock
+    from PySide6.QtWidgets import QApplication, QWidget
+    from src.ui.main_window_data_mixin import MainWindowDataMixin
+
+    app = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    service, _, _, policy = make_service(tmp_path)
+    owner.plugin_service = service
+    owner.work_mode_controller = SimpleNamespace(
+        check=Mock(), refresh_plugins=Mock(),
+        observed=SimpleNamespace(connect=Mock()), plugins_applied=SimpleNamespace(connect=Mock()),
+    )
+    page = MainWindowDataMixin._page_plugins(owner)
+    for allowed in (True, False):
+        policy.enabled = allowed
+        page.refresh()
+        assert page.environment_button.text() == "检测详情"
+        page.environment_button.click()
+        owner.work_mode_controller.check.assert_called_once_with(show=True, retry_deployment=True)
+        owner.work_mode_controller.check.reset_mock()
+    owner.work_mode_controller.refresh_plugins.assert_not_called()
+    owner.close()
+    owner.deleteLater()
+    app.processEvents()

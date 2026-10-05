@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from src.services.inventory_sync_service import InventorySyncState
 from src.ui.controllers import inventory_sync_controller as module
@@ -75,6 +75,22 @@ def test_current_frozen_notification_reaches_warehouse(notification_window):
     assert accepted == []
     app.processEvents()
     assert len(accepted) == 1 and accepted[0].last_snapshot_id == 7
+
+
+def test_summary_receives_version_but_light_sync_status_is_immediate(notification_window, monkeypatch):
+    app, window, _accepted = notification_window
+    versions, statuses = [], []
+    window.dashboard_controller = SimpleNamespace(refresh=lambda **kwargs: versions.append(kwargs["version"]))
+    window.home_sync_badge = QLabel(window)
+    window.home_sync_detail = QLabel(window)
+    window.home_character_sync_detail = QLabel(window)
+    window.auto_sync_controller = SimpleNamespace(inventory_state_changed=statuses.append, render=lambda: None)
+    from src.ui import dashboard_widgets
+    monkeypatch.setattr(dashboard_widgets, "set_status_badge", lambda _widget, *_args: None)
+    window._inventory_sync_service.emit()
+    app.processEvents()
+    assert len(statuses) == 1 and len(versions) == 1
+    assert versions[0] == (window._inventory_sync_state_token, 7, 0)
 
 
 @pytest.mark.parametrize("invalidate", ["account", "generation", "service", "run"])

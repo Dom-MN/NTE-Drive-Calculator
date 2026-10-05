@@ -28,7 +28,7 @@ from src.features.scanning.scan_contracts import (
     offline_scope_replaces_inventory,
     vision_cancel_message,
 )
-from src.features.scanning.scan_source_warning import confirm_scan_mode_after_workbench_sync, restore_scan_mode_selection
+from src.features.scanning.scan_source_warning import confirm_scan_mode_entry, restore_scan_mode_selection
 from src.features.scanning.post_action_summary import append_scan_post_action_summary, show_scan_completion
 from src.domain.post_actions import post_actions_enabled, validate_post_action_config
 from src.features.scanning.vision_worker import VisionWorkerThread
@@ -58,8 +58,9 @@ def _on_scan_change(self, id, checked=True):
     previous_id = getattr(self, "_confirmed_scan_mode_id", 4)
     if id in {1, 2, 3}:
         dependencies = _current_scanning_dependencies(self)
-        if not confirm_scan_mode_after_workbench_sync(
-            self.dialog_parent, dependencies.user_database_path
+        if not confirm_scan_mode_entry(
+            self.dialog_parent, dependencies.user_database_path,
+            navigate_home=lambda: self.navigate("home"),
         ):
             restore_scan_mode_selection(self.scan_group, previous_id)
             return

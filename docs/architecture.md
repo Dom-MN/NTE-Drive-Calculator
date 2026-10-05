@@ -71,6 +71,13 @@ Domain / Optimizer       DAO / Integration
 由 Qt 信号把监听线程事件投回 Controller。Controller 在双击确认后请求 Service 丢弃暂存 capture，等旧 worker
 终态回调后才创建新 operation，并跨两次 capture 保留原背包同步恢复责任。
 
+页面只读任务由 `PageTaskLane` 有界持有，一个活动读取及一个最新待办；过期结果丢弃，退出以定时回调等待线程终态，
+不在 UI 线程等待 SQLite。角色及基础权重提交另由 `PageCommitLane` 持有，不合并、取消或重放已接受的写入；
+提交完成后才清除草稿并继续一次待处理导航。正式账号生命周期在上下文替换前阻止未结束的页面提交。
+工作台摘要和计算目录分别由独立 Controller 持有；计算目录的变化探针、窄业务指纹及目录读取属于 Service，
+账号依赖字段在 DAO 一致性读取边界内取值，跨连接目录组装以读取前后依赖身份复核并最多重试一次。
+详细交付行为见[页面响应性](features.md#页面响应性与后台任务)。
+
 ## 4. 数据域
 
 | 数据域 | 路径 | 当前 schema | 所有权 |

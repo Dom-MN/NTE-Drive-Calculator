@@ -86,16 +86,24 @@ class RewindShapeRecommendationService:
         with self._user_dao_factory(self._user_database_path) as user_dao:
             if "slot_selection_version" in value:
                 version = value["slot_selection_version"]
-                selected = value.get("selected_slots")
-                if type(version) is not int or version != 1 or not isinstance(selected, dict):
+                if type(version) is not int or version not in {1, 2}:
                     raise ValueError("槽位偏好版本或格式无效")
-                for key, slot_id in selected.items():
-                    identifier = positive_id(key)
-                    if identifier is None or (slot_id is not None and (type(slot_id) is not int or slot_id <= 0)):
-                        raise ValueError("槽位偏好身份无效")
-                    slot = user_dao.get_loadout_slot(slot_id) if slot_id is not None else None
-                    if slot is not None and slot["character_id"] != identifier:
-                        raise ValueError("槽位不属于所选角色")
+                if version == 1:
+                    maps = {"legacy": value.get("selected_slots")}
+                else:
+                    maps = value.get("selected_slots_by_strategy")
+                    if not isinstance(maps, dict) or set(maps) != {"balanced", "focused"}:
+                        raise ValueError("槽位偏好版本或格式无效")
+                for selected in maps.values():
+                    if not isinstance(selected, dict):
+                        raise ValueError("槽位偏好版本或格式无效")
+                    for key, slot_id in selected.items():
+                        identifier = positive_id(key)
+                        if identifier is None or (slot_id is not None and (type(slot_id) is not int or slot_id <= 0)):
+                            raise ValueError("槽位偏好身份无效")
+                        slot = user_dao.get_loadout_slot(slot_id) if slot_id is not None else None
+                        if slot is not None and slot["character_id"] != identifier:
+                            raise ValueError("槽位不属于所选角色")
             if expected_slots:
                 user_dao.replace_application_setting_copy("rewind_recommendation", value,
                     expected_loadout_plans=tuple({"character_id": ref.character_id, "slot_id": ref.slot_id,

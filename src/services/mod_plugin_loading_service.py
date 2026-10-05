@@ -115,7 +115,7 @@ class ModPluginLoadingService:
         application_root: str | Path,
         runtime: ModLoaderRuntimeContract | None = None,
         operation_guard: Callable[[str], None] | None = None,
-        game_running: Callable[[], bool] | None = None,
+        game_running: Callable[[], bool | None] | None = None,
         native_workspace_path: str | Path | None = None,
     ) -> None:
         self._application_root = Path(application_root).resolve()

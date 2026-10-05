@@ -172,8 +172,10 @@ class _RewindRecommendationDialog(RewindSelectionUiMixin, RewindExecutionUiMixin
         preferences = getattr(service, "load_preferences", lambda: {})()
         self._target_character_ids = {int(value) for value in preferences.get("target_character_ids", ())}
         self._main_character_ids = {int(value) for value in preferences.get("main_character_ids", ())}
-        self._saved_slot_ids = read_slot_preferences(preferences)
-        self._selected_slots = {}
+        self._saved_slot_ids_by_strategy = {
+            key: read_slot_preferences(preferences, strategy=key) for key in ("balanced", "focused")
+        }
+        self._selected_slots_by_strategy = {"balanced": {}, "focused": {}}
         self._strategy_key = str(preferences.get("strategy", self._strategy_key))
         self._target_grade = str(preferences.get("target_grade", "S"))
         self._target_threshold_mode = str(preferences.get("target_threshold_mode", "grade"))

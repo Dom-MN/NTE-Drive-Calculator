@@ -106,8 +106,11 @@ class RewindSelectionUiMixin:
         self._catalog_loading = False
         self._generate_button.setEnabled(True)
         self._role_names = {role.character_id: role.name for role in self._roles}
-        self._selected_slots = references_for_roles(self._roles, self._saved_slot_ids)
-        self._auto_slot_refs = dict(self._selected_slots)
+        self._selected_slots_by_strategy = {
+            key: references_for_roles(self._roles, saved)
+            for key, saved in self._saved_slot_ids_by_strategy.items()
+        }
+        self._auto_slot_refs = references_for_roles(self._roles, {})
         self._last_input_signature = self._input_signature()
         self._set_replacement_inventory_counts(dict(counts))
         self._target_button.setEnabled(True)
@@ -138,20 +141,20 @@ class RewindSelectionUiMixin:
             self._check_selection_context()
         except CancelledError:
             return
+        strategy = "focused" if main else "balanced"
         dialog = _RoleSelectionDialog(self, title="选择冲分角色" if main else "选择培养角色",
             description="选择角色与配装槽位，仅分析所选方案。",
             roles=self._roles, selected_character_ids=self._main_character_ids if main else self._target_character_ids,
-            selected_slots=self._selected_slots, asset_root=getattr(self._service, "asset_root", None))
+            selected_slots=self._selected_slots_by_strategy[strategy], asset_root=getattr(self._service, "asset_root", None))
         if dialog.exec() == QDialog.Accepted:
             try:
                 self._check_selection_context()
             except CancelledError:
                 return
-            self._selected_slots = dialog.selected_slots()
+            self._selected_slots_by_strategy[strategy] = dialog.selected_slots()
             chosen = set(dialog.selected_character_ids())
             if main:
                 self._main_character_ids = chosen
-                self._target_character_ids.update(chosen)
             else:
                 self._target_character_ids = chosen
             self._save_preferences()
@@ -159,8 +162,9 @@ class RewindSelectionUiMixin:
 
     def _input_signature(self):
         return (tuple(sorted(self._target_character_ids)), tuple(sorted(self._main_character_ids)),
-                tuple(sorted((identifier, ref.slot_id if ref else None, ref.plan_id if ref else None)
-                             for identifier, ref in self._selected_slots.items())),
+                tuple((key, tuple(sorted((identifier, ref.slot_id if ref else None, ref.plan_id if ref else None)
+                                        for identifier, ref in slots.items())))
+                      for key, slots in sorted(self._selected_slots_by_strategy.items())),
                 self._strategy_key, self._target_threshold_mode, self._target_grade, self._target_custom_percent)
 
     def _save_preferences(self):
@@ -172,28 +176,33 @@ class RewindSelectionUiMixin:
         if self._last_input_signature is not None and signature != self._last_input_signature:
             self._invalidate_recommendation()
         self._last_input_signature = signature
-        saved_ids = self._slot_preferences()
+        saved_ids = {key: self._slot_preferences(key) for key in ("balanced", "focused")}
         preferences = dict(self._service.load_preferences())
+        preferences.pop("selected_slots", None)
         preferences.update({
             "target_character_ids": sorted(self._target_character_ids), "main_character_ids": sorted(self._main_character_ids),
-            "slot_selection_version": 1, "selected_slots": {str(key): value for key, value in saved_ids.items()},
+            "slot_selection_version": 2, "selected_slots_by_strategy": {
+                strategy: {str(key): value for key, value in slots.items()} for strategy, slots in saved_ids.items()
+            },
             "strategy": self._strategy_key, "target_grade": self._target_grade,
             "target_threshold_mode": self._target_threshold_mode, "target_custom_percent": self._target_custom_percent,
             "rewind_qualities": list(self._rewind_options.qualities), "rewind_drive_customization": self._rewind_options.drive_customization,
         })
         try:
             self._service.save_preferences(preferences)
-            self._saved_slot_ids = saved_ids
+            self._saved_slot_ids_by_strategy = saved_ids
             return True
         except Exception as error:
             QMessageBox.warning(self, "偏好未保存", f"本次选择仅在当前窗口生效，请稍后重试保存。\n{error}")
             return False
 
-    def _slot_preferences(self):
-        saved = dict(self._saved_slot_ids)
-        explicit = self._target_character_ids | self._main_character_ids | set(saved)
-        explicit.update(key for key, ref in self._selected_slots.items() if ref != self._auto_slot_refs.get(key))
-        saved.update({key: ref.slot_id if ref else None for key, ref in self._selected_slots.items() if key in explicit})
+    def _slot_preferences(self, strategy):
+        saved = dict(self._saved_slot_ids_by_strategy[strategy])
+        selected = self._main_character_ids if strategy == "focused" else self._target_character_ids
+        slots = self._selected_slots_by_strategy[strategy]
+        explicit = selected | set(saved)
+        explicit.update(key for key, ref in slots.items() if ref != self._auto_slot_refs.get(key))
+        saved.update({key: ref.slot_id if ref else None for key, ref in slots.items() if key in explicit})
         return saved
 
     def _begin_manual_draft(self):
@@ -252,7 +261,7 @@ class RewindSelectionUiMixin:
         strategy, grade = self._strategy_key, self._target_grade
         custom = self._target_custom_percent if self._target_threshold_mode == "custom" else None
         active = set(primary_ids if strategy == "focused" else target_ids)
-        slots = tuple(ref for key, ref in self._selected_slots.items() if key in active and ref)
+        slots = tuple(ref for key, ref in self._selected_slots_by_strategy[strategy].items() if key in active and ref)
 
         def checkpoint():
             self._check_selection_context()

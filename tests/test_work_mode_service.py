@@ -338,7 +338,7 @@ def test_manual_components_and_independent_feature_states(tmp_path):
     (NativeFeatureProbe(files=True, pipe=False), CheckState.WAITING),
     (NativeFeatureProbe(files=True, pipe=True, handshake=None), CheckState.WAITING),
     (NativeFeatureProbe(files=True, pipe=True, handshake=False), CheckState.FAULT),
-    (NativeFeatureProbe(True, True, True, True, False), CheckState.WAITING),
+    (NativeFeatureProbe(True, True, True, True, False), CheckState.WAITING_LOGIN),
 ])
 def test_native_stages_not_collapsed(tmp_path, native, state):
     service = WorkModeService(tmp_path / "settings.json")
@@ -381,7 +381,7 @@ def test_external_native_provider_still_requires_complete_inventory(tmp_path):
     probe = WorkModeProbe(game_path_valid=True, game_running=True, core_available=True,
                          native_inventory=native)
     checks = {item.feature: item for item in service.build_report(probe).features}
-    assert checks["native_inventory"].state == CheckState.MISSING
+    assert checks["native_inventory"].state == CheckState.WAITING_LOGIN
 
 
 def test_supported_battle_still_needs_business_readiness(tmp_path):
@@ -393,11 +393,11 @@ def test_supported_battle_still_needs_business_readiness(tmp_path):
     )
     report = service.build_report(probe)
     check = next(item for item in report.features if item.feature == "native_battle")
-    assert check.state == CheckState.MISSING
-    assert "初始化" in check.detail
+    assert check.state == CheckState.WARNING
+    assert "业务尚未就绪" in check.detail
 
 
-def test_partial_native_snapshot_is_missing_not_infinite_wait(tmp_path):
+def test_partial_native_snapshot_guides_login_without_accepting_it_as_complete(tmp_path):
     service = WorkModeService(tmp_path / "settings.json")
     service.select_mode("medium", risk_confirmed=True)
     probe = WorkModeProbe(
@@ -406,8 +406,9 @@ def test_partial_native_snapshot_is_missing_not_infinite_wait(tmp_path):
     )
     report = service.build_report(probe)
     check = next(item for item in report.features if item.feature == "native_inventory")
-    assert check.state == CheckState.MISSING
+    assert check.state == CheckState.WAITING_LOGIN
     assert "部分观察" in check.detail
+    assert "登录" in check.detail
 
 
 def test_packet_listening_waits_for_full_login_snapshot(tmp_path):
@@ -419,7 +420,7 @@ def test_packet_listening_waits_for_full_login_snapshot(tmp_path):
     )
     report = service.build_report(probe)
     check = next(item for item in report.features if item.feature == "packet_capture")
-    assert check.state == CheckState.WAITING
+    assert check.state == CheckState.WAITING_LOGIN
     assert "完整" in check.detail
 
 
@@ -459,7 +460,7 @@ def test_corrupt_utf8_settings_fall_back_to_offline(tmp_path):
 
 
 @pytest.mark.parametrize("reason,state", [
-    ("scene_transition", CheckState.WAITING), ("pawn_unavailable", CheckState.WAITING),
+    ("scene_transition", CheckState.WAITING), ("pawn_unavailable", CheckState.WAITING_LOGIN),
     ("sdk_unavailable", CheckState.FAULT), ("hook_unavailable", CheckState.FAULT),
 ])
 def test_native_readiness_reason_classification(tmp_path, reason, state):
@@ -470,4 +471,7 @@ def test_native_readiness_reason_classification(tmp_path, reason, state):
         native_battle=NativeFeatureProbe(True, True, True, True, ready=False, reason=reason),
     )
     report = service.build_report(probe)
-    assert next(item for item in report.features if item.feature == "native_battle").state == state
+    check = next(item for item in report.features if item.feature == "native_battle")
+    assert check.state == state
+    if state == CheckState.WAITING_LOGIN:
+        assert "登录" in check.detail

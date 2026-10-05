@@ -219,6 +219,36 @@ class PerformanceUiTests(unittest.TestCase):
             self.assertTrue(controller.enabled)
         card.close()
 
+    def test_settings_card_omits_status_line_but_details_keep_diagnostics(self):
+        from PySide6.QtCore import QObject, Signal
+        from PySide6.QtWidgets import QLabel
+        from src.features.settings.performance_card import PerformanceCard
+
+        class Controller(QObject):
+            changed = Signal()
+            log_dir = Path(tempfile.gettempdir())
+
+            def set_enabled(self, value):
+                pass
+
+            def stop_trace(self):
+                pass
+
+            def snapshot(self):
+                return {"enabled": False, "overlay": False, "state": "off", "overlay_state": "closing",
+                        "automatic": False, "rows": {}, "history": [], "log_path": "", "log_error": None,
+                        "preference_error": "性能偏好保存失败"}
+
+        card = PerformanceCard(Controller())
+        try:
+            self.assertFalse(any(label.text() for label in card.findChildren(QLabel)))
+            card.show_details()
+            self.assertIn("性能偏好保存失败", card.dialog.status.text())
+        finally:
+            if card.dialog is not None:
+                card.dialog.close()
+            card.close()
+
 
 if __name__ == "__main__":
     unittest.main()

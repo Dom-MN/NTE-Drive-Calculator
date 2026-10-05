@@ -14,23 +14,48 @@ from test_work_mode_controller import controller, qt_app  # noqa: F401 - 复用�
 
 
 def report(state=CheckState.WAITING):
-    return WorkModeReport(WorkMode.LOW, (FeatureCheck("sync", "同步", state, "等待游戏就绪"),))
+    return WorkModeReport(
+        WorkMode.LOW, (FeatureCheck("sync", "同步", state, "等待游戏就绪"),),
+        sync_enable_ready=True,
+    )
 
 
-@pytest.mark.parametrize("state, warning", ((CheckState.MISSING, True), (CheckState.FAULT, False)))
-def test_warning_explanation_tracks_current_report(state, warning):
+@pytest.mark.parametrize("state", (CheckState.MISSING, CheckState.FAULT, CheckState.CLEANUP_PENDING))
+def test_blocking_conditions_are_reported_as_needing_action(state):
     app = QApplication.instance() or QApplication([])
     parent = QWidget()
     dialog = ModeReportDialog(parent, SimpleNamespace(check=Mock()))
     try:
         dialog.begin("low")
         dialog.set_report(report(state))
-        note = dialog.findChild(QLabel, "modeReportWarningHint")
-        assert note.isHidden() is (not warning)
-        if warning:
-            assert "黄色仅为警告，并非报错" in note.text()
+        assert "需处理 1 项" in dialog.overview.text()
+        texts = [label.text() for label in dialog.findChildren(QLabel)]
+        assert "需处理（1 项）" in texts
+        assert not any("红色信息才需要处理" in text for text in texts)
         dialog.begin("low")
-        assert note.isHidden()
+        assert dialog.overview.text() == "正在检测环境…"
+    finally:
+        dialog.close()
+        parent.close()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("state,label", (
+    (CheckState.WAITING_LOGIN, "等待登录"), (CheckState.WARNING, "警告"),
+))
+def test_login_wait_and_transient_warning_use_yellow_guidance(state, label):
+    app = QApplication.instance() or QApplication([])
+    parent = QWidget()
+    dialog = ModeReportDialog(parent, SimpleNamespace(check=Mock()))
+    try:
+        dialog.begin("medium")
+        dialog.set_report(report(state))
+        texts = [item.text() for item in dialog.findChildren(QLabel)]
+        assert "黄色提示 1 项" in dialog.overview.text()
+        assert "等待登录或警告（1 项）" in texts
+        assert any(text.startswith(label + "  ·") for text in texts)
+        assert any("黄色为等待登录或警告" in text for text in texts)
+        assert not any("需处理（1 项）" == text for text in texts)
     finally:
         dialog.close()
         parent.close()
@@ -79,11 +104,12 @@ def test_detection_button_runs_fresh_preflight_before_saving_and_navigating(cont
     c._navigate.assert_called_once_with("home")
 
 
-def test_sync_action_rejects_fault_and_changed_account(controller):
+@pytest.mark.parametrize("state", (CheckState.FAULT, CheckState.MISSING, CheckState.CLEANUP_PENDING))
+def test_sync_action_rejects_blockers_and_changed_account(controller, state):
     c, window, policy, _, _, _ = controller
     start = Mock()
     c.attach_sync_enable_action(start)
-    assert c.sync_enable_action_for_report(report(CheckState.FAULT)) is None
+    assert c.sync_enable_action_for_report(report(state)) is None
     action = c.sync_enable_action_for_report(report())
     assert action is not None
     window.app_context.generation += 1
@@ -132,7 +158,7 @@ def test_incomplete_report_does_not_offer_sync(controller):
     c.attach_sync_enable_action(Mock())
     incomplete = WorkModeReport(WorkMode.LOW, (
         FeatureCheck("sync", "同步", CheckState.WAITING, "尚未检测", facts=(("inspection_incomplete", True),)),
-    ))
+    ), sync_enable_ready=True)
     assert c.sync_enable_action_for_report(incomplete) is None
 
 
@@ -186,4 +212,44 @@ def test_component_issues_stay_complete_in_tooltip_without_expanding_summary():
     _set_component_status(label, ready=True)
     assert not label.toolTip()
     label.close()
+    app.processEvents()
+
+
+def test_low_risk_description_and_switch_confirmation_use_consistent_copy():
+    from src.features.settings.work_mode_card import MODE_CONFIRMATIONS, MODE_DESCRIPTIONS
+
+    assert "基础同步/抓包" in MODE_DESCRIPTIONS["low"]
+    assert "基础同步/抓包" in MODE_CONFIRMATIONS["low"]["available"]
+    assert "基础同步/抓包" in MODE_CONFIRMATIONS["medium"]["unavailable"]
+
+
+def test_account_manager_new_and_delete_keep_existing_cancellation_guards(monkeypatch):
+    from PySide6.QtWidgets import QDialog
+    from src.features.accounts import manager as account_module
+
+    app = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    manager = SimpleNamespace(
+        read_index=lambda: {"accounts": [{"id": "test", "name": "测试"}]},
+        account_meta=lambda _account: {"name": "测试"}, create_account=Mock(), delete_account=Mock(),
+    )
+    monkeypatch.setattr(account_module.QInputDialog, "getText", lambda *_args: ("", False))
+    warning = Mock()
+    monkeypatch.setattr(account_module.QMessageBox, "information", warning)
+
+    def inspect(dialog):
+        buttons = {button.text(): button for button in dialog.findChildren(QPushButton)}
+        assert {"新建", "删除", "保存命名", "导出数据", "导入数据", "关闭"} <= buttons.keys()
+        assert "添加" not in buttons and "删除账号" not in buttons
+        buttons["新建"].click()
+        manager.create_account.assert_not_called()
+        buttons["删除"].click()
+        manager.delete_account.assert_not_called()
+        warning.assert_called_once_with(dialog, "删除账号", "至少需要保留一个账号。")
+        return QDialog.Rejected
+
+    monkeypatch.setattr(account_module.QDialog, "exec", inspect)
+    account_module.show_account_manager_dialog(owner, "", manager, "test", Mock(), Mock())
+    owner.close()
+    owner.deleteLater()
     app.processEvents()

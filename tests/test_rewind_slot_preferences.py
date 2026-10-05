@@ -1,7 +1,7 @@
 # 验证倒带槽位偏好的账号隔离、一致读取与保存失败回滚。
 import pytest
 
-from src.domain.rewind_loadout import RewindSlotReference
+from src.domain.rewind_loadout import RewindSlotReference, read_slot_preferences
 from src.services.rewind_shape_recommendation_service import RewindShapeRecommendationService
 from src.storage.sqlite.user_data_dao import UserDataDao, UserDataValidationError
 
@@ -54,6 +54,40 @@ def test_invalid_preference_save_preserves_previous_settings(tmp_path):
         with pytest.raises(ValueError):
             service.save_preferences(value)
         assert service.load_preferences()["saved_rewind_shape_ids"] == ["old"] * 8
+
+
+def test_strategy_slot_preferences_persist_independently_and_are_account_private(tmp_path):
+    first, second = tmp_path / "first.sqlite3", tmp_path / "second.sqlite3"
+    ref, empty = create_account(first, "first")
+    create_account(second, "second")
+    service = service_for(first, tmp_path / "static.sqlite3")
+    value = {"slot_selection_version": 2,
+             "target_character_ids": [1004], "main_character_ids": [1004],
+             "selected_slots_by_strategy": {"balanced": {"1004": ref.slot_id}, "focused": {"1004": empty}}}
+    service.save_preferences(value)
+    saved = service.load_preferences()
+    assert saved == value
+    assert read_slot_preferences(saved, strategy="balanced") == {1004: ref.slot_id}
+    assert read_slot_preferences(saved, strategy="focused") == {1004: empty}
+    assert service_for(second, tmp_path / "static.sqlite3").load_preferences() == {}
+    invalid = {**value, "selected_slots_by_strategy": {
+        "balanced": {"1004": ref.slot_id}, "focused": {"1005": ref.slot_id}}}
+    with pytest.raises(ValueError):
+        service.save_preferences(invalid)
+    assert service.load_preferences() == value
+
+
+@pytest.mark.parametrize("maps", [None, {"balanced": {}}, {"balanced": {}, "focused": []},
+                                  {"balanced": {}, "focused": {"1004": True}},
+                                  {"balanced": {}, "focused": {}, "unknown": {}}])
+def test_invalid_strategy_slot_maps_do_not_replace_previous_preferences(tmp_path, maps):
+    path = tmp_path / "user.sqlite3"
+    create_account(path, "fixture")
+    service = service_for(path, tmp_path / "static.sqlite3")
+    service.save_preferences({"other": "original"})
+    with pytest.raises(ValueError):
+        service.save_preferences({"slot_selection_version": 2, "selected_slots_by_strategy": maps})
+    assert service.load_preferences() == {"other": "original"}
 
 
 def test_atomic_recommendation_save_rejects_replaced_plan_and_keeps_original(tmp_path):

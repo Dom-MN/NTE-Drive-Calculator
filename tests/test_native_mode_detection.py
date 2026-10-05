@@ -48,7 +48,7 @@ def test_partial_native_fixture_does_not_block_ready_battle(tmp_path, domain_err
     assert checks["native_character"].state == CheckState.MISSING
     assert checks["native_inventory"].state != CheckState.AVAILABLE
     if domain_error:
-        assert checks["native_inventory"].state == CheckState.WAITING
+        assert checks["native_inventory"].state == CheckState.WAITING_LOGIN
         assert probe.native_inventory.handshake is True
         assert not probe.native_inventory.fault
     assert checks["history_analysis"].state == CheckState.MISSING
@@ -93,7 +93,7 @@ def test_formal_inventory_proof_is_distinct_from_raw_coverage(tmp_path):
     assert check.state == CheckState.AVAILABLE
     assert dict(check.facts)["complete"] is False and dict(check.facts)["source_coverage"] == "unknown"
     stale = replace(probe, native_inventory=replace(native, projection_complete=False))
-    assert next(row for row in policy.build_report(stale).features if row.feature == "native_inventory").state == CheckState.MISSING
+    assert next(row for row in policy.build_report(stale).features if row.feature == "native_inventory").state == CheckState.WAITING_LOGIN
 
 
 def test_supported_sparse_character_fields_do_not_claim_full_character_observation(tmp_path):

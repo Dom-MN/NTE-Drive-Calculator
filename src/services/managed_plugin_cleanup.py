@@ -22,7 +22,7 @@ class ManagedPluginInspection:
     dll_state: Literal["missing", "managed", "conflict", "unmanaged"]
     registry_state: Literal["absent", "owned", "conflict"]
     registered_workspace: str | None
-    game_running: bool
+    game_running: bool | None
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ def inspect_managed_plugin(
     *,
     game_executable_path: str | Path,
     mod_workspace_path: str | Path | None = None,
-    game_running: Callable[[], bool] | None = None,
+    game_running: Callable[[], bool | None] | None = None,
     inspect_legacy_proxy: bool = True,
 ) -> ManagedPluginInspection:
     """Inspect the game-local legacy filename and registration without hashing."""
@@ -75,7 +75,7 @@ def cleanup_managed_plugin(
     *,
     game_executable_path: str | Path,
     mod_workspace_path: str | Path | None = None,
-    game_running: Callable[[], bool] | None = None,
+    game_running: Callable[[], bool | None] | None = None,
     allow_unrecorded_workspace_adoption: bool = False,
     cleanup_legacy_proxy: bool = False,
 ) -> ManagedPluginCleanupResult:

@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QProgressDialog, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QProgressDialog, QPushButton, QWidget
 
 from src.features.inventory import equipment_assembly_controller as controller
 
@@ -115,3 +115,20 @@ def test_other_hotkey_owner_prevents_starting_a_competing_task(app, monkeypatch)
     start.assert_not_called()
     assert not owner.findChildren(QProgressDialog)
     owner.close()
+
+
+def test_compact_progress_keeps_status_and_stop_hint_readable(apply_session, app):
+    _owner, dialog, cancel = apply_session
+    long_status = "正在等待角色装配后取得完整背包观测；等待期间已保存的数据保持不变。"
+    dialog.setLabelText(long_status + "\n关闭此窗口或按 F12 停止后续装配。")
+    app.processEvents()
+    label = dialog.findChild(QLabel)
+    progress = dialog.findChild(QProgressBar)
+    assert long_status in label.text()
+    assert "F12" in label.text()
+    assert label.wordWrap()
+    assert label.isVisible()
+    assert progress.isVisible()
+    assert dialog.rect().contains(label.geometry())
+    assert dialog.rect().contains(progress.geometry())
+    assert not cancel.is_set()

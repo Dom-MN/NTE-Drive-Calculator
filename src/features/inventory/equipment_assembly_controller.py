@@ -11,7 +11,7 @@ from threading import Event
 from typing import Any
 
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtWidgets import QMessageBox, QProgressBar, QProgressDialog
+from PySide6.QtWidgets import QLabel, QMessageBox, QProgressBar, QProgressDialog
 
 from src.app.workers import WorkerThread
 from src.app.window_geometry import fit_dialog_to_available_screen
@@ -209,20 +209,24 @@ def _start_nte_core_equipment_apply(
         "show_progress_bar": True,
     }
     progress_dialog = QProgressDialog(
-        f"{progress_state['message']}\n{stop_hint}",
+        "",
         "",
         0,
         progress_state["total"],
         self,
     )
     progress_dialog.setWindowTitle("极速装配进度")
+    progress_label = QLabel(f"{progress_state['message']}\n{stop_hint}", progress_dialog)
+    progress_label.setWordWrap(True)
+    progress_label.setAlignment(Qt.AlignCenter)
+    progress_dialog.setLabel(progress_label)
     progress_dialog.setCancelButton(None)
     progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
     progress_dialog.setAutoClose(False)
     progress_dialog.setAutoReset(False)
     progress_dialog.setMinimumDuration(0)
     progress_dialog.setValue(0)
-    fit_dialog_to_available_screen(progress_dialog, QSize(540, 160))
+    fit_dialog_to_available_screen(progress_dialog, QSize(420, 120))
 
     progress_timer = QTimer(progress_dialog)
 

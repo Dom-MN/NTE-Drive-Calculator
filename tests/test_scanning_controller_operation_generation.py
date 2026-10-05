@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QWidget
 
 from src.app.workers import FullVisualScanParseWorkerThread, ScanWorkerThread
+from src.domain.work_mode import WorkMode
 from src.features.scanning.controller import ScanningController
 
 
@@ -32,6 +33,7 @@ class ScanningControllerOperationGenerationTests(TestCase):
         hotkeys = SimpleNamespace(start=Mock(), stop=Mock(), configuration=SimpleNamespace(stop="F12"))
         controller = ScanningController(
             app_context=context, dialog_parent=parent, minimize_window=lambda: None,
+            navigate=lambda _page: None, work_mode_provider=lambda: WorkMode.LOW,
             restore_window=lambda: None, activate_window=lambda: None,
             update_inventory_status=lambda: None, refresh_home=lambda: None,
             preferences_provider=lambda: {}, save_preferences=lambda: None,

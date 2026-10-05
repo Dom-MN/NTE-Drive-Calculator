@@ -32,7 +32,7 @@ from src.services.equipment_plugin_deployment import (
 )
 from src.services.managed_plugin_cleanup import cleanup_managed_plugin
 from src.services.mod_plugin_loading_service import ModPluginLoadingError, ModPluginLoadingWaiting
-from src.services.work_mode_diagnostics import detection_failure_detail
+from src.services.work_mode_diagnostics import detection_failure_detail, detection_failure_state
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,7 @@ def _has_cleanup_record(record: dict) -> bool:
 
 class WorkModeRuntime:
     def __init__(self, *, policy, native_session, loader, application_root: Path,
-                 config_dir: Path, game_running: Callable[[], bool] | None = None) -> None:
+                 config_dir: Path, game_running: Callable[[], bool | None] | None = None) -> None:
         self.policy, self.native_session, self.loader = policy, native_session, loader
         self.root, self.config_dir = application_root, config_dir
         self._lock = RLock()
@@ -379,7 +379,7 @@ class WorkModeRuntime:
         self.cleanup_detail = "已清理本程序组件及旧加载入口；未恢复历史 DLL 或加载配置。"
         self.invalidate()
 
-    def _automatic_deploy(self, running: bool) -> None:
+    def _automatic_deploy(self, running: bool | None) -> None:
         if self._auto_error:
             self.cleanup_detail = self._auto_error
             return
@@ -392,7 +392,7 @@ class WorkModeRuntime:
             return
         self._automatic_native_deploy(running)
 
-    def _automatic_native_deploy(self, running: bool) -> None:
+    def _automatic_native_deploy(self, running: bool | None) -> None:
         if self.policy.deployment_record.get("loading_method") == "loader":
             self._automatic_native_loader(running)
             return
@@ -401,8 +401,11 @@ class WorkModeRuntime:
             return
         if self._native_deployed is not None and self._native_deployed.files_compatible:
             return
-        if running:
-            self.cleanup_detail = "游戏运行中，原生组件更新等待游戏退出。"
+        if running is not False:
+            self.cleanup_detail = (
+                "游戏运行中，原生组件更新等待游戏退出。" if running
+                else "未能确认游戏已退出，自动部署等待核实；请重新检测。"
+            )
             return
         executable = self.policy.settings.game_executable
         if not executable or monotonic() - self._last_auto_attempt < 15:
@@ -538,8 +541,8 @@ class WorkModeRuntime:
             self.cleanup_detail = "Loader 已开始等待游戏；宿主、插件和采集连接仍需逐项检测。"
             return result
 
-    def _automatic_native_loader(self, running: bool) -> None:
-        if running:
+    def _automatic_native_loader(self, running: bool | None) -> None:
+        if running is not False:
             return
         if monotonic() - self._last_auto_attempt < 15:
             return
@@ -551,7 +554,7 @@ class WorkModeRuntime:
         except (EquipmentPluginDeploymentError, ModPluginLoadingError, PermissionError) as error:
             self._block_automatic_deployment("自动 Loader 启动失败：" + str(error))
 
-    def _inspect_component_files(self, *, path_valid: bool, running: bool) -> None:
+    def _inspect_component_files(self, *, path_valid: bool, running: bool | None) -> None:
         settings = self.policy.settings
         record = self.policy.deployment_record
         loader_hash = self.loader.active_payload_sha256
@@ -686,21 +689,28 @@ class WorkModeRuntime:
             equipment_supported = "equipment.execute.v1" in capabilities
             equipment_files = NativeFeatureProbe(files=files, supported=equipment_supported,
                 reason="" if equipment_supported else "packaged_capability_missing")
+            if self._auto_error:
+                update_state, update_detail = CheckState.FAULT, self._auto_error
+            elif not self._bundle or not self._bundle.ready:
+                update_state = CheckState.MISSING
+                update_detail = ("；".join(self._bundle.issues) if self._bundle else "") or "配套组件包尚未通过核对。"
+            elif settings.pending_cleanup:
+                update_state = CheckState.CLEANUP_PENDING
+                update_detail = self.cleanup_detail or "旧组件清理尚未完成，请先完成清理。"
+            elif current_package:
+                update_state, update_detail = CheckState.AVAILABLE, "当前配套组件已部署。"
+            else:
+                update_state = CheckState.MISSING
+                update_detail = "当前游戏内组件尚未部署或与组件包不兼容；请前往部署组件后重新检测。"
             probe = replace(local_probe,
-                component_update_state=(CheckState.FAULT if self._auto_error
-                                        else CheckState.MISSING if not self._bundle or not self._bundle.ready
-                                        else CheckState.CLEANUP_PENDING if settings.pending_cleanup
-                                        else CheckState.AVAILABLE if current_package else CheckState.WAITING),
-                component_update_detail=(self._auto_error or ("；".join(self._bundle.issues) if self._bundle and self._bundle.issues
-                                         else "当前配套组件已部署。" if current_package
-                                         else self.cleanup_detail or "等待部署或更新当前配套组件。")),
+                component_update_state=update_state, component_update_detail=update_detail,
                 game_path_valid=path_valid, game_running=running,
                 launcher_running=launcher_running, launcher_probe_error=launcher_error,
                 core_available=core_available,
                 native_load=native, **domain_files, native_battle=battle_files,
                 native_equipment=equipment_files, cleanup_detail=self.cleanup_detail, cleanup_state=self.cleanup_state,
             )
-            if not running:
+            if running is False:
                 if not preview:
                     self.native_session.close()
                 return probe
@@ -711,7 +721,11 @@ class WorkModeRuntime:
             try:
                 pipe = native_capture_game_pid() is not None
             except Exception as error:
-                return replace(probe, native_diagnostic=detection_failure_detail(error, record=allow_connect))
+                return replace(
+                    probe,
+                    native_diagnostic=detection_failure_detail(error, record=allow_connect),
+                    native_diagnostic_state=detection_failure_state(error),
+                )
             native = replace(native, pipe=pipe)
             values = {key: replace(value, pipe=pipe) for key, value in domain_files.items()}
             values["native_battle"] = replace(battle_files, pipe=pipe)
@@ -761,7 +775,11 @@ class WorkModeRuntime:
                     context = error.request_context if isinstance(error, NteCoreError) else None
                     handshake = True if context is not None and context.handshake_confirmed else None
                     values = {key: replace(getattr(probe, key), pipe=pipe, handshake=handshake) for key in values}
-                    probe = replace(probe, native_diagnostic=detection_failure_detail(error, record=allow_connect))
+                    probe = replace(
+                        probe,
+                        native_diagnostic=detection_failure_detail(error, record=allow_connect),
+                        native_diagnostic_state=detection_failure_state(error),
+                    )
             return replace(probe, **values)
 
     def request_close(self) -> None:

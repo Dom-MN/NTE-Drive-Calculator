@@ -126,7 +126,7 @@ def _replace_file(source: Path, target: Path, digest: str, require_idle, *, suff
 def deploy_native_component_files(
     *, application_root: str | Path, directory_path: str | Path,
     operation_guard: Callable[[str], None] | None,
-    game_running: Callable[[], bool] | None = None,
+    game_running: Callable[[], bool | None] | None = None,
     component_roles: tuple[str, ...] | None = None,
     expected_existing_files: Mapping[str, str | None] | None = None,
     cleanup_legacy_proxy: bool = False,
@@ -225,7 +225,7 @@ def deploy_native_component_files(
 def deploy_native_plugin(
     *, application_root: str | Path, game_executable_path: str | Path,
     operation_guard: Callable[[str], None] | None,
-    game_running: Callable[[], bool] | None = None,
+    game_running: Callable[[], bool | None] | None = None,
     expected_existing_files: Mapping[str, str | None] | None = None,
     cleanup_legacy_proxy: bool = False,
 ) -> NativePluginDeployment:
@@ -254,7 +254,7 @@ def deploy_native_plugin(
 
 def cleanup_native_component_files(
     *, directory_path: str | Path, managed_files: dict[str, str],
-    game_running: Callable[[], bool] | None = None,
+    game_running: Callable[[], bool | None] | None = None,
 ) -> NativePluginCleanupResult:
     probe = game_running or game_process_running
     if probe():
@@ -288,7 +288,7 @@ def cleanup_native_component_files(
 
 def cleanup_native_plugin(
     *, game_executable_path: str | Path, managed_files: dict[str, str],
-    game_running: Callable[[], bool] | None = None,
+    game_running: Callable[[], bool | None] | None = None,
 ) -> NativePluginCleanupResult:
     executable = Path(str(game_executable_path).strip().strip('"')).expanduser()
     if not executable.is_absolute() or executable.name.casefold() != GAME_EXECUTABLE_NAME.casefold():
@@ -299,7 +299,7 @@ def cleanup_native_plugin(
 
 def cleanup_manual_native_plugin(
     *, application_root: str | Path, game_executable_path: str | Path,
-    managed_files: dict[str, str], game_running: Callable[[], bool] | None = None,
+    managed_files: dict[str, str], game_running: Callable[[], bool | None] | None = None,
 ) -> NativePluginCleanupResult:
     """Explicit cleanup removes fixed component filenames in the selected directory."""
     probe = game_running or game_process_running

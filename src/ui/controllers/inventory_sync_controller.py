@@ -283,7 +283,10 @@ def _on_inventory_sync_state(self, notification):
     self.home_sync_detail.setText(detail)
     self.auto_sync_controller.inventory_state_changed(state)
     if role_changed or (state.phase=="listening" and state.last_snapshot_id is not None):
-        self._refresh_home()
+        if hasattr(self, "dashboard_controller"):
+            self.dashboard_controller.refresh(version=(
+                notification.run_token, state.last_snapshot_id, state.character_sync_revision,
+            ))
 
 # ── Page: Execute
 

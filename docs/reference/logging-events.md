@@ -37,7 +37,7 @@ duration；取消、过期丢弃、待确认和降级使用独立事件，不伪
 | 同步 | `inventory_sync.*` | 连接、候选、稳定化、提交、运行时状态增量、保留策略和停止原因 |
 | 扫描 | `scanning.*` | 冻结依赖、捕获驱动、分页、解析、提交与扫描后状态管理 |
 | 计算 | `allocation.*` | 冻结请求、求解、目标槽位、保存、失败和过期丢弃 |
-| 页面性能 | `PERF allocation.catalog_read`、`PERF allocation.catalog_apply`、`PERF equipment.render` | 目录读取、主线程应用和配装控件重建耗时；只记耗时、模式与是否跳过，不记角色名、路径或方案内容。 |
+| 页面性能 | `PERF allocation.catalog_read`、`PERF allocation.catalog_validate`、`PERF allocation.catalog_apply`、`PERF basic_weight.form_apply`、`PERF home.summary_apply`、`PERF ui.event_loop_lag`、`PERF equipment.render` | 分开记录后台读取/校验与主线程应用。事件循环每 250 ms 采样，仅额外延迟达到 250 ms 时记录，日志间隔至少 5 秒；只记耗时、页面 key 和是否复用，不记角色名、路径或方案内容。 |
 | 配装槽位 | `loadout_slot.*` | 创建、重命名、归档、当前方案切换与锁冲突 |
 | 角色 | `role.*` | 索引/详情、配置、替换、动态权重与 dirty 决策 |
 | 基础权重 | `basic_weight.*` | 账号权重、自建角色与底盘保存/重置 |

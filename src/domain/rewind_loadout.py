@@ -86,12 +86,17 @@ def default_slot(rows, explicit_slot_id) -> RewindSlotReference | None:
                                          row.sort_order, row.reference.slot_id)).reference
 
 
-def read_slot_preferences(preferences) -> dict[int, int | None]:
-    raw = preferences.get("selected_slots")
+def read_slot_preferences(preferences, *, strategy="balanced") -> dict[int, int | None]:
+    version = preferences.get("slot_selection_version")
+    if type(version) is int and version == 2:
+        maps = preferences.get("selected_slots_by_strategy")
+        raw = maps.get(strategy) if isinstance(maps, Mapping) else None
+    else:
+        # Seed each strategy separately from the legacy shared choices.
+        raw = preferences.get("selected_slots")
     if not isinstance(raw, Mapping):
         return {}
-    version = preferences.get("slot_selection_version")
-    return {identifier: value if type(version) is int and version == 1 and type(value) is int and value > 0 else None
+    return {identifier: value if type(version) is int and version in {1, 2} and type(value) is int and value > 0 else None
             for key, value in raw.items() if (identifier := positive_id(key)) is not None}
 
 

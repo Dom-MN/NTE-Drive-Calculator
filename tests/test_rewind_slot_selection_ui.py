@@ -167,12 +167,14 @@ class UiService:
         self.saved = dict(value)
 
 
-def recommendation_dialog(monkeypatch, **kwargs):
+def recommendation_dialog(monkeypatch, *, preferences=None, **kwargs):
     from src.features.toolbox import page
     monkeypatch.setattr(page.QTimer, "singleShot", lambda *_: None)
     service = UiService()
     # Not a real shape: avoid static I/O and keep only the persistent fact under test.
     service.saved["saved_rewind_shape_ids"] = []
+    if preferences is not None:
+        service.saved.update(preferences)
     dialog = page._RewindRecommendationDialog(service, None, **kwargs)
     role = role_fixture()
     dialog._on_roles_loaded((role,))
@@ -182,37 +184,71 @@ def recommendation_dialog(monkeypatch, **kwargs):
 def test_recommendation_has_no_manual_catalog_refresh_button(application, monkeypatch):
     dialog, _, role = recommendation_dialog(monkeypatch)
     assert dialog.findChild(QPushButton, "rewindRefreshCatalog") is None
-    assert dialog._selected_slots[role.character_id] == role.slots[0].reference
+    for slots in dialog._selected_slots_by_strategy.values():
+        assert slots[role.character_id] == role.slots[0].reference
     dialog.reject()
 
 
-def test_overall_cancel_keeps_shared_mapping_and_confirm_updates_both_summaries(application, monkeypatch):
+@pytest.mark.parametrize("main", (False, True))
+def test_role_confirmation_and_cancel_only_affect_the_selected_strategy(application, monkeypatch, main):
     dialog, service, role = recommendation_dialog(monkeypatch)
-    dialog._target_character_ids = dialog._main_character_ids = {1004}
-    before = dict(dialog._selected_slots)
+    other = role_fixture(1005, "达芙蒂尔")
+    dialog._on_roles_loaded((role, other))
+    dialog._target_character_ids = {1004}
+    dialog._main_character_ids = {1005}
+    before = {key: dict(value) for key, value in dialog._selected_slots_by_strategy.items()}
+    strategy = "focused" if main else "balanced"
+    untouched = "balanced" if main else "focused"
 
     def simulate_draft(popup):
         popup._slots[1004] = role.slots[1].reference
         return QDialog.Rejected
 
     monkeypatch.setattr(_RoleSelectionDialog, "exec", simulate_draft)
-    dialog._choose_target_roles()
-    assert dialog._selected_slots == before
-    assert "selected_slots" not in service.saved
+    dialog._choose_roles(main)
+    assert dialog._selected_slots_by_strategy == before
+    assert dialog._target_character_ids == {1004}
+    assert dialog._main_character_ids == {1005}
+    assert "selected_slots_by_strategy" not in service.saved
 
     def confirm(popup):
+        for card, identifier, _ in popup._cards:
+            card.blockSignals(True)
+            card.setChecked(identifier == 1004)
+            card.blockSignals(False)
         popup._slots[1004] = role.slots[1].reference
         return QDialog.Accepted
 
     monkeypatch.setattr(_RoleSelectionDialog, "exec", confirm)
-    dialog._choose_main_roles()
-    assert dialog._selected_slots[1004] == role.slots[1].reference
+    dialog._choose_roles(main)
+    assert dialog._selected_slots_by_strategy[strategy][1004] == role.slots[1].reference
+    assert dialog._selected_slots_by_strategy[untouched] == before[untouched]
     assert dialog._target_summary.text() == role.name
-    assert dialog._main_summary.text() == role.name
-    assert dialog._target_summary.toolTip() == role.name
-    assert dialog._main_summary.toolTip() == role.name
-    assert service.saved["selected_slots"]["1004"] == 2
+    assert dialog._main_summary.text() == (role.name if main else other.name)
+    assert service.saved["target_character_ids"] == [1004]
+    assert service.saved["main_character_ids"] == ([1004] if main else [1005])
+    assert service.saved["selected_slots_by_strategy"][strategy]["1004"] == 2
+
+    # Confirm again without changing anything, then clear only this side.
+    monkeypatch.setattr(_RoleSelectionDialog, "exec", lambda popup: QDialog.Accepted)
+    dialog._choose_roles(main)
+    assert service.saved["main_character_ids"] == ([1004] if main else [1005])
+    def clear(popup):
+        popup._set_visible_checked(False)
+        return QDialog.Accepted
+    monkeypatch.setattr(_RoleSelectionDialog, "exec", clear)
+    dialog._choose_roles(main)
+    assert service.saved["target_character_ids"] == ([1004] if main else [])
+    assert service.saved["main_character_ids"] == ([] if main else [1005])
     dialog.reject()
+    from src.features.toolbox.page import _RewindRecommendationDialog
+    reopened = _RewindRecommendationDialog(service, None)
+    reopened._on_roles_loaded((role, other))
+    assert reopened._target_character_ids == ({1004} if main else set())
+    assert reopened._main_character_ids == (set() if main else {1005})
+    assert reopened._selected_slots_by_strategy[strategy][1004] == role.slots[1].reference
+    assert reopened._selected_slots_by_strategy[untouched] == before[untouched]
+    reopened.reject()
 
 
 def test_changed_input_disables_old_result_save_and_ignores_old_callback(application, monkeypatch):
@@ -223,12 +259,78 @@ def test_changed_input_disables_old_result_save_and_ignores_old_callback(applica
     dialog._analysis_token = old_token
     dialog._generated_analysis = result
     dialog._target_character_ids = {1004}
-    dialog._selected_slots[1004] = role.slots[1].reference
+    dialog._selected_slots_by_strategy["balanced"][1004] = role.slots[1].reference
     dialog._save_preferences()
     assert dialog._recommendation_invalidated
     assert not dialog._save_plan_button.isEnabled()
     dialog._on_analysis_ready(old_token, result)
     assert dialog._recommendation_invalidated
+    dialog.reject()
+
+
+def test_legacy_slots_seed_both_strategies_then_remain_independent_after_reopen(application, monkeypatch):
+    from src.features.toolbox.page import _RewindRecommendationDialog
+
+    preferences = {"target_character_ids": [1004], "main_character_ids": [1004],
+                   "slot_selection_version": 1, "selected_slots": {"1004": 2}}
+    dialog, service, role = recommendation_dialog(monkeypatch, preferences=preferences)
+    for slots in dialog._selected_slots_by_strategy.values():
+        assert slots[1004] == role.slots[1].reference
+
+    def confirm(popup):
+        popup._slots[1004] = role.slots[0].reference
+        return QDialog.Accepted
+
+    monkeypatch.setattr(_RoleSelectionDialog, "exec", confirm)
+    dialog._choose_target_roles()
+    assert service.saved["slot_selection_version"] == 2
+    assert "selected_slots" not in service.saved
+    assert service.saved["unrelated_setting"] == 1
+    assert service.saved["target_character_ids"] == service.saved["main_character_ids"] == [1004]
+    assert service.saved["selected_slots_by_strategy"] == {"balanced": {"1004": 1}, "focused": {"1004": 2}}
+    dialog.reject()
+    reopened = _RewindRecommendationDialog(service, None)
+    reopened._on_roles_loaded((role,))
+    assert reopened._selected_slots_by_strategy["balanced"][1004] == role.slots[0].reference
+    assert reopened._selected_slots_by_strategy["focused"][1004] == role.slots[1].reference
+    reopened.reject()
+
+
+def test_generation_uses_only_current_strategy_roles_and_slots(application, monkeypatch):
+    from src.features.toolbox import rewind_selection_ui
+
+    dialog, service, role = recommendation_dialog(monkeypatch)
+    other = role_fixture(1005, "达芙蒂尔")
+    dialog._on_roles_loaded((role, other))
+    dialog._target_character_ids = {1004, 1005}
+    dialog._main_character_ids = {1004}
+    dialog._selected_slots_by_strategy["balanced"][1004] = role.slots[0].reference
+    dialog._selected_slots_by_strategy["focused"][1004] = role.slots[1].reference
+    requests = []
+    monkeypatch.setattr(service, "analyze_for_targets", lambda **kwargs: requests.append(kwargs), raising=False)
+
+    class Signal:
+        def connect(self, callback):
+            pass
+
+    class ImmediateWorker:
+        def __init__(self, *, target, parent):
+            self.target = target
+            self.result_ready = Signal()
+            self.error = Signal()
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(rewind_selection_ui, "WorkerThread", ImmediateWorker)
+    monkeypatch.setattr(dialog, "_attach_read_worker", lambda worker: None)
+    monkeypatch.setattr(dialog, "_render_loading", lambda: None)
+    dialog._strategy_key = "balanced"
+    dialog._refresh_analysis()
+    dialog._strategy_key = "focused"
+    dialog._refresh_analysis()
+    assert set(requests[0]["selected_slots"]) == {role.slots[0].reference, other.slots[0].reference}
+    assert requests[1]["selected_slots"] == (role.slots[1].reference,)
     dialog.reject()
 
 
@@ -273,7 +375,7 @@ def test_single_slot_can_correct_an_invalid_saved_choice_without_a_popup(applica
 def test_unselected_defaults_are_not_saved_as_explicit_choices_and_clearing_starts_manual_draft(application, monkeypatch):
     dialog, service, _ = recommendation_dialog(monkeypatch)
     dialog._save_preferences()
-    assert service.saved["selected_slots"] == {}
+    assert service.saved["selected_slots_by_strategy"] == {"balanced": {}, "focused": {}}
     dialog._generated_analysis = object()
     dialog._recommendation_invalidated = True
     dialog._clear_rewind_slots()

@@ -80,7 +80,7 @@ class AutoSyncController(QObject):
                 return 'checking_game'
             if self._probe.native_load.files is False:
                 return 'waiting_game_exit' if self._probe.game_running else 'waiting_deployment'
-            if not self._probe.game_running:
+            if self._probe.game_running is False:
                 return 'waiting_game'
             if not (self._probe.core_available and self._probe.native_inventory.handshake):
                 return 'waiting_component'
@@ -98,7 +98,7 @@ class AutoSyncController(QObject):
     def observe_probe(self, probe):
         self._probe = probe
         self._probe_context = self._context()
-        if self.policy.allowed("native_sync") and not probe.game_running:
+        if self.policy.allowed("native_sync") and probe.game_running is False:
             self._stop_inventory()
         self.refresh()
 
@@ -226,7 +226,7 @@ class AutoSyncController(QObject):
             identity = self._process
         else:
             probe = self._probe
-            ready = bool(self._probe_context == key and probe and probe.game_running
+            ready = bool(self._probe_context == key and probe and probe.game_running is not False
                          and not self.policy.settings.pending_cleanup
                          and probe.native_load.files is not False
                          and probe.core_available and probe.native_inventory.handshake)

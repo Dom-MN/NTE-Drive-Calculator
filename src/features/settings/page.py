@@ -187,7 +187,7 @@ def _build_capture_diagnostics_card(window):
 def _build_environment_card(window):
     card = window._card("环境配置")
     window._environment_configuration_card = card
-    npcap_title = QLabel("Npcap · 数据同步、战报采集")
+    npcap_title = QLabel("Npcap · 背包同步、基础战报")
     npcap_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(npcap_title)
     npcap_row = QHBoxLayout()
@@ -348,7 +348,7 @@ def build_settings_page(
     protagonist_row = QHBoxLayout()
     protagonist_row.addWidget(QLabel("主角游戏名:"))
     window._protagonist_game_name_edit = QLineEdit()
-    window._protagonist_game_name_edit.setPlaceholderText("零在游戏内显示的玩家名字")
+    window._protagonist_game_name_edit.setPlaceholderText("仅自动装配需要")
     protagonist_name_width = (
         window._protagonist_game_name_edit.fontMetrics().horizontalAdvance("零" * 8) + 36
     )

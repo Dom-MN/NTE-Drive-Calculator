@@ -131,6 +131,13 @@ class NativePluginDeploymentTests(unittest.TestCase):
                 operation_guard=None, game_running=lambda: False)
         self.assertFalse((self.root / 'backups').exists())
 
+    def test_unconfirmed_process_state_still_deploys_for_explicit_action(self):
+        self.running = None
+        result = self.deploy()
+        self.assertEqual(2, len(result.managed_files))
+        for relative in module.NATIVE_PLUGIN_DEPLOYMENT_PATHS.values():
+            self.assertTrue((self.game / relative).is_file())
+
     def test_write_failure_removes_new_files_and_retry_succeeds(self):
         self.populate_old()
         actual_replace = module.os.replace

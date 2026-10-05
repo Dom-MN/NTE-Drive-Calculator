@@ -67,6 +67,31 @@ class WorkModeRuntimeTests(unittest.TestCase):
         self.runtime._bundle = self.bundle_value
         self.runtime._native_deployed = self.deployed_value
 
+    def test_missing_deployment_does_not_reuse_completed_cleanup_message(self):
+        self.policy.select_mode("medium", risk_confirmed=True)
+        self.policy.set_cleanup_pending(False)
+        self.runtime.cleanup_detail = "旧代理与本程序拥有的加载登记已清理。"
+        with patch.object(self.runtime, "_inspect_component_files"), patch.object(self.runtime, "_automatic_deploy"):
+            self.runtime._bundle = self.bundle_value
+            self.runtime._native_deployed = self.deployed_value
+            probe = self.runtime.tick(preview=True)
+        self.assertEqual(probe.component_update_state, CheckState.MISSING)
+        self.assertIn("尚未部署", probe.component_update_detail)
+        self.assertNotIn("已清理", probe.component_update_detail)
+
+    def test_pending_cleanup_is_not_described_as_completed_deployment(self):
+        self.policy.select_mode("medium", risk_confirmed=True)
+        self.policy.set_cleanup_pending(True)
+        self.deployed_value.files_compatible = True
+        self.runtime.cleanup_detail = "旧组件尚待清理。"
+        with patch.object(self.runtime, "_inspect_component_files"), patch.object(self.runtime, "_automatic_deploy"):
+            self.runtime._bundle = self.bundle_value
+            self.runtime._native_deployed = self.deployed_value
+            probe = self.runtime.tick(preview=True)
+        self.assertEqual(probe.component_update_state, CheckState.CLEANUP_PENDING)
+        self.assertEqual(probe.component_update_detail, "旧组件尚待清理。")
+        self.assertNotIn("已部署", probe.component_update_detail)
+
     def test_preflight_preview_does_not_clean_deploy_or_close_session(self):
         self.enable_auto()
         self.policy.set_cleanup_pending(True)
@@ -89,6 +114,7 @@ class WorkModeRuntimeTests(unittest.TestCase):
         with patch.object(self.runtime, "_inspect_component_files"), patch.object(self.runtime, "_automatic_deploy"):
             probe = self.runtime.tick(allow_connect=True)
         self.assertIn("native.snapshot.status", probe.native_diagnostic)
+        self.assertEqual(probe.native_diagnostic_state, CheckState.WARNING)
         self.assertTrue(probe.native_load.files)
         self.assertTrue(probe.native_inventory.pipe)
         self.assertIsNone(probe.native_inventory.handshake)
@@ -128,6 +154,7 @@ class WorkModeRuntimeTests(unittest.TestCase):
         with patch.object(self.runtime, "_inspect_component_files"), patch.object(self.runtime, "_automatic_deploy"):
             probe = self.runtime.tick(allow_connect=True)
         self.assertIn("权限", probe.native_diagnostic)
+        self.assertEqual(probe.native_diagnostic_state, CheckState.FAULT)
         self.assertNotIn("private text", probe.native_diagnostic)
         self.assertTrue(probe.native_load.files)
         self.assertIsNone(probe.native_inventory.pipe)

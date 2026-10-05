@@ -211,23 +211,12 @@ class PerformanceCard(QWidget):
         row.addWidget(details)
         row.addStretch()
         layout.addLayout(row)
-        self.status = QLabel()
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
         controller.changed.connect(self.render)
         self.render()
 
     def render(self):
         value = self.controller.snapshot()
         self.toggle.setChecked(value.get("overlay", False))
-        overlay = {"off": "悬浮窗已关闭", "closing": "正在关闭显示", "visible": "悬浮窗已绘制", "waiting": "已请求显示，等待游戏绘制",
-                   "unsupported": "当前组件不支持性能悬浮窗，需要配套更新", "rejected": "当前游戏版本不支持性能绘制",
-                   "unconfirmed": "悬浮窗状态未确认，等待连接恢复"}.get(value.get("overlay_state"), "等待组件")
-        summary = "四项悬浮窗及其日志已关闭。" if not value["enabled"] and value.get("overlay_state") == "off" else overlay + "；" + status_text(value)
-        frame_error = value.get("frames", {}).get("frame_error")
-        if value["enabled"] and frame_error:
-            summary += "；" + frame_error
-        self.status.setText(value.get("preference_error") or summary + trace_status_suffix(value))
         if self.dialog and self.dialog.isVisible():
             self.dialog.render(value)
 

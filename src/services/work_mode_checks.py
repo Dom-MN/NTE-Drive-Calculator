@@ -6,6 +6,14 @@ from src.domain.work_mode import (
 from src.integrations.nte_core_protocol import (
     NATIVE_CAPTURE_TRANSIENT_REASONS, NteCoreRpcError, native_capture_readiness_message,
 )
+from src.services.sync_enable_preflight import decide_sync_enable
+
+
+_LOGIN_WAIT_DETAIL = "请登录并进入游戏场景；已进入时请等待完整数据同步，已有数据保持不变。"
+_NATIVE_DATA_FAULTS = frozenset({
+    "NATIVE_MAPPING_UNSUPPORTED", "NATIVE_SNAPSHOT_INCOMPLETE", "NATIVE_CAPABILITY_MISSING",
+    "NATIVE_SNAPSHOT_UNAVAILABLE", "PROTOCOL_VERSION_MISMATCH", "HANDSHAKE_REQUIRED",
+})
 
 
 def _native_check(
@@ -39,16 +47,22 @@ def _native_check(
                 "配套组件包尚未通过核对，暂不能部署。" if probe.core_available is False else
                 "正在核对配套组件包。", "recheck",
             )
-        return result(CheckState.MISSING, "尚未核对兼容的游戏内组件。", "manual_deploy", "recheck")
+        return result(CheckState.MISSING, "游戏内组件未部署或与当前组件包不兼容；请前往部署组件后重新检测。", "manual_deploy", "recheck")
     if feature == "native_load":
         return result(CheckState.AVAILABLE, "已核对组件文件；手动管理可用。")
     if probe.core_available is not True:
-        return result(CheckState.MISSING, "采集组件缺失或尚未核对兼容性。", "recheck")
-    if not probe.game_running:
+        return result(CheckState.MISSING if probe.core_available is False else CheckState.WAITING,
+                      "采集组件缺失。" if probe.core_available is False else "正在核对采集组件兼容性。", "recheck")
+    if probe.game_running is False:
         return result(CheckState.WAITING, "等待启动游戏。", "recheck")
+    if probe.game_running is None:
+        return result(CheckState.WAITING, "游戏进程状态尚未确认，请重新检测。", "recheck")
     if probe.native_diagnostic:
         return FeatureCheck(
-            feature, label, CheckState.WAITING,
+            feature, label, (
+                CheckState.WAITING_LOGIN
+                if probe.native_diagnostic_state == CheckState.WAITING_LOGIN else CheckState.WAITING
+            ),
             "本次未完成检测；共同失败原因见“原生连接与业务检测”，不代表本项已单独确认故障。",
             ("recheck",), facts + (("inspection_incomplete", True),),
         )
@@ -58,9 +72,15 @@ def _native_check(
         return result(CheckState.FAULT, "管道存在，但握手未通过兼容性检查。", "recheck")
     if native.handshake is None:
         return result(CheckState.WAITING, "管道存在，等待实际握手核对。", "recheck")
-    if native.supported is not True:
-        return result(CheckState.MISSING, "握手已通过，尚未确认此项业务能力。", "recheck")
+    if native.supported is None:
+        return result(CheckState.WAITING, "握手已通过，正在核对本项业务能力。", "recheck")
+    if native.supported is False:
+        return result(CheckState.MISSING, "当前组件未提供本项业务能力，请核对配套组件版本。", "recheck")
+    if native.reason in _NATIVE_DATA_FAULTS:
+        return result(CheckState.FAULT, "本项数据或协议校验失败，请核对配套组件并重新检测。", "recheck")
     if native.ready is not True and native.reason in {"not_ready", "source_changed"}:
+        if feature == "native_inventory":
+            return result(CheckState.WAITING_LOGIN, _LOGIN_WAIT_DETAIL, "recheck")
         return result(CheckState.WAITING, "此域尚未就绪或刷新期间来源发生变化，请重新检测。", "recheck")
     if native.ready is not True and native.reason in (
         NATIVE_CAPTURE_TRANSIENT_REASONS | {"sdk_unavailable", "hook_unavailable"}
@@ -68,7 +88,11 @@ def _native_check(
         message = native_capture_readiness_message(NteCoreRpcError({
             "code": -32001, "message": "not_ready", "data": {"reason": native.reason},
         }))
-        state = CheckState.WAITING if native.reason in NATIVE_CAPTURE_TRANSIENT_REASONS else CheckState.FAULT
+        state = (CheckState.WAITING_LOGIN if native.reason in {
+            "world_unavailable", "controller_unavailable", "pawn_unavailable",
+        } else CheckState.WAITING if native.reason in NATIVE_CAPTURE_TRANSIENT_REASONS else CheckState.FAULT)
+        if state == CheckState.WAITING_LOGIN:
+            message += "；请登录并进入游戏场景后重新检测。"
         return result(state, message, "recheck")
     if feature == "native_inventory" and native.projection_complete is True:
         return result(CheckState.AVAILABLE, "本次完整背包字段已校验；保存进度见首页背包同步。")
@@ -93,24 +117,28 @@ def _native_check(
     if needs_snapshot and (native.complete is False or (
         native.snapshot is True and native.source_coverage != "complete"
     )):
-        return result(CheckState.MISSING, native.reason or "当前仅有部分观察，来源覆盖尚未证明完整，不能用于正式同步。", "recheck")
+        return result(CheckState.WAITING_LOGIN, "当前仅有部分观察，尚未取得完整数据。" + _LOGIN_WAIT_DETAIL, "recheck")
     if needs_snapshot and native.snapshot is not True:
-        return result(CheckState.WAITING, "等待完整业务快照；已有增量不能替代完整快照。", "recheck")
+        return result(CheckState.WAITING_LOGIN, "等待完整业务快照。" + _LOGIN_WAIT_DETAIL, "recheck")
     if needs_snapshot and native.complete is not True:
-        return result(CheckState.MISSING, native.reason or "已收到数据，但尚未确认业务完整性。", "recheck")
+        return result(CheckState.WAITING_LOGIN, "已收到数据，完整性尚待确认。" + _LOGIN_WAIT_DETAIL, "recheck")
     if native.ready is not True:
-        return result(CheckState.MISSING, native.reason or "组件声明了此项能力，但业务尚未就绪。", "recheck")
+        return result(CheckState.WARNING, "组件已声明本项能力，但业务尚未就绪；请稍候重新检测。", "recheck")
     return result(CheckState.AVAILABLE, "此项业务所需条件已就绪。")
 
 
-def build_work_mode_report(settings: WorkModeSettings, probe: WorkModeProbe) -> WorkModeReport:
+def build_work_mode_report(
+    settings: WorkModeSettings, probe: WorkModeProbe, *, deployment_record: dict | None = None,
+) -> WorkModeReport:
     allowed = allowed_capabilities(settings)
     items = [FeatureCheck("local", "本地计算与已保存数据", CheckState.AVAILABLE, "可使用本地计算与已保存数据。")]
     items.append(FeatureCheck(
         "history_analysis", "历史战报分析",
-        CheckState.AVAILABLE if probe.analysis_available else CheckState.MISSING,
+        CheckState.AVAILABLE if probe.analysis_available is True else (
+            CheckState.MISSING if probe.analysis_available is False else CheckState.WAITING),
         "已核对兼容分析组件，可离线分析历史战报。" if probe.analysis_available else
-        "缺少或尚未核对兼容分析组件；请安装完整 Calc 组件包后重新检测。", ("recheck",),
+        "缺少兼容分析组件；请安装完整 Calc 组件包后重新检测。" if probe.analysis_available is False else
+        "尚未完成分析组件核对，请重新检测。", ("recheck",),
     ))
     if Capability.NATIVE_LOAD in allowed:
         items.append(FeatureCheck(
@@ -130,10 +158,11 @@ def build_work_mode_report(settings: WorkModeSettings, probe: WorkModeProbe) -> 
     if Capability.INTERFACE_INPUT in allowed:
         items.append(FeatureCheck(
             "interface_input", "鼠标与手柄界面操作",
-            CheckState.MISSING if probe.input_available is not True else (
+            CheckState.WAITING if probe.input_available is None else CheckState.MISSING if probe.input_available is False else (
                 CheckState.AVAILABLE if probe.game_running else CheckState.WAITING
             ), "界面输入已就绪。" if probe.input_available and probe.game_running else (
-                "等待启动游戏。" if probe.input_available else "界面输入条件缺失或尚未检查。"
+                "等待启动游戏。" if probe.input_available else
+                "界面输入依赖缺失。" if probe.input_available is False else "界面输入条件尚未检查。"
             ), ("recheck",),
         ))
     if Capability.PACKET_CAPTURE in allowed:
@@ -151,22 +180,25 @@ def build_work_mode_report(settings: WorkModeSettings, probe: WorkModeProbe) -> 
         if probe.packet_fault:
             state, detail, actions = CheckState.FAULT, probe.packet_fault, ("recheck",)
         elif probe.core_available is not True:
-            state, detail, actions = CheckState.MISSING, "采集组件缺失或尚未核对。", ("recheck",)
+            state = CheckState.MISSING if probe.core_available is False else CheckState.WAITING
+            detail, actions = "采集组件缺失。" if probe.core_available is False else "采集组件尚未核对。", ("recheck",)
         elif probe.npcap_available is not True:
             state, detail, actions = npcap_state, "抓包依赖尚未就绪，请按上方 Npcap 检测结果处理。", ("recheck",)
         elif not probe.packet_listening:
             state, detail, actions = CheckState.WAITING, "等待启动抓包监听；应在登录前监听。", ("recheck",)
-        elif not probe.game_running or not probe.logged_in:
-            state, detail = CheckState.WAITING, "监听已启动，等待游戏登录和完整数据。"
+        elif probe.game_running is not True:
+            state, detail = CheckState.WAITING, "监听已启动，等待游戏进程就绪。"
+        elif not probe.logged_in:
+            state, detail = CheckState.WAITING_LOGIN, "监听已启动，请登录进入游戏，等待完整数据。"
         elif not probe.packet_snapshot:
-            state, detail = CheckState.WAITING, "等待完整登录数据；晚启动可能需要重新登录，增量不视为完整。"
+            state, detail = CheckState.WAITING_LOGIN, "等待完整登录数据；晚启动可能需要重新登录，增量不视为完整。"
         items.append(FeatureCheck("packet_capture", "抓包同步", state, detail, actions, (
             ("npcap", probe.npcap_available), ("listening", probe.packet_listening),
             ("snapshot", probe.packet_snapshot),
         )))
     if probe.native_diagnostic and Capability.NATIVE_SYNC in allowed:
         items.append(FeatureCheck(
-            "native_connection", "原生连接与业务检测", CheckState.FAULT,
+            "native_connection", "原生连接与业务检测", probe.native_diagnostic_state or CheckState.FAULT,
             probe.native_diagnostic, ("recheck",),
             (("game_running", probe.game_running), ("core_available", probe.core_available)),
         ))
@@ -188,4 +220,7 @@ def build_work_mode_report(settings: WorkModeSettings, probe: WorkModeProbe) -> 
         ):
             items.append(_native_check(feature, label, getattr(probe, feature), probe, needs_snapshot=True,
                                        external_provider_allowed=settings.mode == WorkMode.DEVELOPER))
-    return WorkModeReport(settings.mode, tuple(items))
+    return WorkModeReport(
+        settings.mode, tuple(items),
+        sync_enable_ready=decide_sync_enable(settings, deployment_record or {}, probe).ready,
+    )

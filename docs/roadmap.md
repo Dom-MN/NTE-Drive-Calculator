@@ -143,6 +143,10 @@ Integration 与账号库。路线图条目只有在实现、迁移、调用方�
 
 ## 性能监控验收
 
+Calc 页面响应性本轮代码已接入；隔离专项和前后对比见[响应性验证记录](validation/ui-responsiveness.md)，
+真实同步、三主题和混合 DPI 的整应用人工验收仍待完成，边界见[优化方案](roadmap/ui-responsiveness.md)。
+本机 UI 响应性与下述游戏性能指标分别验证。
+
 指标和覆盖规则见[性能指标契约](reference/performance-metrics.md)。源码包含四项悬浮窗控制、呈现帧统计、
 原生事件分发及 HUD 的去重计时；配套 Core/DLL 已成套晋升并通过隔离二进制验证，仍待真实 Windows 验收。
 组件耗时尚未覆盖独立 User 插件/宿主的全部入口；需逐入口登记线程与嵌套关系、接入统一计时器并做运行验证，

@@ -15,6 +15,7 @@ from src.integrations.nte_core_protocol import (
 )
 from src.services.work_mode_checks import build_work_mode_report
 from src.services.work_mode_diagnostics import detection_failure_detail
+from src.services.work_mode_diagnostics import detection_failure_state
 
 
 def test_known_identity_failure_has_actionable_reason():
@@ -30,6 +31,21 @@ def test_timeout_keeps_method_and_duration_without_claiming_handshake_failed():
     detail = detection_failure_detail(NteCoreTimeoutError('native.snapshot.status', 12))
     assert 'native.snapshot.status' in detail and '12' in detail
     assert '握手失败' not in detail
+    assert detection_failure_state(NteCoreTimeoutError('native.snapshot.status', 12)) == CheckState.WARNING
+
+
+def test_protocol_and_mapping_failures_remain_actionable():
+    error = NteCoreRpcError({'code': -32000, 'data': {'domain_code': 'NATIVE_MAPPING_UNSUPPORTED'}})
+    assert detection_failure_state(error) == CheckState.FAULT
+
+
+def test_busy_and_game_readiness_are_not_reported_as_hard_failures():
+    busy = NteCoreRpcError({'code': -32000, 'data': {'domain_code': 'REQUEST_IN_PROGRESS'}})
+    waiting = NteCoreRpcError({
+        'code': -32001, 'message': 'not_ready', 'data': {'reason': 'pawn_unavailable'},
+    })
+    assert detection_failure_state(busy) == CheckState.WARNING
+    assert detection_failure_state(waiting) == CheckState.WAITING_LOGIN
 
 
 @pytest.mark.parametrize('code,reason', [

@@ -173,7 +173,13 @@ class RoleCatalogTests(unittest.TestCase):
         scroll = QScrollArea()
         self.addCleanup(scroll.close)
         with patch.object(role_shell, "_role_controller", return_value=controller):
-            role_shell._populate_role_tab(window, scroll, 1042)
+            role_shell._render_role_tab(window, scroll, 1042, detail)
+            from PySide6.QtTest import QTest
+            for _ in range(100):
+                if scroll.property("loaded"):
+                    break
+                QTest.qWait(10)
+            self.assertTrue(scroll.property("loaded"))
         editor = window._official_role_editors[1042]
         editor["growth"].setValue(70)
         self.assertIn(1042, window._official_role_dirty_ids)

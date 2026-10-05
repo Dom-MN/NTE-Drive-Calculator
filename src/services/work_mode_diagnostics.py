@@ -5,6 +5,8 @@ from concurrent.futures import CancelledError
 import math
 from pathlib import Path
 
+from src.domain.work_mode import CheckState
+
 from src.integrations.nte_core_protocol import (
     NATIVE_CAPTURE_TRANSIENT_REASONS, NteCoreError, NteCoreNotFoundError, NteCoreProcessError,
     NteCoreProtocolError, NteCoreRpcError, NteCoreTimeoutError,
@@ -62,6 +64,35 @@ _PROCESS_MESSAGES = frozenset({
     '无法确定增强采集组件状态，未启动本场采集。',
 })
 _COPY_HINT = '点击“复制检测结果”发送给维护者；无需仅因这条提示反复重装或重启。'
+
+
+def detection_failure_state(error: Exception) -> CheckState:
+    """Classify typed transient evidence, never infer severity from diagnostic text."""
+    if isinstance(error, CancelledError):
+        return CheckState.WAITING
+    if isinstance(error, NteCoreTimeoutError):
+        return CheckState.WARNING
+    if isinstance(error, NteCoreRpcError):
+        if error.domain_code in _BUSINESS_FAILURES:
+            return (CheckState.WARNING if error.domain_code in {
+                'REQUEST_IN_PROGRESS', 'NATIVE_SNAPSHOT_NOT_FOUND',
+            } else CheckState.FAULT)
+        if error.domain_code in {'MODS_PLUGIN_BUSY', 'EQUIPMENT_PLUGIN_BUSY'}:
+            return CheckState.WARNING
+        if error.code == -32001:
+            reason = error.data.get('reason')
+            if isinstance(reason, str) and reason in {'sdk_unavailable', 'hook_unavailable'}:
+                return CheckState.FAULT
+            if isinstance(reason, str) and reason in {
+                'world_unavailable', 'controller_unavailable', 'pawn_unavailable',
+            }:
+                return CheckState.WAITING_LOGIN
+            if isinstance(reason, str) and reason in NATIVE_CAPTURE_TRANSIENT_REASONS:
+                return CheckState.WAITING
+            if error.message in {'not_ready', 'source_changed', 'control_busy', 'control_timeout',
+                                 'snapshot_not_found'}:
+                return CheckState.WARNING
+    return CheckState.FAULT
 
 
 def _failure_location(error: Exception) -> str:

@@ -15,9 +15,7 @@ class WorkModeReportActionsMixin:
         if (not callback or self.is_transitioning or self._sync_activation_request is not None
                 or settings.auto_sync_enabled
                 or settings.mode == WorkMode.OFFLINE or not settings.risk_confirmed
-                or report.mode != settings.mode or not report.features
-                or any(item.state.value == "fault" or dict(item.facts).get("inspection_incomplete") is True
-                       for item in report.features)):
+                or report.mode != settings.mode or not report.can_offer_sync_enable):
             return None
         frozen = settings.revision, self.window.app_context.generation, self._request_serial
 

@@ -229,6 +229,12 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
         self._account_context_unsubscribe = self.app_context.subscribe_account_changed(
             self._on_app_context_account_changed
         )
+        from src.ui.controllers.configuration_controller import register_page_configuration_lifecycle
+        self._unregister_page_tasks = register_page_configuration_lifecycle(
+            self.app_context, lambda: (getattr(self, "_basic_weight_controller", None),
+                                      getattr(self, "_official_role_controller", None),
+                                      getattr(self, "allocation_catalog_controller", None)),
+        )
         self._inventory_sync_lifecycle = CallbackAccountLifecycle(
             is_running=lambda: bool(self._inventory_sync_service and self._inventory_sync_service.is_running),
             stop=self._stop_inventory_sync,
@@ -279,6 +285,9 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
             dialog_parent=self,
         )
         self.scanning_controller = ScanningController(
+            prepare_calculation=self.prepare_calculation,
+            navigate=self._go,
+            work_mode_provider=lambda: self.work_mode_service.settings.mode,
             operation_entry=self.operation_entry,
             operation_unavailable=self.operation_unavailable,
             operation_guard=self.operation_guard,
@@ -409,6 +418,10 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
             self._qt_log_sink_id = None
             logger.debug(f"注册界面日志输出失败，仅写入文件日志: {exc}")
         self._build_ui()
+        from src.ui.controllers.dashboard_controller import initialize_dashboard
+        initialize_dashboard(self)
+        from src.app.page_tasks import start_ui_latency_monitor
+        self._ui_latency_timer = start_ui_latency_monitor(self, lambda: self._nav_key_for_index(self.stack.currentIndex()))
         if self._ui_preferences["log_enabled"]:
             self._toggle_log(True)
         self._load_data()
@@ -417,7 +430,6 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
             self, "_workshop_weight_refresh_thread", start_workshop_weight_template_refresh(
                 self.app_context.paths.workshop_weight_template_file,
                 self.app_context.paths.equipment_allocation_database_path)))
-        self._refresh_home()
         self.auto_sync_controller.start()
         self.work_mode_controller.start()
         self._on_log("系统就绪")
@@ -503,11 +515,20 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
         super().mouseReleaseEvent(e)
 
     def closeEvent(self, e):
-        if getattr(self, "_config_dirty", False) and not self._confirm_leave_config_page():
+        from src.ui.controllers.configuration_controller import defer_page_transition
+        if defer_page_transition(self, self.close):
             e.ignore()
             return
-        if getattr(self, "_my_role_dirty", False) and not self._confirm_leave_my_role_page():
+        from src.app.page_tasks import close_page_tasks
+        self._ui_latency_timer.stop()
+        self.dashboard_controller.close()
+        for owner in (getattr(self, "_basic_weight_controller", None), getattr(self, "_official_role_controller", None),
+                      getattr(self, "allocation_catalog_controller", None)):
+            if owner is not None:
+                owner.close()
+        if close_page_tasks(self):
             e.ignore()
+            QTimer.singleShot(25, self.close)
             return
         if hasattr(self.scanning_controller, "role_selector"):
             try:
@@ -543,6 +564,7 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
         self._unregister_inventory_sync_lifecycle()
         self._unregister_character_profile_sync()
         self._account_context_unsubscribe()
+        self._unregister_page_tasks()
         log_event(
             "INFO",
             "application.stopping",
@@ -609,6 +631,9 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
                 self._refresh_account_combo()
 
     def _switch_account(self, account_id):
+        from src.ui.controllers.configuration_controller import defer_page_transition
+        if defer_page_transition(self, lambda: self._switch_account(account_id)):
+            return False
         operation = OperationContext.create(
             "account",
             account_id=self.app_context.account.active_account_id,
@@ -622,24 +647,6 @@ class MainWindow(MainWindowThemeMixin, MainWindowNavigationMixin, MainWindowData
             operation,
             target_account_id=account_id,
         )
-        if getattr(self, "_my_role_dirty", False) and not self._confirm_leave_my_role_page():
-            log_event(
-                "INFO",
-                "account.switch_cancelled",
-                "账号切换被未保存的角色修改取消",
-                operation,
-                reason="role_dirty",
-            )
-            return False
-        if getattr(self, "_config_dirty", False) and not self._confirm_leave_config_page():
-            log_event(
-                "INFO",
-                "account.switch_cancelled",
-                "账号切换被未保存的基础权重修改取消",
-                operation,
-                reason="basic_weight_dirty",
-            )
-            return False
         if self._equipment_assembly_is_running():
             QMessageBox.information(
                 self,

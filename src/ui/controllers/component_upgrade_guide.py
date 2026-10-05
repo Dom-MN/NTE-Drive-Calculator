@@ -159,10 +159,9 @@ class ComponentUpgradeGuideMixin:
         elif stage == "mode":
             if self._controls:
                 combo = self._controls[0]
-                combo.blockSignals(True)
                 combo.setPlaceholderText("未选择")
+                # currentIndexChanged only refreshes emphasis; activated confirms a mode.
                 combo.setCurrentIndex(-1)
-                combo.blockSignals(False)
             self.open_settings("mode")
         elif stage == "deploy":
             self.open_settings("loading_method")
