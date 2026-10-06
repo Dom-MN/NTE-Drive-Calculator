@@ -34,14 +34,14 @@ class RewindExecutionUiMixin:
             except CancelledError:
                 return
         if getattr(self, "_recommendation_invalidated", False):
-            QMessageBox.warning(self, "推荐已失效", "推荐输入已变化，请重新生成后再保存。")
+            QMessageBox.warning(self, tr("推荐已失效"), tr("推荐输入已变化，请重新生成后再保存。"))
             return
         analysis = getattr(self, "_generated_analysis", None)
         if analysis is not None:
             try:
                 self._service.validate_selection(analysis.selected_slots, analysis.static_identity)
             except Exception as error:
-                QMessageBox.warning(self, "推荐已失效", str(error))
+                QMessageBox.warning(self, tr("推荐已失效"), str(error))
                 self._save_plan_button.setEnabled(False)
                 return
         if not self._slots_complete():
@@ -58,14 +58,14 @@ class RewindExecutionUiMixin:
                 else:
                     saver(preferences)
             except Exception as error:
-                QMessageBox.warning(self, "方案未保存", f"原保存方案保持不变，请处理后重试。\n{error}")
+                QMessageBox.warning(self, tr("方案未保存"), tr("原保存方案保持不变，请处理后重试。\n{error}", error=error))
                 return
         self._saved_rewind_shape_ids = tuple(shape_ids)
         self._saved_rewind_slots = tuple(self._serialize_rewind_slots())
         self._save_plan_button.setText(tr("方案已保存"))
 
     def _configure_rewind(self) -> None:
-        if not request_input_entry(self, "interface_input", "游戏内倒带"):
+        if not request_input_entry(self, "interface_input", tr("游戏内倒带")):
             return
         dialog = RewindExecutionDialog(self, initial=self._rewind_options)
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -78,7 +78,7 @@ class RewindExecutionUiMixin:
         self._start_rewind_execution()
 
     def _start_rewind_execution(self) -> None:
-        if not request_input_entry(self, "interface_input", "游戏内倒带"):
+        if not request_input_entry(self, "interface_input", tr("游戏内倒带")):
             return
         current_worker = self._rewind_worker
         if current_worker is not None:
@@ -174,7 +174,7 @@ class RewindExecutionUiMixin:
         self._start_rewind_button.setEnabled(True)
         self._start_rewind_button.setText(tr("重新进行倒带"))
         self._start_rewind_button.setToolTip(message)
-        show_input_unavailable(self, "游戏内倒带", message)
+        show_input_unavailable(self, tr("游戏内倒带"), message)
 
     def _prepare_rewind_game_foreground(self) -> None:
         parent_getter = getattr(self, "parentWidget", None)

@@ -77,7 +77,7 @@ class AccountManager:
                     return data
             except Exception as exc:
                 logger.warning(f"账号索引读取失败，使用默认账号配置: {exc}")
-        return {"active_account_id": "default", "accounts": [{"id": "default", "name": "默认账号"}]}
+        return {"active_account_id": "default", "accounts": [{"id": "default", "name": tr("默认账号")}]}
 
     def write_index(self, data: dict) -> None:
         self.accounts_dir.mkdir(parents=True, exist_ok=True)
@@ -90,7 +90,7 @@ class AccountManager:
         for account in data.get("accounts", []):
             if account.get("id") == target:
                 return account
-        return data.get("accounts", [{"id": "default", "name": "默认账号"}])[0]
+        return data.get("accounts", [{"id": "default", "name": tr("默认账号")}])[0]
 
     def account_dir(self, account_id: str) -> Path:
         return self.accounts_dir / account_id
@@ -145,7 +145,7 @@ class AccountManager:
         data = self.read_index()
         account = next((a for a in data.get("accounts", []) if a.get("id") == account_id), None)
         if not account:
-            account = {"id": "default", "name": "默认账号"}
+            account = {"id": "default", "name": tr("默认账号")}
         active_id = account["id"]
         active_name = account.get("name") or active_id
         account_root = self.account_dir(active_id)
@@ -172,7 +172,7 @@ class AccountManager:
             ids.append(account_id)
             normalized.append({"id": account_id, "name": account.get("name") or account_id})
         if not normalized:
-            normalized = [{"id": "default", "name": "默认账号"}]
+            normalized = [{"id": "default", "name": tr("默认账号")}]
         active_id = data.get("active_account_id") if data.get("active_account_id") in ids else normalized[0]["id"]
         self.write_index({"active_account_id": active_id, "accounts": normalized})
         self.seed_account_data(active_id, migrate_legacy=(active_id == "default"))
@@ -438,11 +438,11 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
     layout.addWidget(name_edit)
 
     btn_row = QHBoxLayout()
-    add_btn = QPushButton("新建")
+    add_btn = QPushButton(tr("新建"))
     add_btn.setObjectName("btnPrimary")
     rename_btn = QPushButton(tr("保存命名"))
     rename_btn.setObjectName("btnAction")
-    delete_btn = QPushButton("删除")
+    delete_btn = QPushButton(tr("删除"))
     export_btn = QPushButton(tr("导出数据"))
     export_btn.setObjectName("btnAction")
     import_btn = QPushButton(tr("导入数据"))
@@ -471,7 +471,7 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
         name_edit.setText(account.get("name", ""))
 
     def add_account():
-        name, ok = QInputDialog.getText(dialog, "新建账号", "请输入账号名称：")
+        name, ok = QInputDialog.getText(dialog, tr("新建账号"), tr("请输入账号名称："))
         if not ok or not name.strip():
             return
         account_id = manager.create_account(name.strip())
@@ -519,7 +519,7 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
             return
         account = manager.account_meta(account_id)
         default_name = f"{manager.safe_account_id(account.get('name') or account_id)}_nte_account.zip"
-        path, _ = QFileDialog.getSaveFileName(dialog, "导出账号数据", default_name, "NTE Account Export (*.zip)")
+        path, _ = QFileDialog.getSaveFileName(dialog, tr("导出账号数据"), default_name, "NTE Account Export (*.zip)")
         if not path:
             return
         try:
@@ -530,7 +530,7 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
         QMessageBox.information(dialog, tr("导出账号数据"), tr("当前账号数据已导出。"))
 
     def import_account():
-        path, _ = QFileDialog.getOpenFileName(dialog, "导入账号数据", "", "NTE Account Export (*.zip)")
+        path, _ = QFileDialog.getOpenFileName(dialog, tr("导入账号数据"), "", "NTE Account Export (*.zip)")
         if not path:
             return
         temporary_account_id: str | None = None
@@ -542,7 +542,7 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
             nonlocal temporary_account_id
             if target_id != runtime["active_id"]:
                 return
-            temporary_account_id = manager.create_account("导入临时账号")
+            temporary_account_id = manager.create_account(tr("导入临时账号"))
             if not switch_account_callback(temporary_account_id):
                 manager.delete_account(temporary_account_id)
                 temporary_account_id = None

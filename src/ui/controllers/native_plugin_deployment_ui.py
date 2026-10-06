@@ -18,10 +18,10 @@ def _deployment_error_hint(error: Exception) -> str:
     """Keep implementation errors out of the short user-facing dialog."""
     logger.warning(f"组件部署未完成 kind={type(error).__name__}")
     if isinstance(error, PermissionError):
-        return "组件处理未完成；请核对工作模式、游戏目录权限，并确认游戏已退出。"
+        return tr("组件处理未完成；请核对工作模式、游戏目录权限，并确认游戏已退出。")
     if isinstance(error, TimeoutError):
-        return "等待组件或同步任务结束超时；请退出游戏后重新检测再试。"
-    return "组件处理未完成；请确认游戏和启动器已退出，再到环境设置查看检测详情。"
+        return tr("等待组件或同步任务结束超时；请退出游戏后重新检测再试。")
+    return tr("组件处理未完成；请确认游戏和启动器已退出，再到环境设置查看检测详情。")
 
 
 class _DeploymentWorker(QThread):
@@ -95,13 +95,13 @@ def _refresh_work_mode_detection(window) -> None:
 
 def _set_component_status(label, *, issues=(), ready=False, pending=False):
     if pending:
-        label.setText("Loader 工作区核对未完成；请查看检测详情。")
+        label.setText(tr("Loader 工作区核对未完成；请查看检测详情。"))
         label.setToolTip("")
     elif ready:
-        label.setText("组件已准备好，启动游戏后会自动检查连接和可用功能。")
+        label.setText(tr("组件已准备好，启动游戏后会自动检查连接和可用功能。"))
         label.setToolTip("")
     else:
-        label.setText(f"组件未准备好（{len(issues)} 项）；请查看检测详情。")
+        label.setText(tr("组件未准备好（{issues_len} 项）；请查看检测详情。", issues_len=len(issues)))
         label.setToolTip("\n".join(str(issue) for issue in issues))
 
 
@@ -196,7 +196,7 @@ def _confirm_d3d_deployment(window) -> bool:
 def deploy_native_plugin_from_settings(window) -> None:
     bundle = inspect_game_component_bundle(window.app_context.paths.root)
     if not bundle.ready:
-        window.operation_unavailable("部署原生组件", "；".join(bundle.issues), target="deployment")
+        window.operation_unavailable(tr("部署原生组件"), "；".join(bundle.issues), target="deployment")
         return
     if window.native_game_session.battle_active:
         QMessageBox.information(window, tr("部署原生组件"), tr("请先结束当前战报采集，再部署组件。"))
@@ -206,7 +206,7 @@ def deploy_native_plugin_from_settings(window) -> None:
             QMessageBox.information(window, tr("部署原生组件"), tr("请先停止 Loader，再部署 D3D 原生组件。"))
             return
     except (EquipmentPluginDeploymentError, ModPluginLoadingError) as error:
-        window.operation_unavailable("部署原生组件", _deployment_error_hint(error), target="deployment")
+        window.operation_unavailable(tr("部署原生组件"), _deployment_error_hint(error), target="deployment")
         return
     executable = window.work_mode_service.settings.game_executable
     generation = window.operation_generation()
@@ -224,7 +224,7 @@ def deploy_native_plugin_from_settings(window) -> None:
         if ((policy.operation_revision, context.generation) != generation
                 or policy.settings.game_executable != executable
                 or session.battle_active):
-            raise PermissionError("原生组件部署上下文已改变，已停止操作。")
+            raise PermissionError(tr("原生组件部署上下文已改变，已停止操作。"))
 
     try:
         guard("native_load")
@@ -271,7 +271,7 @@ def deploy_native_plugin_from_settings(window) -> None:
         )
     except (EquipmentPluginDeploymentError, PermissionError, TimeoutError) as error:
         if window.work_mode_service.allowed("native_load"):
-            window.operation_unavailable("部署原生组件", _deployment_error_hint(error), target="deployment")
+            window.operation_unavailable(tr("部署原生组件"), _deployment_error_hint(error), target="deployment")
 
 
 def start_native_loader_from_settings(window) -> None:
@@ -292,4 +292,4 @@ def start_native_loader_from_settings(window) -> None:
         )
     except (EquipmentPluginDeploymentError, ModPluginLoadingError, PermissionError) as error:
         window._refresh_equipment_plugin_status()
-        window.operation_unavailable("启动原生 Loader", _deployment_error_hint(error), target="deployment")
+        window.operation_unavailable(tr("启动原生 Loader"), _deployment_error_hint(error), target="deployment")

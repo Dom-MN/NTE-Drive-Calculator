@@ -176,7 +176,7 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
         self._stamina_controls = CultivationStaminaControls(input_body)
         self._stamina_controls.values_changed.connect(self._stamina_inputs_changed)
         input_layout.addWidget(self._stamina_controls)
-        self._preparation_hint = QLabel("目标确定后会提前列出已有材料输入项。", input_body)
+        self._preparation_hint = QLabel(tr("目标确定后会提前列出已有材料输入项。"), input_body)
         self._preparation_hint.setWordWrap(True)
         self._preparation_hint.setTextFormat(Qt.TextFormat.PlainText)
         input_layout.addWidget(self._preparation_hint)
@@ -227,7 +227,7 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
         result_layout.addWidget(self._result_body)
         layout.addWidget(result_panel)
         layout.addStretch(1)
-        self._set_result_message("选择角色后填写目标等级和技能目标，再计算所需材料。")
+        self._set_result_message(tr("选择角色后填写目标等级和技能目标，再计算所需材料。"))
 
     def _load_roles(self) -> None:
         try:
@@ -440,11 +440,11 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
 
     def _preparation_busy(self, busy: bool) -> None:
         if busy:
-            self._preparation_hint.setText("材料输入准备中；尚未求解体力。")
+            self._preparation_hint.setText(tr("材料输入准备中；尚未求解体力。"))
             self._preparation_hint.show()
 
     def _preparation_failed(self, _message: str) -> None:
-        self._preparation_hint.setText("材料输入准备失败；已填数量保留，可点击计算重新尝试。")
+        self._preparation_hint.setText(tr("材料输入准备失败；已填数量保留，可点击计算重新尝试。"))
         self._preparation_hint.show()
 
     def _single_request(self) -> SingleCalculationRequest:
@@ -506,14 +506,14 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
             )
 
     def _calculation_error(self, message: str) -> None:
-        QMessageBox.warning(self, "养成计算器", f"计算材料失败：{message}")
+        QMessageBox.warning(self, tr("养成计算器"), tr("计算材料失败：{message}", message=message))
 
     def _set_busy(self, busy: bool) -> None:
         self._calculate_button.setEnabled(not busy)
         self._calculate_button.setText(
-            "正在计算中" if busy else (
-                "重新计算所需材料与体力" if self._materials_dirty
-                else "计算所需材料与体力"
+            tr("正在计算中") if busy else (
+                tr("重新计算所需材料与体力") if self._materials_dirty
+                else tr("计算所需材料与体力")
             )
         )
 
@@ -528,7 +528,7 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
         if self._last_plan is not None:
             self._materials_dirty = True
             self.plan_available.emit(False)
-            self._set_result_message("养成目标已修改，请点击重新计算更新材料与体力。")
+            self._set_result_message(tr("养成目标已修改，请点击重新计算更新材料与体力。"))
         self._prepare_timer.start()
 
     def _owned_quantities_changed(self) -> None:
@@ -543,7 +543,7 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
             self._materials_dirty = True
             self._calculate_button.setText(tr("重新计算所需材料与体力"))
             self.plan_available.emit(False)
-            self._set_result_message("已有材料已修改，请点击重新计算更新材料与体力。")
+            self._set_result_message(tr("已有材料已修改，请点击重新计算更新材料与体力。"))
 
     def _stamina_inputs_changed(self) -> None:
         if self._restoring:
@@ -554,7 +554,7 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
         self._result_current = False
         if self._last_plan is not None and not self._materials_dirty:
             self.plan_available.emit(False)
-            self._set_result_message("体力设置已修改，正在重新计算。")
+            self._set_result_message(tr("体力设置已修改，正在重新计算。"))
             self._calculate(explicit=False)
         else:
             self._prepare_timer.start()
@@ -597,7 +597,7 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
         finally:
             self._restoring = False
         self.plan_available.emit(False)
-        self._set_result_message("已加载历史配置；请确认当前状态与材料数量后点击计算。")
+        self._set_result_message(tr("已加载历史配置；请确认当前状态与材料数量后点击计算。"))
         self._prepare_timer.start()
 
     def set_material_scope(self, scope: str) -> None:
@@ -638,7 +638,7 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
         lines = [tr("{name} · 养成材料",
                     name=display_term(self._last_plan.character_name))]
         if self._last_plan.fork_required_experience:
-            lines.append(f"弧盘升级经验 × {self._last_plan.fork_required_experience:,}")
+            lines.append(tr("弧盘升级经验 × {count}", count=f"{self._last_plan.fork_required_experience:,}"))
         for material in remaining_materials(
             self._visible(self._last_plan.totals),
             self._owned_materials.quantities(),
@@ -662,7 +662,7 @@ class CultivationCalculatorContent(CultivationSingleResultMixin, QWidget):
         elif self._roles:
             self._load_selected_seed(self._roles[0].character_id)
         else:
-            self._set_result_message("正在读取可用于养成计算的角色。")
+            self._set_result_message(tr("正在读取可用于养成计算的角色。"))
 
     def close_controller(self) -> None:
         self._prepare_timer.stop()

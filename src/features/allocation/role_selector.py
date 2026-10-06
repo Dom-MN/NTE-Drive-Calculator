@@ -148,7 +148,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
 
         help_btn = QPushButton("?")
         help_btn.setObjectName("btnHelp")
-        help_btn.clicked.connect(lambda: self._show_help("优先级存档说明", PRIORITY_SAVE_HELP))
+        help_btn.clicked.connect(lambda: self._show_help(tr("优先级存档说明"), PRIORITY_SAVE_HELP))
         search_row.addWidget(help_btn)
         layout.addLayout(search_row)
 
@@ -310,7 +310,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
             item = QFrame()
             item.setFixedSize(self._priority_role_frame_width(name), 48)
             item.setCursor(Qt.PointingHandCursor)
-            item.setToolTip(f"{name}：点击头像或角色名移回待选区；按住可拖拽调整优先级")
+            item.setToolTip(tr("{name}：点击头像或角色名移回待选区；按住可拖拽调整优先级", name=display_term(name)))
             item.setStyleSheet(
                 themed_style(
                     "QFrame{background:#161b22;border:1px solid #30363d;border-radius:7px}"
@@ -323,7 +323,7 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
 
             name_btn = PriorityRoleButton(self, name, index, avatar=self._role_avatar(name, 36))
             name_btn.setObjectName("priorityRoleName")
-            name_btn.setToolTip(f"{name}：点击移出当前优先级；按住头像或角色名拖拽调整优先级")
+            name_btn.setToolTip(tr("{name}：点击移出当前优先级；按住头像或角色名拖拽调整优先级", name=display_term(name)))
             name_btn.setFixedSize(self._priority_role_name_width() + 41, 36)
             name_btn.setStyleSheet(
                 themed_style(

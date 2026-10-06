@@ -469,7 +469,7 @@ def dispatch_retry_attempt(
                 "role_name": row["role_name"],
                 "attempt": attempt,
                 "kind": kind,
-                "error": f"第 {attempt} 次装配请求失败：{exc}",
+                "error": tr("第 {attempt} 次装配请求失败：{error}", attempt=attempt, error=exc),
             })
             if user_dao is not None:
                 if check_cancelled is not None:

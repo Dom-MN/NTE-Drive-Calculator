@@ -46,7 +46,7 @@ def _normalize_netdisk_links(netdisk_links=None):
     if netdisk_links is None:
         return tuple(NETDISK_DOWNLOAD_LINKS)
     if isinstance(netdisk_links, str):
-        return (("夸克网盘", netdisk_links),) if netdisk_links else tuple()
+        return ((tr("夸克网盘"), netdisk_links),) if netdisk_links else tuple()
     return tuple((str(name), str(url)) for name, url in netdisk_links if name and url)
 
 
@@ -128,7 +128,7 @@ def _build_capture_diagnostics_card(window):
     settings_reader = getattr(window, "_get_sync_settings", None)
     settings = settings_reader() if callable(settings_reader) else {}
     if not settings:
-        raise RuntimeError("无法读取静态数据库中的设置默认值。")
+        raise RuntimeError(tr("无法读取静态数据库中的设置默认值。"))
     window._sync_capture_device_edit = QLineEdit()
     window._sync_capture_device_edit.setPlaceholderText(tr("仅在自动选择网卡失败时填写"))
     window._sync_capture_device_edit.setText(settings.get("capture_device_id") or "")
@@ -179,14 +179,14 @@ def _build_capture_diagnostics_card(window):
 
     window._sync_raw_capture_toggle.clicked.connect(save_raw_capture_diagnostics)
     form.addRow(tr("采集排错:"), raw_capture_row)
-    performance_link = QCheckBox("同时记录性能")
-    performance_link.setToolTip("排错开启时保存服务耗时到账号日志目录；不额外启动同步、战报或 HUD。")
+    performance_link = QCheckBox(tr("同时记录性能"))
+    performance_link.setToolTip(tr("排错开启时保存服务耗时到账号日志目录；不额外启动同步、战报或 HUD。"))
     performance_link.clicked.connect(window.performance_controller.set_linked)
     def refresh_performance_link():
         performance_link.setChecked(window.performance_controller.snapshot()["linked"])
     window.performance_controller.changed.connect(refresh_performance_link)
     refresh_performance_link()
-    form.addRow("性能日志:", performance_link)
+    form.addRow(tr("性能日志:"), performance_link)
     card.layout().addLayout(form)
     return card
 
@@ -194,7 +194,7 @@ def _build_capture_diagnostics_card(window):
 def _build_environment_card(window):
     card = window._card(tr("环境配置"))
     window._environment_configuration_card = card
-    npcap_title = QLabel("Npcap · 背包同步、基础战报")
+    npcap_title = QLabel(tr("Npcap · 背包同步、基础战报"))
     npcap_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(npcap_title)
     npcap_row = QHBoxLayout()
@@ -248,7 +248,7 @@ def _build_environment_card(window):
     )
     loading_row = QHBoxLayout()
     loading_row.addWidget(window._equipment_plugin_loading_method_combo)
-    loading_hint = QLabel("若不可用，请选择备用加载方式")
+    loading_hint = QLabel(tr("若不可用，请选择备用加载方式"))
     loading_hint.setWordWrap(True)
     loading_hint.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
     loading_row.addWidget(loading_hint, 1)
@@ -355,7 +355,7 @@ def build_settings_page(
     protagonist_row = QHBoxLayout()
     protagonist_row.addWidget(QLabel(tr("主角游戏名:")))
     window._protagonist_game_name_edit = QLineEdit()
-    window._protagonist_game_name_edit.setPlaceholderText("仅自动装配需要")
+    window._protagonist_game_name_edit.setPlaceholderText(tr("仅自动装配需要"))
     protagonist_name_width = (
         window._protagonist_game_name_edit.fontMetrics().horizontalAdvance("零" * 8) + 36
     )
@@ -570,7 +570,7 @@ def build_settings_page(
     layout.addWidget(about_card)
 
     layout.addWidget(plugin_card)
-    performance_card = window._card("性能监控")
+    performance_card = window._card(tr("性能监控"))
     performance_card.layout().addWidget(PerformanceCard(window.performance_controller))
     layout.addWidget(performance_card)
     layout.addWidget(sync_card)

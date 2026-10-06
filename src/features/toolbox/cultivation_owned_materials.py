@@ -210,7 +210,7 @@ class _OwnedMaterialCanvas(QWidget):
             else:
                 painter.setPen(QColor(theme_color("#8b949e")))
                 painter.drawText(icon_rect, Qt.AlignmentFlag.AlignCenter,
-                                 (material.name.strip() or "材")[:1])
+                                 (material.name.strip() or tr("材"))[:1])
             name_rect = QRect(rect.left() + 8, rect.top() + 55, rect.width() - 16, 22)
             font = painter.font()
             font.setBold(True)
@@ -226,13 +226,13 @@ class _OwnedMaterialCanvas(QWidget):
                 QRect(rect.left() + 8, rect.top() + 80, rect.width() - 16, 20),
                 Qt.AlignmentFlag.AlignCenter,
                 (f"需要 × {max(0, int(material.quantity)):,}"
-                 if material.quantity else "可合成材料"),
+                 if material.quantity else tr("可合成材料")),
             )
             painter.setPen(QColor(theme_color("#8b949e")))
             painter.drawText(
                 QRect(rect.left() + 8, rect.top() + 111, 42, 28),
                 Qt.AlignmentFlag.AlignVCenter,
-                "已有",
+                tr("已有"),
             )
             if not active:
                 field_rect = self._editor_rect(rect)
@@ -326,12 +326,12 @@ class CultivationOwnedMaterials(QFrame):
             "color:#c9d1d9;font-size:14px;font-weight:800"
         ))
         header.addWidget(title)
-        header.addWidget(QLabel("点击材料卡填写已有数量，再点击计算", self))
+        header.addWidget(QLabel(tr("点击材料卡填写已有数量，再点击计算"), self))
         header.addStretch(1)
         self._import_button = QPushButton(tr("同步材料"), self)
         self._import_button.setObjectName("cultivationOwnedImport")
         self._import_button.setEnabled(False)
-        self._import_button.setToolTip("原生模式读取当前账号归档；低风险模式读取账号已保存的稳定抓包材料观测，停止同步后仍可使用。未观测项数量未知。")
+        self._import_button.setToolTip(tr("原生模式读取当前账号归档；低风险模式读取账号已保存的稳定抓包材料观测，停止同步后仍可使用。未观测项数量未知。"))
         self._import_button.clicked.connect(lambda _checked=False: self.import_requested.emit())
         header.addWidget(self._import_button)
         clear = QPushButton(tr("清空"), self)
@@ -400,7 +400,7 @@ class CultivationOwnedMaterials(QFrame):
         self._history_sources.clear()
         self._canvas.clear_quantities()
         self._owned_cache.update(self._canvas.quantities())
-        self.set_import_status("已有材料草稿已清空；账号已保存的同步记录保持不变。")
+        self.set_import_status(tr("已有材料草稿已清空；账号已保存的同步记录保持不变。"))
         if changed:
             self.quantities_changed.emit()
 
@@ -450,7 +450,7 @@ class CultivationOwnedMaterials(QFrame):
         self._manual_overrides.clear()
         self._history_sources.clear()
         self._canvas.set_materials(())
-        self._import_button.setToolTip("同步后仅已观测材料更新；未观测项保持手填值。")
+        self._import_button.setToolTip(tr("同步后仅已观测材料更新；未观测项保持手填值。"))
         if self._status_label is not None:
             self._status_label.hide()
         self.layout_changed.emit()

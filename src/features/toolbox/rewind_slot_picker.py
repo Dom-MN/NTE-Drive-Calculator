@@ -1,4 +1,5 @@
 # 用明确槽位身份选择倒带推荐的角色方案。
+from src.i18n import tr
 from PySide6.QtCore import QSize
 from PySide6.QtWidgets import (
     QButtonGroup, QDialog, QDialogButtonBox, QLabel, QRadioButton, QScrollArea, QVBoxLayout, QWidget,
@@ -12,16 +13,16 @@ from src.domain.allocation_rating import loadout_total_grade
 class RewindSlotPicker(QDialog):
     def __init__(self, parent, role, selected_reference):
         super().__init__(parent)
-        self.setWindowTitle(f"选择 {role.name} 的配装槽位")
+        self.setWindowTitle(tr("选择 {name} 的配装槽位", name=role.name))
         self.setStyleSheet(current_style_sheet())
         self._references = {}
         root = QVBoxLayout(self)
-        root.addWidget(QLabel("倒带推荐只分析选中的这份配装。"))
+        root.addWidget(QLabel(tr("倒带推荐只分析选中的这份配装。")))
         self.group = QButtonGroup(self)
         body = QWidget()
         rows = QVBoxLayout(body)
         for index, slot in enumerate(role.slots):
-            score = f"{slot.score:g}分 · {loadout_total_grade(slot.score)}" if slot.score is not None else "总评分资料不足"
+            score = f"{slot.score:g}分 · {loadout_total_grade(slot.score)}" if slot.score is not None else tr("总评分资料不足")
             option = QRadioButton(f"{slot.slot_name} · {score}")
             option.setObjectName("rewindSlotOption")
             option.setToolTip(f"{slot.slot_name} · {score}\n{slot.reason}")

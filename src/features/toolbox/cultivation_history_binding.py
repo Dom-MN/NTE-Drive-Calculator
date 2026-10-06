@@ -1,6 +1,8 @@
 # 绑定单个养成草稿的自动历史保存状态及针对原信封的重试入口。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable
 
 from PySide6.QtCore import QObject, Signal
@@ -71,14 +73,14 @@ class CultivationHistoryDraftBinding(QObject):
             self._service.assert_current(envelope)
         except HistoryContextExpired:
             self._retry = None
-            self.status_changed.emit("旧历史保存请求已撤销；请使用当前草稿重新计算。", False)
+            self.status_changed.emit(tr("旧历史保存请求已撤销；请使用当前草稿重新计算。"), False)
             return
 
         def save():
             self._service.assert_current(envelope)
             return self._service.save(envelope, project())
 
-        self.status_changed.emit("本次计算已完成，正在保存历史。", False)
+        self.status_changed.emit(tr("本次计算已完成，正在保存历史。"), False)
         self._request_id = self._controller.submit("save", save)
 
     def _completed(self, outcome: object) -> None:
@@ -91,18 +93,18 @@ class CultivationHistoryDraftBinding(QObject):
             if suppressed:
                 self._retry = None
                 self._request_id = 0
-                self.status_changed.emit("对应历史已删除；下一次主动计算会建立新记录。", False)
+                self.status_changed.emit(tr("对应历史已删除；下一次主动计算会建立新记录。"), False)
             return
         if (not isinstance(outcome, HistoryOperationResult) or self._closed
                 or outcome.operation != "save" or outcome.request_id != self._request_id):
             return
         if outcome.error_code is None:
             self._retry = None
-            self.status_changed.emit("历史已保存；本草稿重新计算会更新同一条记录。", False)
+            self.status_changed.emit(tr("历史已保存；本草稿重新计算会更新同一条记录。"), False)
             self.saved.emit(outcome.value)
         elif outcome.error_code == "expired":
             self._retry = None
-            self.status_changed.emit("旧历史保存请求已撤销；当前计算结果保持不变。", False)
+            self.status_changed.emit(tr("旧历史保存请求已撤销；当前计算结果保持不变。"), False)
         else:
             can_retry = self._retry is not None
             if can_retry:
@@ -130,7 +132,7 @@ class CultivationHistorySaveStatus(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self._label = QLabel(self)
         self._label.setWordWrap(True)
-        self._retry = QPushButton("重试保存历史", self)
+        self._retry = QPushButton(tr("重试保存历史"), self)
         self._retry.clicked.connect(binding.retry)
         layout.addWidget(self._label, 1)
         layout.addWidget(self._retry)

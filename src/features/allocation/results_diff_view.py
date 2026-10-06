@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 from src.app.constants import ALLOCATION_TOTAL_SCORE_AREA
 from src.app.theme import current_style_sheet, themed_style
 from src.app.window_geometry import fit_dialog_to_available_screen
@@ -153,13 +153,13 @@ def _plan_diff_text(self, role_name, diff):
         if isinstance(item, dict)
     ]
     if not removed and not added:
-        return "本次配装与已保存方案没有装备变动。"
-    lines = [f"{role_name} 配装变动："]
+        return tr("本次配装与已保存方案没有装备变动。")
+    lines = [tr("{role} 配装变动：", role=display_term(role_name))]
     if removed:
-        lines.append("\n卸下：")
+        lines.append(tr("\n卸下："))
         lines.extend(f"- {item.get(EQUIP_DISPLAY_NAME) or item.get(EQUIP_UID)}" for item in removed)
     if added:
-        lines.append("\n换上：")
+        lines.append(tr("\n换上："))
         lines.extend(f"+ {item.get(EQUIP_DISPLAY_NAME) or item.get(EQUIP_UID)}" for item in added)
     return "\n".join(lines)
 
@@ -453,7 +453,7 @@ def _diff_item_card(self, role_name, item, is_new=False):
         item_icon_path=item.get("item_icon_path"),
     )
     if item.get("comparison_score_unavailable"):
-        card.layout().addWidget(QLabel("评分资料不足"))
+        card.layout().addWidget(QLabel(tr("评分资料不足")))
     return card
 
 
@@ -499,7 +499,7 @@ def _append_equipment_swap_frame(body_layout, role_name, old_item, new_item, dif
 
 def _build_plan_diff_dialog(self, role_name, diff):
     dlg = QDialog(getattr(self, "dialog_parent", None))
-    dlg.setWindowTitle(f"{role_name} - 配装变动")
+    dlg.setWindowTitle(tr("{role_name} - 配装变动", role_name=role_name))
     dlg.setMinimumSize(320, 240)
     dlg.setStyleSheet(current_style_sheet())
     layout = QVBoxLayout(dlg)
@@ -558,8 +558,8 @@ def _build_plan_diff_dialog(self, role_name, diff):
 
         for old_d, new_d in drive_pairs:
             pair_index += 1
-            old_sid = old_d.get(EQUIP_SHAPE_ID, "未知驱动")
-            new_sid = new_d.get(EQUIP_SHAPE_ID, "未知驱动")
+            old_sid = old_d.get(EQUIP_SHAPE_ID, tr("未知驱动"))
+            new_sid = new_d.get(EQUIP_SHAPE_ID, tr("未知驱动"))
             title = (
                 f"变动 {pair_index}：{old_sid} → {new_sid}" if old_sid != new_sid else f"变动 {pair_index}：{old_sid}"
             )

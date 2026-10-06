@@ -1,6 +1,8 @@
 # 在设置中展示性能开关、服务耗时曲线和排错记录状态。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import QPointF, QSize, Qt
 from PySide6.QtGui import QDesktopServices, QPainter, QPen
 from PySide6.QtCore import QUrl
@@ -20,12 +22,12 @@ STATE_TEXT = {
     "collecting": "正在观测性能",
     "fault": "性能读取失败；下次采样重试",
 }
-SERVICE_NAMES = {"snapshot_pulse": "快照周期", "snapshot_read": "快照分批读取"}
+SERVICE_NAMES = {"snapshot_pulse": tr("快照周期"), "snapshot_read": tr("快照分批读取")}
 SERVICE_NAMES.update({
-    "snapshot.clock_roots_before": "战斗时钟 · 查询前身份校验",
-    "snapshot.clock_function": "战斗时钟 · 函数校验",
-    "snapshot.clock_queries": "战斗时钟 · 单次暂停查询",
-    "snapshot.clock_roots_after": "战斗时钟 · 查询后身份复核",
+    "snapshot.clock_roots_before": tr("战斗时钟 · 查询前身份校验"),
+    "snapshot.clock_function": tr("战斗时钟 · 函数校验"),
+    "snapshot.clock_queries": tr("战斗时钟 · 单次暂停查询"),
+    "snapshot.clock_roots_after": tr("战斗时钟 · 查询后身份复核"),
 })
 _READ_STAGES = {
     "job_step": "读取批次", "step_precheck": "读取前校验", "reader_step": "数据读取",
@@ -36,8 +38,8 @@ _READ_STAGES = {
     "other_fields": "其他养成", "related_equipment": "关联装备", "row_finalize": "条目收尾",
     "verify": "完整性复核", "domain_roots": "数据根读取", "domain_identity": "数据身份", "domain_clone": "角色存档",
 }
-SERVICE_NAMES.update({prefix + key: owner + label for prefix, owner in
-                      (("snapshot.", "采集 · "), ("user.snapshot.", "账号读取 · "))
+SERVICE_NAMES.update({prefix + key: owner + tr(label) for prefix, owner in
+                      (("snapshot.", tr("采集 · ")), ("user.snapshot.", tr("账号读取 · ")))
                       for key, label in _READ_STAGES.items()})
 
 
@@ -46,7 +48,7 @@ class CostPlot(QWidget):
         super().__init__(parent)
         self.points = []
         self.setMinimumHeight(130)
-        self.setAccessibleName("服务平均单次耗时曲线，单位毫秒")
+        self.setAccessibleName(tr("服务平均单次耗时曲线，单位毫秒"))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -54,7 +56,7 @@ class CostPlot(QWidget):
         painter.setPen(self.palette().text().color())
         values = [value for _, value in self.points if value is not None]
         if not values:
-            painter.drawText(self.rect(), Qt.AlignCenter, "等待新增调用；没有样本不记为零")
+            painter.drawText(self.rect(), Qt.AlignCenter, tr("等待新增调用；没有样本不记为零"))
             return
         maximum = max(max(values), 0.001)
         painter.drawText(8, 18, f"近 120 次观测 · 平均单次耗时 · 纵轴上限 {maximum:.3f} ms")
@@ -77,15 +79,15 @@ class CostPlot(QWidget):
 class PerformanceDetails(QDialog):
     def __init__(self, controller, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("性能详情")
+        self.setWindowTitle(tr("性能详情"))
         self.controller = controller
         outer = QVBoxLayout(self)
         tabs = QTabWidget()
         outer.addWidget(tabs)
         overview = QWidget()
-        tabs.addTab(overview, '实时概览')
+        tabs.addTab(overview, tr('实时概览'))
         self.trace_view = PerformanceTraceView(controller)
-        tabs.addTab(self.trace_view, '细分采样')
+        tabs.addTab(self.trace_view, tr('细分采样'))
         layout = QVBoxLayout(overview)
         self.status = QLabel()
         self.status.setWordWrap(True)
@@ -93,19 +95,19 @@ class PerformanceDetails(QDialog):
         self.metrics = QLabel()
         self.metrics.setWordWrap(True)
         layout.addWidget(self.metrics)
-        note = QLabel("FPS/帧时间来自游戏提交呈现的间隔；1% Low 为最近 30 秒慢帧平均。"
+        note = QLabel(tr("FPS/帧时间来自游戏提交呈现的间隔；1% Low 为最近 30 秒慢帧平均。"
                       "Calc 耗时当前覆盖原生分发和 HUD，不代表全部组件开销。"
-                      "下方曲线是服务平均单次耗时，嵌套服务不能相加。")
+                      "下方曲线是服务平均单次耗时，嵌套服务不能相加。"))
         note.setWordWrap(True)
         layout.addWidget(note)
         self.service = QComboBox()
-        self.service.setAccessibleName("曲线服务")
-        self.service.setPlaceholderText("等待可用服务计时")
+        self.service.setAccessibleName(tr("曲线服务"))
+        self.service.setPlaceholderText(tr("等待可用服务计时"))
         layout.addWidget(self.service)
         self.plot = CostPlot()
         layout.addWidget(self.plot)
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["服务", "区间调用数", "平均单次 ms", "来源累计最大 ms"])
+        self.table.setHorizontalHeaderLabels([tr("服务"), tr("区间调用数"), tr("平均单次 ms"), tr("来源累计最大 ms")])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.table, 1)
@@ -114,10 +116,10 @@ class PerformanceDetails(QDialog):
         self.path.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.path)
         row = QHBoxLayout()
-        folder = QPushButton("打开性能日志目录")
+        folder = QPushButton(tr("打开性能日志目录"))
         folder.clicked.connect(self.open_logs)
         row.addWidget(folder)
-        close = QPushButton("关闭")
+        close = QPushButton(tr("关闭"))
         close.clicked.connect(self.close)
         row.addWidget(close)
         layout.addLayout(row)
@@ -128,7 +130,7 @@ class PerformanceDetails(QDialog):
         if directory.is_dir():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
         else:
-            self.path.setText("尚未生成性能日志；开启采集排错并勾选“同时记录性能”后保存。")
+            self.path.setText(tr("尚未生成性能日志；开启采集排错并勾选“同时记录性能”后保存。"))
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -136,10 +138,10 @@ class PerformanceDetails(QDialog):
 
     def render(self, value):
         self.trace_view.render(value.get('trace', {}))
-        overlay = {"off": "悬浮窗已关闭", "closing": "正在关闭显示", "visible": "悬浮窗已绘制", "waiting": "已请求显示，等待游戏绘制",
-                   "unsupported": "当前组件不支持性能悬浮窗，需要配套更新", "rejected": "当前游戏版本不支持性能绘制",
-                   "unconfirmed": "悬浮窗状态未确认，等待连接恢复"}.get(value.get("overlay_state"), "等待组件")
-        summary = "四项悬浮窗及其日志已关闭。" if not value["enabled"] and value.get("overlay_state") == "off" else overlay + "；" + status_text(value)
+        overlay = {"off": tr("悬浮窗已关闭"), "closing": tr("正在关闭显示"), "visible": tr("悬浮窗已绘制"), "waiting": tr("已请求显示，等待游戏绘制"),
+                   "unsupported": tr("当前组件不支持性能悬浮窗，需要配套更新"), "rejected": tr("当前游戏版本不支持性能绘制"),
+                   "unconfirmed": tr("悬浮窗状态未确认，等待连接恢复")}.get(value.get("overlay_state"), tr("等待组件"))
+        summary = tr("四项悬浮窗及其日志已关闭。") if not value["enabled"] and value.get("overlay_state") == "off" else overlay + "；" + status_text(value)
         frame_error = value.get("frames", {}).get("frame_error")
         if value["enabled"] and frame_error:
             summary += "；" + frame_error
@@ -148,8 +150,11 @@ class PerformanceDetails(QDialog):
         def number(key):
             v = metrics.get(key)
             return f"{v / 1000:.2f}" if type(v) is int else "--"
-        self.metrics.setText(f"FPS  {number('fps_milli')}    帧时间  {number('frame_us')} ms    "
-                             f"1% Low  {number('low_milli')} FPS    Calc 耗时（已覆盖）  {number('cost_us')} ms/帧")
+        self.metrics.setText(tr(
+            "FPS  {fps}    帧时间  {frame} ms    1% Low  {low} FPS    Calc 耗时（已覆盖）  {cost} ms/帧",
+            fps=number("fps_milli"), frame=number("frame_us"),
+            low=number("low_milli"), cost=number("cost_us"),
+        ))
         rows = value["rows"]
         selected = self.service.currentData()
         names = list(rows)
@@ -172,24 +177,24 @@ class PerformanceDetails(QDialog):
                      f'{row["max_us"]/1000:.3f}' if row["calls"] else "—")
             for col, cell in enumerate(cells):
                 self.table.setItem(index, col, QTableWidgetItem(cell))
-        self.path.setText(value["log_error"] or value["log_path"] or "当前未记录（实时查看不自动落盘）；已有文件可从目录查看。")
+        self.path.setText(value["log_error"] or value["log_path"] or tr("当前未记录（实时查看不自动落盘）；已有文件可从目录查看。"))
 
 
 def trace_status_suffix(value):
     trace = value.get('trace', {})
     if trace.get('running'):
-        return '；细分采样正在运行并单独记录'
+        return tr('；细分采样正在运行并单独记录')
     if trace.get('state') == 'saved':
-        return '；细分采样已停止并保存'
+        return tr('；细分采样已停止并保存')
     if trace.get('state') in {'failed', 'unconfirmed'}:
-        return '；细分采样未完整确认，请查看细分采样页'
+        return tr('；细分采样未完整确认，请查看细分采样页')
     return ''
 
 
 def status_text(value):
-    text = STATE_TEXT[value["state"]]
+    text = tr(STATE_TEXT[value["state"]])
     if value["automatic"]:
-        text += " · 由采集排错开启"
+        text += tr(" · 由采集排错开启")
     if value["log_error"]:
         text += " · " + value["log_error"]
     return text
@@ -202,11 +207,11 @@ class PerformanceCard(QWidget):
         self.dialog = None
         layout = QVBoxLayout(self)
         row = QHBoxLayout()
-        self.toggle = QCheckBox("显示游戏内性能")
-        self.toggle.setToolTip("显示 FPS、帧时间、1% Low 与 Calc 组件耗时；不启动同步或战报。")
+        self.toggle = QCheckBox(tr("显示游戏内性能"))
+        self.toggle.setToolTip(tr("显示 FPS、帧时间、1% Low 与 Calc 组件耗时；不启动同步或战报。"))
         self.toggle.clicked.connect(controller.set_enabled)
         row.addWidget(self.toggle)
-        details = QPushButton("性能详情…")
+        details = QPushButton(tr("性能详情…"))
         details.clicked.connect(self.show_details)
         row.addWidget(details)
         row.addStretch()

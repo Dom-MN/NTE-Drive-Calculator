@@ -1,6 +1,8 @@
 # 编排基础权重页面的后台提交、草稿保留和提交后的异步刷新。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from copy import deepcopy
 
 from PySide6.QtWidgets import QInputDialog, QMessageBox
@@ -33,7 +35,7 @@ def _submit(window, work, done, *, title, completion=None):
     if page is not None:
         page.setEnabled(False)
     if status is not None:
-        status.setText(f"正在{title}…")
+        status.setText(tr("正在{title}…", title=tr(title)))
 
     def current():
         return (controller is getattr(window, "_basic_weight_controller", None)
@@ -58,7 +60,7 @@ def _submit(window, work, done, *, title, completion=None):
     def failed(error):
         unlock()
         if current():
-            QMessageBox.warning(window, f"{title}未完成", f"编辑已保留；请核对已保存内容后重试。\n{error}")
+            QMessageBox.warning(window, tr("{title}未完成", title=tr(title)), tr("编辑已保留；请核对已保存内容后重试。\n{error}", error=error))
             if completion is not None:
                 completion(False)
         elif completion is not None:
@@ -67,7 +69,7 @@ def _submit(window, work, done, *, title, completion=None):
     def application_failed(error):
         unlock()
         if current():
-            QMessageBox.warning(window, "提交后刷新失败", f"数据已提交，请重新进入页面刷新；不要重复保存。\n{error}")
+            QMessageBox.warning(window, tr("提交后刷新失败"), tr("数据已提交，请重新进入页面刷新；不要重复保存。\n{error}", error=error))
             if completion is not None:
                 completion(False)
 
@@ -87,7 +89,7 @@ def save_config_form(window, config_dir, json_edit_dialog_cls, *, completion=Non
         _clear_draft(window)
         # The submitted model remains the display baseline, not a fresh database read.
         if show_message:
-            QMessageBox.information(window, "保存", "角色权重设置已保存。")
+            QMessageBox.information(window, tr("保存"), tr("角色权重设置已保存。"))
 
     return _submit(window, lambda: controller.save_changes(data, *fields), done,
                    title="保存", completion=completion)
@@ -104,7 +106,7 @@ def _confirm_weight_reset(window, message):
     if (getattr(window, "_current_config_name", None) != "account_weights"
             or _basic_weight_controller(window).is_writing()):
         return False
-    return QMessageBox.question(window, "确认重置权重", message,
+    return QMessageBox.question(window, tr("确认重置权重"), message,
                                 QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel) == QMessageBox.Yes
 
 
@@ -113,10 +115,10 @@ def reset_current_config_weights(window, config_dir):
     name = str(getattr(window, "_config_active_role", "") or "")
     role = (getattr(window, "_config_form_data", {}) or {}).get(name) or {}
     if not name or not role:
-        QMessageBox.information(window, "重置当前", "请先选择一个角色。")
+        QMessageBox.information(window, tr("重置当前"), tr("请先选择一个角色。"))
         return
     if role.get("is_custom"):
-        QMessageBox.information(window, "重置当前", "自建角色没有发行默认权重，保留当前自定义值。")
+        QMessageBox.information(window, tr("重置当前"), tr("自建角色没有发行默认权重，保留当前自定义值。"))
         return
     if not _confirm_weight_reset(window,
         f"将清除当前账号中 [{name}] 的自定义卡带主词条和驱动副词条权重，并恢复为当前异环工坊默认值。\n\n"
@@ -126,7 +128,7 @@ def reset_current_config_weights(window, config_dir):
 
     def done(_value):
         _reload_after_weight_reset(window, config_dir, name)
-        QMessageBox.information(window, "重置当前", f"[{name}] 已恢复为默认权重，后续可随新版本更新。")
+        QMessageBox.information(window, tr("重置当前"), tr("[{name}] 已恢复为默认权重，后续可随新版本更新。", name=name))
 
     _submit(window, lambda: controller.reset_weights(ids), done, title="重置")
 
@@ -144,7 +146,7 @@ def reset_all_config_weights(window, config_dir):
 
     def done(restored):
         _reload_after_weight_reset(window, config_dir, active)
-        QMessageBox.information(window, "重置所有", f"已恢复 {len(restored)} 名角色的默认权重，后续可随新版本更新。")
+        QMessageBox.information(window, tr("重置所有"), tr("已恢复 {restored_len} 名角色的默认权重，后续可随新版本更新。", restored_len=len(restored)))
 
     _submit(window, lambda: controller.reset_weights(ids), done, title="重置")
 
@@ -163,7 +165,7 @@ def create_custom_role(window):
         if not confirm_pending_config_changes(window, window.app_context.paths.config_dir,
                 completion=lambda success: create_custom_role(window) if success else None):
             return
-    name, accepted = QInputDialog.getText(window, "新建角色", "角色名称（也作为游戏内名称）：")
+    name, accepted = QInputDialog.getText(window, tr("新建角色"), tr("角色名称（也作为游戏内名称）："))
     if not accepted:
         return
 
@@ -171,14 +173,14 @@ def create_custom_role(window):
         _clear_draft(window, discard=True)
         switch_config_form(window, active_role=str(role["name_zh"]))
 
-    _submit(window, lambda: controller.create_custom_role(str(name)), done, title="新建角色")
+    _submit(window, lambda: controller.create_custom_role(str(name)), done, title=tr("新建角色"))
 
 
 def delete_custom_role(window, role_name, role_data, rebuild_all_tabs):
     from .page import _basic_weight_controller
     controller = _basic_weight_controller(window)
-    if controller.is_writing() or QMessageBox.question(window, "删除角色",
-        f"删除 [{role_name}] 以及它的计算偏好和配装槽位？",
+    if controller.is_writing() or QMessageBox.question(window, tr("删除角色"),
+        tr("删除 [{role_name}] 以及它的计算偏好和配装槽位？", role_name=role_name),
         QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel) != QMessageBox.Yes:
         return
     character_id = int(role_data["character_id"])

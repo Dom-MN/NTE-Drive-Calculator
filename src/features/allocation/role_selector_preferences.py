@@ -187,7 +187,7 @@ class RoleSelectorPreferencesMixin:
         help_btn = QPushButton("?")
         help_btn.setObjectName("btnHelp")
         help_btn.setFixedSize(24, 24)
-        help_btn.clicked.connect(lambda: self._show_help("词条自选说明", STAT_PRIORITY_HELP))
+        help_btn.clicked.connect(lambda: self._show_help(tr("词条自选说明"), STAT_PRIORITY_HELP))
 
         stat_option_row = QHBoxLayout()
         stat_option_row.setContentsMargins(0, 4, 0, 0)
@@ -223,7 +223,7 @@ class RoleSelectorPreferencesMixin:
         crit_threshold_help.setObjectName("btnHelp")
         crit_threshold_help.setFixedSize(24, 24)
         crit_threshold_help.clicked.connect(
-            lambda: self._show_help("暴击率最小值", CRIT_THRESHOLD_HELP)
+            lambda: self._show_help(tr("暴击率最小值"), CRIT_THRESHOLD_HELP)
         )
         crit_threshold_edit = QLineEdit()
         crit_threshold_edit.setValidator(QIntValidator(0, 100, crit_threshold_edit))
@@ -257,7 +257,7 @@ class RoleSelectorPreferencesMixin:
         effect_row.addWidget(effect_combo, 1)
         effect_help_btn = QPushButton("?")
         effect_help_btn.setObjectName("btnHelp")
-        effect_help_btn.clicked.connect(lambda: self._show_help("套装效果说明", SET_EFFECT_HELP))
+        effect_help_btn.clicked.connect(lambda: self._show_help(tr("套装效果说明"), SET_EFFECT_HELP))
         effect_row.addWidget(effect_help_btn)
         effect_layout.addLayout(effect_row)
         crit_row = QHBoxLayout()
@@ -281,7 +281,7 @@ class RoleSelectorPreferencesMixin:
         if current_cap is not None:
             crit_cap_edit.setText(f"{float(current_cap):g}")
         crit_cap_edit.setPlaceholderText(
-            "弧盘常驻资料待审查" if current_cap is None else tr("留空不限制")
+            tr("弧盘常驻资料待审查") if current_cap is None else tr("留空不限制")
         )
 
         cap_text_edited = False
@@ -306,7 +306,7 @@ class RoleSelectorPreferencesMixin:
             else:
                 crit_cap_edit.clear()
             crit_cap_edit.setPlaceholderText(
-                "弧盘常驻资料待审查" if cap is None else "留空不限制"
+                tr("弧盘常驻资料待审查") if cap is None else tr("留空不限制")
             )
             cap_text_edited = False
 
@@ -326,7 +326,7 @@ class RoleSelectorPreferencesMixin:
         crit_cap_help.setObjectName("btnHelp")
         crit_cap_help.setFixedSize(24, 24)
         crit_cap_help.clicked.connect(
-            lambda: self._show_help("暴击率上限", CRIT_RATE_CAP_HELP)
+            lambda: self._show_help(tr("暴击率上限"), CRIT_RATE_CAP_HELP)
         )
         crit_row.addWidget(crit_cap_help)
         effect_layout.addLayout(crit_row)

@@ -29,6 +29,7 @@ from src.utils.perf import log_perf
 
 class MainWindowDataMixin:
     def _on_log(self, msg):
+        # Log text stays Chinese, so these markers are matched untranslated.
         if not self._log_enabled:
             return
         c = theme_color("#8b949e")
@@ -103,7 +104,7 @@ class MainWindowDataMixin:
         self._save_ui_preferences()
         self.log_frame.setVisible(False)
         self.log_view.clear()
-        self.log_view.insertPlainText("(日志已关闭)\n")
+        self.log_view.insertPlainText(tr("(日志已关闭)\n"))
         self._refresh_log_session_status()
 
     # ── Data
@@ -205,7 +206,7 @@ class MainWindowDataMixin:
                 if not ready and key not in previous:
                     previous[key] = page.isEnabled()
                 page.setEnabled(previous.get(key, True) if ready else False)
-                page.setToolTip("" if ready else "正在准备当前账号的计算资料，请稍候。")
+                page.setToolTip("" if ready else tr("正在准备当前账号的计算资料，请稍候。"))
         self._catalog_page_enabled_state = {} if ready else previous
         if ready and not was_ready and self._nav_key_for_index(self.stack.currentIndex()) in {"equipment", "identify", "warehouse"}:
             self.refresh_current_account_page()
@@ -233,10 +234,10 @@ class MainWindowDataMixin:
         if hasattr(self, "auto_sync_controller"):
             return  # The top-bar status belongs to the live synchronization owner.
         if summary is None:
-            self.status_lbl.setText("库存为空")
+            self.status_lbl.setText(tr("库存为空"))
             self.status_lbl.setStyleSheet("color:#d2991d;font-size:12px")
         else:
-            self.status_lbl.setText(f"稳定背包 {int(summary['stored_item_count'])} 件")
+            self.status_lbl.setText(tr("稳定背包 {summary_int} 件", summary_int=int(summary['stored_item_count'])))
             self.status_lbl.setStyleSheet("color:#3fb950;font-size:12px")
 
     def _card(self, title):

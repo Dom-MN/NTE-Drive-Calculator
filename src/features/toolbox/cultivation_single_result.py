@@ -1,6 +1,8 @@
 # 渲染单角色养成合计及折叠明细，保持页面编辑与结果展示分离。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
@@ -18,7 +20,7 @@ class CultivationSingleResultMixin:
         complete = plan.status == MaterialSummaryStatus.COMPLETE
         if not complete:
             summary = QLabel(
-                "材料数据不完整，以下为已识别的材料",
+                tr("材料数据不完整，以下为已识别的材料"),
                 self._result_body,
             )
             summary.setStyleSheet(themed_style(
@@ -28,7 +30,7 @@ class CultivationSingleResultMixin:
         if plan.required_experience:
             overflow = f"，经验书最小溢出 {plan.experience_overflow:,}" if plan.experience_overflow else ""
             self._result_layout.addWidget(QLabel(
-                f"角色升级经验 {plan.required_experience:,}{overflow}", self._result_body
+                tr("角色升级经验 {required_experience:,}{overflow}", required_experience=plan.required_experience, overflow=overflow), self._result_body
             ))
         if plan.fork_required_experience:
             overflow = (
@@ -36,7 +38,7 @@ class CultivationSingleResultMixin:
                 if plan.fork_experience_overflow else ""
             )
             self._result_layout.addWidget(QLabel(
-                f"弧盘升级经验 {plan.fork_required_experience:,}{overflow}",
+                tr("弧盘升级经验 {fork_required_experience:,}{overflow}", fork_required_experience=plan.fork_required_experience, overflow=overflow),
                 self._result_body,
             ))
         total = QFrame(self._result_body)
@@ -50,7 +52,7 @@ class CultivationSingleResultMixin:
         visible_totals = self._visible(plan.totals)
         remaining = remaining_materials(visible_totals, owned)
         total_header = QHBoxLayout()
-        total_heading = QLabel("仍需合计", total)
+        total_heading = QLabel(tr("仍需合计"), total)
         total_heading.setStyleSheet(themed_style("color:#58a6ff;font-size:14px;font-weight:900"))
         total_header.addWidget(total_heading)
         total_header.addStretch(1)
@@ -72,11 +74,11 @@ class CultivationSingleResultMixin:
             total_grid.layout_changed.connect(self.layout_changed)
             total_layout.addWidget(total_grid)
         elif visible_totals:
-            total_layout.addWidget(QLabel("已有材料已覆盖全部需求", total))
+            total_layout.addWidget(QLabel(tr("已有材料已覆盖全部需求"), total))
         elif self._material_scope == "stamina":
-            total_layout.addWidget(QLabel("本次目标没有需消耗体力刷取的材料", total))
+            total_layout.addWidget(QLabel(tr("本次目标没有需消耗体力刷取的材料"), total))
         else:
-            total_layout.addWidget(QLabel("本次目标没有新增材料", total))
+            total_layout.addWidget(QLabel(tr("本次目标没有新增材料"), total))
         total_runs = stamina_runs_text(
             self._last_stamina_plan.total if self._last_stamina_plan else None
         )
@@ -88,7 +90,7 @@ class CultivationSingleResultMixin:
         self._result_layout.addWidget(total, 0, Qt.AlignmentFlag.AlignTop)
         if plan.gaps:
             self._result_layout.addWidget(QLabel(
-                "部分正式材料数量尚未提供，合计只包含已识别条目。", self._result_body
+                tr("部分正式材料数量尚未提供，合计只包含已识别条目。"), self._result_body
             ))
         if plan.sections:
             self._result_layout.addWidget(
@@ -117,7 +119,7 @@ class CultivationSingleResultMixin:
         layout.setSpacing(0)
         toggle = QToolButton(panel)
         toggle.setObjectName("cultivationCalculatorDetailsToggle")
-        toggle.setText(f"计算明细 · {len(plan.sections)}项")
+        toggle.setText(tr("计算明细 · {sections_len}项", sections_len=len(plan.sections)))
         toggle.setCheckable(True)
         toggle.setChecked(self._details_expanded)
         toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -172,8 +174,8 @@ class CultivationSingleResultMixin:
                 card_layout.addWidget(grid)
             else:
                 values = QLabel(
-                    "本模块没有需消耗体力刷取的材料"
-                    if self._material_scope == "stamina" else "无额外材料",
+                    tr("本模块没有需消耗体力刷取的材料")
+                    if self._material_scope == "stamina" else tr("无额外材料"),
                     card,
                 )
                 values.setStyleSheet(themed_style("color:#8b949e"))

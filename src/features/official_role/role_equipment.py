@@ -162,7 +162,7 @@ def _show_replacement_optimizer(
     from .dependencies import OfficialRoleDependencies
     controller = _role_controller(window)
     if status_label is not None:
-        status_label.setText("正在准备替换候选…")
+        status_label.setText(tr("正在准备替换候选…"))
         status_label.show()
 
         def clear_status() -> None:
@@ -182,7 +182,7 @@ def _show_replacement_optimizer(
 
     controller.request_replacement(
         detail, context_key, target, prepared,
-        lambda error: QMessageBox.warning(window, "替换候选准备失败", error),
+        lambda error: QMessageBox.warning(window, tr("替换候选准备失败"), error),
     )
 
 
@@ -395,7 +395,7 @@ def _build_drive_summary_group(
         editor["equipment_context_key"] = str(context_combo.currentData())
     # Eleven Chinese characters plus combo padding keeps it compact.
     context_combo.setFixedWidth(
-        context_combo.fontMetrics().horizontalAdvance("已保存配装方案选择器")
+        context_combo.fontMetrics().horizontalAdvance(tr("已保存配装方案选择器"))
         + context_combo.fontMetrics().horizontalAdvance("中")
         + 24
     )

@@ -698,9 +698,9 @@ class WorkModeRuntime:
                 update_detail = ("；".join(self._bundle.issues) if self._bundle else "") or "配套组件包尚未通过核对。"
             elif settings.pending_cleanup:
                 update_state = CheckState.CLEANUP_PENDING
-                update_detail = self.cleanup_detail or "旧组件清理尚未完成，请先完成清理。"
+                update_detail = self.cleanup_detail or tr("旧组件清理尚未完成，请先完成清理。")
             elif current_package:
-                update_state, update_detail = CheckState.AVAILABLE, "当前配套组件已部署。"
+                update_state, update_detail = CheckState.AVAILABLE, tr("当前配套组件已部署。")
             else:
                 update_state = CheckState.MISSING
                 update_detail = "当前游戏内组件尚未部署或与组件包不兼容；请前往部署组件后重新检测。"

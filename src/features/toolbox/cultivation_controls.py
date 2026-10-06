@@ -100,9 +100,10 @@ def participation_toggle(parent: QWidget, label: str) -> QToolButton:
 def refresh_participation_tooltip(toggle: QToolButton) -> None:
     """历史恢复屏蔽信号时仍更新参与状态提示，不派发编辑或计算动作。"""
     label = toggle.property("participationLabel")
-    state = "参与计算（点击关闭）" if toggle.isChecked() else "不参与计算（点击开启）"
-    toggle.setToolTip(f"{label}：{state}")
-    toggle.setAccessibleDescription(f"{label}：{state}")
+    text = (tr("{label}：参与计算（点击关闭）", label=label) if toggle.isChecked()
+            else tr("{label}：不参与计算（点击开启）", label=label))
+    toggle.setToolTip(text)
+    toggle.setAccessibleDescription(text)
 
 
 def level_spinbox(parent: QWidget) -> QSpinBox:

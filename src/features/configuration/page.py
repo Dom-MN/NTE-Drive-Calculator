@@ -184,7 +184,7 @@ def switch_config_form(window, name=_ACCOUNT_WEIGHT_CONFIG, config_dir=None, use
     controller = _basic_weight_controller(window)
     if controller.is_writing():
         return
-    window.config_load_status.setText("正在读取当前账号权重…")
+    window.config_load_status.setText(tr("正在读取当前账号权重…"))
     window.config_form_area.setEnabled(False)
     for button in window.config_mutation_buttons:
         button.setEnabled(False)
@@ -225,7 +225,7 @@ def switch_config_form(window, name=_ACCOUNT_WEIGHT_CONFIG, config_dir=None, use
 
     def failed(error):
         if current():
-            window.config_load_status.setText(f"权重读取失败：{error}；重新进入本页可重试。")
+            window.config_load_status.setText(tr("权重读取失败：{error}；重新进入本页可重试。", error=error))
             window._config_loaded_model = None
 
     controller.request_form_data(apply, failed)
@@ -249,7 +249,7 @@ def _add_extra_shape_row(window, data, role_name, role_data, form_layout):
     role_data["extra_shape_label"] = current_label
     value.setCurrentText(current_label)
     value.setPlaceholderText(tr("选择额外形状标签"))
-    ownership = "点击“保存”后写入当前账号的自建角色数据。"
+    ownership = tr("点击“保存”后写入当前账号的自建角色数据。")
     value.setToolTip(tr("选择额外形状标签；{ownership}", ownership=ownership))
     value.currentTextChanged.connect(
         lambda text, rn=role_name: save_extra_shape_label(window, rn, text, data)
@@ -277,7 +277,7 @@ def _add_extra_shape_buff_row(
         property_combo.addItem(display_term(str(label)), str(property_id))
     selected_index = property_combo.findData(str(selected_property))
     property_combo.setCurrentIndex(selected_index if selected_index >= 0 else 0)
-    ownership = "点击“保存”后写入当前账号的自建角色数据。"
+    ownership = tr("点击“保存”后写入当前账号的自建角色数据。")
     property_combo.setToolTip(tr("选择额外形状提供的属性；{ownership}", ownership=ownership))
     row.addWidget(property_combo, 1)
     value_spin = NoWheelDoubleSpinBox()
@@ -459,7 +459,7 @@ def _populate_config_role_tab(window, data, role_name, tab_scroll, rebuild_all_t
 
     source_text = f"角色：{role_name}　当前账号权重设置"
     if not role_data.get("is_custom"):
-        source_text += "\n额外形状：发行静态资源库 · 只读"
+        source_text += tr("\n额外形状：发行静态资源库 · 只读")
     source = QLabel(source_text)
     source.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
     form_layout.addWidget(source)
@@ -483,8 +483,8 @@ def _populate_config_role_tab(window, data, role_name, tab_scroll, rebuild_all_t
     else:
         for label, widget in official_shape_display_rows(window, role_data):
             _field(label, widget, form_layout)
-    _add_role_weight_group(window, data, role_name, role_data, form_layout, rebuild_all_tabs, "卡带主词条权重", "main_weights", "+ 添加主词条")
-    _add_role_weight_group(window, data, role_name, role_data, form_layout, rebuild_all_tabs, "副词条权重", "weights", "+ 添加副词条")
+    _add_role_weight_group(window, data, role_name, role_data, form_layout, rebuild_all_tabs, tr("卡带主词条权重"), "main_weights", tr("+ 添加主词条"))
+    _add_role_weight_group(window, data, role_name, role_data, form_layout, rebuild_all_tabs, tr("副词条权重"), "weights", tr("+ 添加副词条"))
     form_layout.addStretch()
 
 

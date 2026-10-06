@@ -1,6 +1,8 @@
 # 编排倒带角色槽位草稿、账号偏好与可失效的只读任务。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
 import threading
@@ -39,7 +41,7 @@ class RewindSelectionUiMixin:
         if self._closed or self._read_cancel.is_set() or (
             self.operation_generation and self.operation_generation() != self._selection_generation
         ):
-            raise CancelledError("倒带推荐已取消或账号上下文已变化")
+            raise CancelledError(tr("倒带推荐已取消或账号上下文已变化"))
 
     def _attach_read_worker(self, worker):
         # The task outlives a closed modal until its cancellation checkpoint;
@@ -65,13 +67,13 @@ class RewindSelectionUiMixin:
             return
         self._catalog_loading = True
         self._generate_button.setEnabled(False)
-        self._target_summary.setText("正在加载角色列表…")
-        self._main_summary.setText("正在加载角色列表…")
+        self._target_summary.setText(tr("正在加载角色列表…"))
+        self._main_summary.setText(tr("正在加载角色列表…"))
         token = self._catalog_token
         def checkpoint():
             self._check_selection_context()
             if token is not self._catalog_token:
-                raise CancelledError("角色目录读取已失效")
+                raise CancelledError(tr("角色目录读取已失效"))
 
         worker = WorkerThread(target=lambda: self._load_role_and_inventory_catalog(checkpoint), parent=None)
         self._roles_worker = worker
@@ -124,8 +126,8 @@ class RewindSelectionUiMixin:
             return
         self._catalog_loading = False
         self._generate_button.setEnabled(True)
-        self._target_summary.setText("角色列表加载失败")
-        self._main_summary.setText("角色列表加载失败")
+        self._target_summary.setText(tr("角色列表加载失败"))
+        self._main_summary.setText(tr("角色列表加载失败"))
         self._target_summary.setToolTip(message)
 
     def _choose_target_roles(self):
@@ -142,8 +144,8 @@ class RewindSelectionUiMixin:
         except CancelledError:
             return
         strategy = "focused" if main else "balanced"
-        dialog = _RoleSelectionDialog(self, title="选择冲分角色" if main else "选择培养角色",
-            description="选择角色与配装槽位，仅分析所选方案。",
+        dialog = _RoleSelectionDialog(self, title=tr("选择冲分角色") if main else tr("选择培养角色"),
+            description=tr("选择角色与配装槽位，仅分析所选方案。"),
             roles=self._roles, selected_character_ids=self._main_character_ids if main else self._target_character_ids,
             selected_slots=self._selected_slots_by_strategy[strategy], asset_root=getattr(self._service, "asset_root", None))
         if dialog.exec() == QDialog.Accepted:
@@ -193,7 +195,7 @@ class RewindSelectionUiMixin:
             self._saved_slot_ids_by_strategy = saved_ids
             return True
         except Exception as error:
-            QMessageBox.warning(self, "偏好未保存", f"本次选择仅在当前窗口生效，请稍后重试保存。\n{error}")
+            QMessageBox.warning(self, tr("偏好未保存"), tr("本次选择仅在当前窗口生效，请稍后重试保存。\n{error}", error=error))
             return False
 
     def _slot_preferences(self, strategy):
@@ -218,15 +220,15 @@ class RewindSelectionUiMixin:
             self._recommendation_invalidated = True
         self._save_plan_button.setEnabled(False)
         self._generate_button.setEnabled(True)
-        self._generate_button.setText("重新生成")
+        self._generate_button.setText(tr("重新生成"))
 
     def _update_role_summaries(self):
         if not self._roles and self._catalog_loading:
             return
         for ids, label in ((self._target_character_ids, self._target_summary), (self._main_character_ids, self._main_summary)):
-            text = self._role_summary(ids, "未选择，请选择角色")
+            text = self._role_summary(ids, tr("未选择，请选择角色"))
             label.setText(text)
-            label.setToolTip(self._role_summary(ids, "未选择，请选择角色", full=True))
+            label.setToolTip(self._role_summary(ids, tr("未选择，请选择角色"), full=True))
 
     def _role_summary(self, character_ids, empty_text, *, full=False):
         names = []
@@ -246,7 +248,7 @@ class RewindSelectionUiMixin:
         if self._catalog_loading:
             return
         if self._target_threshold_mode == "custom" and self._target_custom_percent is None:
-            QMessageBox.warning(self, "生成推荐", "请选择自选评分百分比（1.0%～100.0%）。")
+            QMessageBox.warning(self, tr("生成推荐"), tr("请选择自选评分百分比（1.0%～100.0%）。"))
             return
         token = object()
         self._analysis_token = token
@@ -255,7 +257,7 @@ class RewindSelectionUiMixin:
             self._recommendation_invalidated = True
         self._save_plan_button.setEnabled(False)
         self._generate_button.setEnabled(False)
-        self._generate_button.setText("分析中…")
+        self._generate_button.setText(tr("分析中…"))
         self._render_loading()
         target_ids, primary_ids = tuple(sorted(self._target_character_ids)), tuple(sorted(self._main_character_ids))
         strategy, grade = self._strategy_key, self._target_grade
@@ -266,7 +268,7 @@ class RewindSelectionUiMixin:
         def checkpoint():
             self._check_selection_context()
             if token is not self._analysis_token:
-                raise CancelledError("推荐输入已变化")
+                raise CancelledError(tr("推荐输入已变化"))
 
         worker = WorkerThread(target=lambda: self._service.analyze_for_targets(
             target_character_ids=target_ids, primary_character_ids=primary_ids, selected_slots=slots,
@@ -288,12 +290,12 @@ class RewindSelectionUiMixin:
             self._on_analysis_error(token, str(error))
             return
         self._generate_button.setEnabled(True)
-        self._generate_button.setText("生成方案")
+        self._generate_button.setText(tr("生成方案"))
         self._generated_analysis = analysis
         self._recommendation_invalidated = False
         self._last_input_signature = self._input_signature()
         if analysis.notice:
-            self._render_message("推荐提示", analysis.notice)
+            self._render_message(tr("推荐提示"), analysis.notice)
         else:
             self._render_plans(analysis)
 
@@ -305,7 +307,7 @@ class RewindSelectionUiMixin:
         except CancelledError:
             return
         self._generate_button.setEnabled(True)
-        self._generate_button.setText("重新生成")
+        self._generate_button.setText(tr("重新生成"))
         self._save_plan_button.setEnabled(False)
-        QMessageBox.warning(self, "生成推荐", message)
-        self._render_message("未生成推荐", message)
+        QMessageBox.warning(self, tr("生成推荐"), message)
+        self._render_message(tr("未生成推荐"), message)

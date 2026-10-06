@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.i18n import tr
+
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass
 from pathlib import Path
@@ -158,14 +160,14 @@ def initialize_dashboard(window) -> None:
     from src.features.home.page import refresh_home_page
 
     def loading():
-        window.home_account_label.setText("正在读取当前账号工作台摘要…")
+        window.home_account_label.setText(tr("正在读取当前账号工作台摘要…"))
         for value, _subtitle in window.home_metric_labels.values():
             value.setText("—")
-        window.home_last_sync_label.setText("正在读取已保存背包…")
-        window.home_character_sync_detail.setText("正在读取已保存角色养成…")
+        window.home_last_sync_label.setText(tr("正在读取已保存背包…"))
+        window.home_character_sync_detail.setText(tr("正在读取已保存角色养成…"))
 
     def failed(error):
-        window.home_account_label.setText(f"工作台摘要读取失败：{error}；返回工作台可重试。")
+        window.home_account_label.setText(tr("工作台摘要读取失败：{error}；返回工作台可重试。", error=error))
         logger.warning(f"刷新工作台摘要失败: {error}")
 
     window.dashboard_controller = DashboardController(

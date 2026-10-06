@@ -1,6 +1,8 @@
 # 渲染多角色养成合计及惰性创建的角色明细。
 from __future__ import annotations
 
+from src.i18n import display_term, tr
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QToolButton, QVBoxLayout, QWidget
 
@@ -34,10 +36,10 @@ class CultivationBatchResultMixin:
         ))
         layout = QVBoxLayout(panel)
         header = QHBoxLayout()
-        title = QLabel("跨角色仍需合计", panel)
+        title = QLabel(tr("跨角色仍需合计"), panel)
         title.setStyleSheet(themed_style("color:#58a6ff;font-size:15px;font-weight:900"))
         header.addWidget(title)
-        header.addWidget(QLabel("合并副本掉落已去重", panel))
+        header.addWidget(QLabel(tr("合并副本掉落已去重"), panel))
         header.addStretch(1)
         badge = QLabel(stamina_summary_text(plan.combined_stamina), panel)
         style_stamina_badge(badge)
@@ -45,13 +47,13 @@ class CultivationBatchResultMixin:
         layout.addLayout(header)
         if plan.gaps:
             warning = QLabel(
-                f"存在 {len(plan.gaps)} 项正式数据缺口，合计仅包含已识别材料。",
+                tr("存在 {gaps_len} 项正式数据缺口，合计仅包含已识别材料。", gaps_len=len(plan.gaps)),
                 panel,
             )
             warning.setStyleSheet(themed_style("color:#d29922;font-weight:800"))
             layout.addWidget(warning)
         if plan.saved_stamina:
-            saved = QLabel(f"相比分角色分别刷取，合并方案节省 {plan.saved_stamina:,} 体力", panel)
+            saved = QLabel(tr("相比分角色分别刷取，合并方案节省 {saved_stamina:,} 体力", saved_stamina=plan.saved_stamina), panel)
             saved.setStyleSheet(themed_style("color:#3fb950;font-weight:800"))
             layout.addWidget(saved)
         remaining_totals = self._visible(plan.remaining_totals)
@@ -65,9 +67,9 @@ class CultivationBatchResultMixin:
             layout.addWidget(grid)
         else:
             message = (
-                "本次目标没有需消耗体力刷取的材料"
+                tr("本次目标没有需消耗体力刷取的材料")
                 if self._material_scope == "stamina" and not self._visible(plan.merged_totals)
-                else "已有材料已覆盖全部角色需求"
+                else tr("已有材料已覆盖全部角色需求")
             )
             layout.addWidget(QLabel(message, panel))
         runs = stamina_runs_text(plan.combined_stamina)
@@ -91,7 +93,7 @@ class CultivationBatchResultMixin:
         root.setSpacing(0)
         toggle = QToolButton(panel)
         toggle.setObjectName("cultivationBatchTargetResultToggle")
-        toggle.setText(f"{target.plan.character_name} · {len(target.plan.sections)} 项明细")
+        toggle.setText(tr("{character_name} · {sections_len} 项明细", character_name=display_term(target.plan.character_name), sections_len=len(target.plan.sections)))
         toggle.setCheckable(True)
         toggle.setChecked(target.line_id in self._expanded_results)
         toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -102,7 +104,7 @@ class CultivationBatchResultMixin:
         layout.setContentsMargins(10, 4, 10, 10)
         layout.setSpacing(8)
         summary = QHBoxLayout()
-        summary.addWidget(QLabel("该角色仍需", content))
+        summary.addWidget(QLabel(tr("该角色仍需"), content))
         summary.addStretch(1)
         badge = QLabel(stamina_summary_text(target.stamina.total), content)
         style_stamina_badge(badge)
@@ -195,9 +197,9 @@ class CultivationBatchResultMixin:
             layout.addWidget(grid)
         else:
             message = (
-                "本模块没有需消耗体力刷取的材料"
+                tr("本模块没有需消耗体力刷取的材料")
                 if self._material_scope == "stamina" and not materials
-                else "已有材料已覆盖该模块"
+                else tr("已有材料已覆盖该模块")
             )
             layout.addWidget(_muted_label(message, card))
         allocated = [
@@ -207,7 +209,7 @@ class CultivationBatchResultMixin:
             if material.item_id == row.item_id and row.allocated_owned
         ]
         if allocated:
-            layout.addWidget(_muted_label("已有分配：" + "；".join(allocated), card))
+            layout.addWidget(_muted_label(tr("已有分配：") + "；".join(allocated), card))
         runs = stamina_runs_text(stamina)
         if runs:
             layout.addWidget(_muted_label(runs, card))

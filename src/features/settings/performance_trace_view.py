@@ -1,4 +1,5 @@
 # 展示手动细分性能采样、服务选择与最近窗口的阶段耗时。
+from src.i18n import tr
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
                                QPushButton, QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView)
 from PySide6.QtCore import Qt
@@ -19,8 +20,8 @@ class PerformanceTraceView(QWidget):
         super().__init__(parent)
         self.controller = controller
         layout = QVBoxLayout(self)
-        note = QLabel('细分采样 · 记录已运行功能的分阶段耗时；最多 120 秒 / 64 MiB。'
-                      '结果是各服务最近一组最多 600 次回调，嵌套阶段不能相加，也不是游戏帧率。')
+        note = QLabel(tr('细分采样 · 记录已运行功能的分阶段耗时；最多 120 秒 / 64 MiB。'
+                      '结果是各服务最近一组最多 600 次回调，嵌套阶段不能相加，也不是游戏帧率。'))
         note.setWordWrap(True)
         layout.addWidget(note)
         grid = QGridLayout()
@@ -33,19 +34,19 @@ class PerformanceTraceView(QWidget):
             self.choices.append(box)
         layout.addLayout(grid)
         row = QHBoxLayout()
-        self.start = QPushButton('开始细分采样')
-        self.stop = QPushButton('停止并保存')
+        self.start = QPushButton(tr('开始细分采样'))
+        self.stop = QPushButton(tr('停止并保存'))
         self.start.clicked.connect(self.begin)
         self.stop.clicked.connect(controller.stop_trace)
         row.addWidget(self.start)
         row.addWidget(self.stop)
         layout.addLayout(row)
-        self.status = QLabel('尚未采样')
+        self.status = QLabel(tr('尚未采样'))
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.status)
         self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(['服务 / 阶段', '样本数', 'P95 ms', 'P99 ms', '最大 ms'])
+        self.table.setHorizontalHeaderLabels([tr('服务 / 阶段'), tr('样本数'), 'P95 ms', 'P99 ms', tr('最大 ms')])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setWordWrap(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -64,17 +65,17 @@ class PerformanceTraceView(QWidget):
         self.stop.setEnabled(running)
         for box in self.choices:
             box.setEnabled(not running)
-        state = {'off': '尚未采样', 'starting': '正在开启', 'collecting': '正在采样',
-                 'saved': '已停止并保存', 'failed': '采样未完整完成', 'unconfirmed': '停止未确认'}.get(value.get('state'), '等待组件')
+        state = {'off': tr('尚未采样'), 'starting': tr('正在开启'), 'collecting': tr('正在采样'),
+                 'saved': tr('已停止并保存'), 'failed': tr('采样未完整完成'), 'unconfirmed': tr('停止未确认')}.get(value.get('state'), tr('等待组件'))
         if running and value.get('stopping'):
-            state = '正在停止并落盘'
+            state = tr('正在停止并落盘')
         text = f"{state} · 已写入 {value.get('written', 0)} 条 · 丢失 {value.get('dropped', 0)} 条"
         if value.get('error'):
             text += '\n' + value['error']
         if value.get('log_path'):
-            text += '\nCalc 摘要：' + value['log_path']
+            text += tr('\nCalc 摘要：') + value['log_path']
         if value.get('path'):
-            text += '\n原始采样：' + value['path']
+            text += tr('\n原始采样：') + value['path']
         self.status.setText(text)
         rows = []
         for summary in value.get('summaries', []):
@@ -83,7 +84,7 @@ class PerformanceTraceView(QWidget):
                 if result['n']:
                     label = PHASE_LABELS.get(phase, phase)
                     if phase == 'body' and source != 'hud_frame':
-                        label = '本次服务总计'
+                        label = tr('本次服务总计')
                     rows.append((f'{LABELS[SERVICES.index(source)]} / {label}', result))
         self.table.setRowCount(len(rows))
         for i, (name, result) in enumerate(rows):

@@ -1,4 +1,5 @@
 # 在后台执行显式组件更新，界面只解释前置条件和已确认的操作结果。
+from src.i18n import tr
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal
@@ -48,25 +49,25 @@ class NativePluginUpdateController(QObject):
             self.policy.require('native_load')
             pid = native_game_pid()
             if pid is None:
-                raise RuntimeError('游戏尚未启动，当前没有运行中的插件可热更新。\n'
+                raise RuntimeError(tr('游戏尚未启动，当前没有运行中的插件可热更新。\n'
                                    '要在启动游戏前更新组件，请点击“部署原生组件”；'
-                                   '要热更新，请先启动游戏后再点击本按钮。')
+                                   '要热更新，请先启动游戏后再点击本按钮。'))
             settings = self.policy.settings
             if self.policy.deployment_record.get('loading_method') == 'loader':
                 workspace = self.loader.native_workspace_record
                 if workspace is None:
-                    raise RuntimeError('缺少 Loader 运行目录记录。')
+                    raise RuntimeError(tr('缺少 Loader 运行目录记录。'))
                 directory = workspace.directory
             else:
                 directory = Path(settings.game_executable).parent
             if not directory.is_absolute():
-                raise RuntimeError('游戏组件目录尚未确认。')
+                raise RuntimeError(tr('游戏组件目录尚未确认。'))
         except Exception as error:
-            QMessageBox.warning(owner, '更新本方插件', str(error))
+            QMessageBox.warning(owner, tr('更新本方插件'), str(error))
             return
-        if QMessageBox.question(owner, '更新本方插件',
-            'Calc 和游戏可以保持打开。\n将暂时暂停同步、HUD 和性能显示，更新后按当前开关重新连接。'
-            '\n战报录制或游戏写操作进行中时不会强行更新；D3D 宿主变化仍需退出游戏。',
+        if QMessageBox.question(owner, tr('更新本方插件'),
+            tr('Calc 和游戏可以保持打开。\n将暂时暂停同步、HUD 和性能显示，更新后按当前开关重新连接。'
+            '\n战报录制或游戏写操作进行中时不会强行更新；D3D 宿主变化仍需退出游戏。'),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
         worker = _UpdateWorker(None, self)
@@ -77,7 +78,7 @@ class NativePluginUpdateController(QObject):
             self.maintenance.begin()
         except Exception as error:
             worker.deleteLater()
-            QMessageBox.warning(owner, '更新本方插件', str(error))
+            QMessageBox.warning(owner, tr('更新本方插件'), str(error))
             return
 
         def work():
@@ -108,7 +109,7 @@ class NativePluginUpdateController(QObject):
                 if recorded_directory.name.lower() == 'htgame.exe':
                     recorded_directory = recorded_directory.parent
                 if recorded_directory != self._target_directory.resolve():
-                    raise RuntimeError('插件已更新，但部署目录记录已改变；请核对组件后恢复功能。')
+                    raise RuntimeError(tr('插件已更新，但部署目录记录已改变；请核对组件后恢复功能。'))
                 key = 'native_workspace_files' if record.get('loading_method') == 'loader' else 'managed_files'
                 record[key] = {**record.get(key, {}), **result.managed_files}
                 record['deployment_layout'] = result.layout
@@ -122,11 +123,11 @@ class NativePluginUpdateController(QObject):
         if isinstance(result, Exception):
             detail = str(result)
             if self.maintenance.uncertain:
-                detail += '\n更新或登记未确认，相关原生功能保持暂停；不要重复更新，请核对恢复。'
-            QMessageBox.warning(self.parent(), '更新本方插件', detail)
+                detail += tr('\n更新或登记未确认，相关原生功能保持暂停；不要重复更新，请核对恢复。')
+            QMessageBox.warning(self.parent(), tr('更新本方插件'), detail)
         else:
-            QMessageBox.information(self.parent(), '更新本方插件', result.detail +
-                                    '\n已恢复功能调度，正在按当前开关重新连接；各功能就绪请查看对应状态。')
+            QMessageBox.information(self.parent(), tr('更新本方插件'), result.detail +
+                                    tr('\n已恢复功能调度，正在按当前开关重新连接；各功能就绪请查看对应状态。'))
 
     def _finished(self):
         worker, self.worker = self.worker, None

@@ -1,6 +1,8 @@
 # 提供带配装槽位选择的倒带角色多选窗口。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -55,13 +57,13 @@ class _RoleSelectionDialog(QDialog):
         self.search_edit = QLineEdit()
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.setObjectName("rewindRoleSearch")
-        self.search_edit.setPlaceholderText("搜索角色（支持拼音）")
+        self.search_edit.setPlaceholderText(tr("搜索角色（支持拼音）"))
         self.search_edit.textChanged.connect(self._apply_filter)
         root.addWidget(self.search_edit)
 
         toolbar = QHBoxLayout()
-        select_all = QPushButton("全选")
-        clear_all = QPushButton("清空")
+        select_all = QPushButton(tr("全选"))
+        clear_all = QPushButton(tr("清空"))
         for button in (select_all, clear_all):
             button.setStyleSheet(themed_style("padding:5px 14px;font-size:12px"))
         select_all.clicked.connect(lambda: self._set_visible_checked(True))
@@ -111,13 +113,13 @@ class _RoleSelectionDialog(QDialog):
         divider.setStyleSheet(themed_style("background:#21262d;border:none;"))
         root.addWidget(divider)
         footer = QHBoxLayout()
-        hint = QLabel("点击角色勾选，点击槽位切换方案")
+        hint = QLabel(tr("点击角色勾选，点击槽位切换方案"))
         hint.setWordWrap(True)
         hint.setStyleSheet(themed_style("color:#8b949e;font-size:11px"))
         footer.addWidget(hint, 1)
-        cancel_button = QPushButton("取消")
+        cancel_button = QPushButton(tr("取消"))
         cancel_button.clicked.connect(self.reject)
-        confirm_button = QPushButton("确定")
+        confirm_button = QPushButton(tr("确定"))
         confirm_button.setObjectName("rewindRoleConfirm")
         confirm_button.setDefault(True)
         confirm_button.setStyleSheet(themed_style(
@@ -184,7 +186,7 @@ class _RoleSelectionDialog(QDialog):
         self._update_count()
 
     def _update_count(self, _checked: bool | None = None) -> None:
-        self.count_label.setText(f"已选 {len(self.selected_character_ids())} 名")
+        self.count_label.setText(tr("已选 {selected_character_ids_len} 名", selected_character_ids_len=len(self.selected_character_ids())))
 
     def selected_character_ids(self) -> tuple[int, ...]:
         return tuple(

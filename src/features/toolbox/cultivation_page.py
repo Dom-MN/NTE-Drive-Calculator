@@ -185,7 +185,7 @@ class CultivationCalculatorPage(QWidget):
         self._restore_request = self._history_controller.submit("restore", lambda: prepare_history_restore(self._service, record))
         if self._history_view is not None:
             self._history_view.set_restore_busy(True)
-            self._history_view.set_message("正在核对历史配置；原草稿暂时保持不变。")
+            self._history_view.set_message(tr("正在核对历史配置；原草稿暂时保持不变。"))
 
     def _history_operation_completed(self, outcome: object) -> None:
         if (not isinstance(outcome, HistoryOperationResult) or outcome.operation != "restore"
@@ -196,7 +196,7 @@ class CultivationCalculatorPage(QWidget):
             self._history_view.set_restore_busy(False)
         if outcome.error_code is not None:
             if self._history_view is not None:
-                self._history_view.set_message(outcome.message or "历史加载请求已过期。")
+                self._history_view.set_message(outcome.message or tr("历史加载请求已过期。"))
             return
         if isinstance(outcome.value, PreparedHistoryRestore):
             self._replace_from_history(outcome.value)
@@ -228,7 +228,7 @@ class CultivationCalculatorPage(QWidget):
             elif binding is not None:
                 binding.close()
             if self._history_view is not None:
-                self._history_view.set_message("历史配置未加载；原草稿保持不变，请确认资料兼容性后重试。")
+                self._history_view.set_message(tr("历史配置未加载；原草稿保持不变，请确认资料兼容性后重试。"))
             return
         # Only a completely built candidate replaces the visible draft.
         self._cancel_batch_result_transition()
@@ -271,7 +271,7 @@ class CultivationCalculatorPage(QWidget):
         except ValueError as exc:
             message = f"材料导入未完成：{exc}"
         except Exception:
-            message = "材料导入未完成：读取同步数据失败，请检查同步状态后重试。"
+            message = tr("材料导入未完成：读取同步数据失败，请检查同步状态后重试。")
         else:
             if (self._context_identity is not None
                     and self._context_identity() != self._initial_identity):
@@ -282,7 +282,7 @@ class CultivationCalculatorPage(QWidget):
                 applied += content.owned_materials.apply_import(
                     observed, source=imported.source, saved_at_utc=imported.saved_at_utc,
                 )
-            origin = ("账号已保存的抓包材料观测于" if imported.source == "packet" else "原生归档保存于")
+            origin = (tr("账号已保存的抓包材料观测于") if imported.source == "packet" else tr("原生归档保存于"))
             message = (
                 f"{origin} {imported.saved_at_utc}；已识别 {len(observed)} 种材料，"
                 f"本次草稿更新 {applied} 处。未观测项和手工修改保持原值。"
@@ -340,7 +340,7 @@ class CultivationCalculatorPage(QWidget):
         reset.clicked.connect(self._reset)
         row.addWidget(reset)
 
-        history = QPushButton("历史记录", header)
+        history = QPushButton(tr("历史记录"), header)
         history.setObjectName("cultivationHistoryOpen")
         history.setEnabled(self._history_service is not None)
         history.clicked.connect(self._show_history)

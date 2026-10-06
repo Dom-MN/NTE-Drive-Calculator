@@ -74,7 +74,7 @@ class ComponentUpgradeGuideMixin:
             except (OSError, ValueError, EquipmentPluginDeploymentError) as error:
                 evidence = UpgradeEvidence(
                     "path_unknown" if deployment else "none",
-                    "旧组件核对遇到问题，请在环境设置中重新检测。",
+                    tr("旧组件核对遇到问题，请在环境设置中重新检测。"),
                     type(error).__name__,
                     "loader" if deployment.get("loading_method") == "loader" else "native-capture",
                 )
@@ -108,11 +108,11 @@ class ComponentUpgradeGuideMixin:
         if stage is None:
             return
         summary = {
-            "path": "旧组件升级：先确认游戏位置。",
-            "cleanup": "旧组件升级：请先关闭游戏并清理旧部署。",
-            "mode": "旧组件已清理：请重新确认工作模式。",
-            "deploy": "工作模式已确认：请部署当前版本组件。",
-            "done": "旧组件已清理；当前模式无需原生部署。",
+            "path": tr("旧组件升级：先确认游戏位置。"),
+            "cleanup": tr("旧组件升级：请先关闭游戏并清理旧部署。"),
+            "mode": tr("旧组件已清理：请重新确认工作模式。"),
+            "deploy": tr("工作模式已确认：请部署当前版本组件。"),
+            "done": tr("旧组件已清理；当前模式无需原生部署。"),
         }
         self.window.home_upgrade_summary.setText(tr(summary[stage]))
 
@@ -161,7 +161,7 @@ class ComponentUpgradeGuideMixin:
         elif stage == "mode":
             if self._controls:
                 combo = self._controls[0]
-                combo.setPlaceholderText("未选择")
+                combo.setPlaceholderText(tr("未选择"))
                 # currentIndexChanged only refreshes emphasis; activated confirms a mode.
                 combo.setCurrentIndex(-1)
             self.open_settings("mode")

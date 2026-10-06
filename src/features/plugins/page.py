@@ -66,7 +66,7 @@ class PluginsPage(QWidget):
         actions = QHBoxLayout()
         self.refresh_button = QPushButton(tr("刷新状态"))
         self.refresh_button.clicked.connect(self._request_refresh)
-        self.environment_button = QPushButton("检测详情")
+        self.environment_button = QPushButton(tr("检测详情"))
         self.environment_button.clicked.connect(self.show_detection)
         actions.addWidget(self.refresh_button)
         actions.addWidget(self.environment_button)

@@ -1,6 +1,8 @@
 # 持有计算目录的后台校验、最新请求与账号生命周期。
 from __future__ import annotations
 
+from src.i18n import tr
+
 from PySide6.QtCore import QObject, Qt
 
 from src.app.page_tasks import PageRequest, PageTaskLane
@@ -40,7 +42,7 @@ class AllocationCatalogController(QObject):
             readiness(ready)
         if hasattr(window, "btn_run"):
             window.btn_run.setEnabled(ready and not window.scanning_controller.is_running())
-            window.btn_run.setToolTip("" if ready else "正在更新计算数据，请稍候。")
+            window.btn_run.setToolTip("" if ready else tr("正在更新计算数据，请稍候。"))
         selector = window.scanning_controller.role_selector
         if hasattr(selector, "setEnabled"):
             selector.setEnabled(ready)
@@ -78,7 +80,7 @@ class AllocationCatalogController(QObject):
                 self._continuation = None
                 self._set_ready(False)
                 if hasattr(self.window, "btn_run"):
-                    self.window.btn_run.setToolTip("计算数据更新失败，请重新进入计算页重试。")
+                    self.window.btn_run.setToolTip(tr("计算数据更新失败，请重新进入计算页重试。"))
                 logger.warning(f"allocation.catalog_refresh_failed | {error}")
 
         def read():

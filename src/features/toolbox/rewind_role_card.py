@@ -1,6 +1,8 @@
 # 组合倒带角色卡的头像、勾选状态、评分与卡内槽位入口。
 from __future__ import annotations
 
+from src.i18n import display_term
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
@@ -120,7 +122,7 @@ class RewindRoleCard(QFrame):
         self.name_label.setFixedHeight(20)
         self.name_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.name_label.setStyleSheet(themed_style("color:#f0f6fc;font-size:13px;font-weight:700"))
-        self.name_label.setText(role.name)
+        self.name_label.setText(display_term(role.name))
         body.addWidget(self.name_label)
         score_row = QWidget(self.selection_button)
         score_layout = QHBoxLayout(score_row)

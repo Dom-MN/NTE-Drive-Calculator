@@ -197,7 +197,7 @@ class ModeReportDialog(QDialog):
         self.metadata.setStyleSheet(f"color:{theme_color('#8b949e')};font-size:11px")
         layout.addWidget(self.metadata)
         self.status_hint = QLabel(
-            "红色为需处理项；黄色为等待登录或警告；蓝色为正常等待或待核对，具体请看各项说明。", self,
+            tr("红色为需处理项；黄色为等待登录或警告；蓝色为正常等待或待核对，具体请看各项说明。"), self,
         )
         self.status_hint.setObjectName("modeReportStatusHint")
         self.status_hint.setWordWrap(True)
@@ -331,21 +331,23 @@ class ModeReportDialog(QDialog):
         waiting_count = sum(len(labels) for _key, labels in waiting)
         ready_count = sum(len(labels) for _key, labels in available)
         if problem_count:
-            self.overview.setText(
-                f"需处理 {problem_count} 项 · 黄色提示 {warning_count} 项 · "
-                f"等待 {waiting_count} 项 · 已就绪 {ready_count} 项"
-            )
+            self.overview.setText(tr(
+                "需处理 {problem_count} 项 · 黄色提示 {warning_count} 项 · "
+                "等待 {waiting_count} 项 · 已就绪 {ready_count} 项",
+                problem_count=problem_count, warning_count=warning_count,
+                waiting_count=waiting_count, ready_count=ready_count,
+            ))
         elif warning_count:
             self.overview.setText(
-                f"黄色提示 {warning_count} 项 · 等待 {waiting_count} 项 · 已就绪 {ready_count} 项"
+                tr("黄色提示 {warning_count} 项 · 等待 {waiting_count} 项 · 已就绪 {ready_count} 项", warning_count=warning_count, waiting_count=waiting_count, ready_count=ready_count)
             )
         elif waiting_count:
             self.overview.setText(tr("等待 {waiting} 项 · 已就绪 {ready} 项",
                                      waiting=waiting_count, ready=ready_count))
         else:
-            self.overview.setText(f"全部 {ready_count} 项已就绪")
+            self.overview.setText(tr("全部 {ready_count} 项已就绪", ready_count=ready_count))
         self._add_result_section(tr("需处理"), issues, "#f85149")
-        self._add_result_section("等待登录或警告", warnings, "#d29922")
+        self._add_result_section(tr("等待登录或警告"), warnings, "#d29922")
         self._add_result_section(tr("等待或待核对"), waiting, "#58a6ff")
         if available:
             heading = QLabel(tr("已就绪（{ready} 项）", ready=ready_count), self.results)
@@ -449,7 +451,7 @@ class ModeReportDialog(QDialog):
                 and report.can_offer_sync_enable):
             action = self._sync_action_provider(report)
             if action is not None:
-                self._add_action("开启自动同步", action)
+                self._add_action(tr("开启自动同步"), action)
 
     def set_error(self, detail):
         self.status_hint.hide()
@@ -604,7 +606,7 @@ def build_work_mode_card(window):
     combo.setCurrentIndex(combo.findData(service.settings.mode.value))
     combo.setFixedWidth(150)
     controls.addWidget(combo)
-    check = QPushButton("检测并处理")
+    check = QPushButton(tr("检测并处理"))
     check.setFixedWidth(96)
     check.clicked.connect(lambda: controller.check(show=True, retry_deployment=True))
     controls.addWidget(check)

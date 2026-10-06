@@ -459,7 +459,7 @@ def _on_vision_done(self, stats):
         show_scan_completion(
             self.dialog_parent,
             tr("库存数据已生成"),
-            summary + "\n\n本次未配置角色优先级，仅更新了背包记录，未进行配装计算。",
+            tr("{summary}\n\n本次未配置角色优先级，仅更新了背包记录，未进行配装计算。", summary=summary),
             stats,
         )
         self._pending_parse_only = False

@@ -170,7 +170,7 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
         self._stamina_controls = CultivationStaminaControls(self)
         self._stamina_controls.values_changed.connect(self._draft_changed)
         root.addWidget(self._stamina_controls)
-        self._preparation_hint = QLabel("目标确定后会提前列出已有材料输入项。", self)
+        self._preparation_hint = QLabel(tr("目标确定后会提前列出已有材料输入项。"), self)
         self._preparation_hint.setWordWrap(True)
         self._preparation_hint.setTextFormat(Qt.TextFormat.PlainText)
         root.addWidget(self._preparation_hint)
@@ -205,7 +205,7 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
         self._result_layout.setSpacing(8)
         root.addWidget(self._result)
         root.addStretch(1)
-        self._set_result_message("选择角色目标后计算跨角色合计。")
+        self._set_result_message(tr("选择角色目标后计算跨角色合计。"))
 
     def _connect_controller(self) -> None:
         self._controller.result_ready.connect(self._receive_plan)
@@ -230,8 +230,8 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
         )
         selected = select_cultivation_items(
             self,
-            title="选择角色目标",
-            description="勾选本次需要计算的全部角色；取消勾选会移除对应目标。已有目标保留原顺序，新目标依角色列表顺序加入。",
+            title=tr("选择角色目标"),
+            description=tr("勾选本次需要计算的全部角色；取消勾选会移除对应目标。已有目标保留原顺序，新目标依角色列表顺序加入。"),
             options=options,
             selected_ids=tuple(str(card.character_id) for card in self._cards),
         )
@@ -338,7 +338,7 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
             return
         selected = select_cultivation_item(
             self,
-            title="选择弧盘",
+            title=tr("选择弧盘"),
             description=f"为 {card.seed.character_name} 选择养成弧盘。",
             options=tuple(
                 (
@@ -362,7 +362,7 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
 
     def calculate(self, _checked: bool = False, *, explicit: bool = True) -> None:
         if not self._cards:
-            self._set_result_message("请先选择至少一个角色目标。")
+            self._set_result_message(tr("请先选择至少一个角色目标。"))
             return
         identity = self._identity()
         if identity != self._initial_identity:
@@ -397,11 +397,11 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
 
     def _preparation_busy(self, busy: bool) -> None:
         if busy:
-            self._preparation_hint.setText("材料输入准备中；尚未求解体力。")
+            self._preparation_hint.setText(tr("材料输入准备中；尚未求解体力。"))
             self._preparation_hint.show()
 
     def _preparation_failed(self, _message: str) -> None:
-        self._preparation_hint.setText("材料输入准备失败；已填数量保留，可点击计算重新尝试。")
+        self._preparation_hint.setText(tr("材料输入准备失败；已填数量保留，可点击计算重新尝试。"))
         self._preparation_hint.show()
 
     def _build_request(self, identity: object) -> CultivationBatchRequest:
@@ -478,7 +478,7 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
             self._materials_dirty = True
             self._last_plan = None
             self.plan_available.emit(False)
-            self._set_result_message("已有材料已修改，请点击重新计算更新材料与体力。")
+            self._set_result_message(tr("已有材料已修改，请点击重新计算更新材料与体力。"))
         if self._calculate_button.isEnabled():
             self._calculate_button.setText(tr("重新计算多角色材料与体力"))
 
@@ -504,12 +504,12 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
             self.plan_available.emit(False)
             if self._calculate_button.isEnabled():
                 self._calculate_button.setText(tr("计算多角色材料与体力"))
-            self._set_result_message("选择角色目标后计算跨角色合计。")
+            self._set_result_message(tr("选择角色目标后计算跨角色合计。"))
             return
         if self._has_calculated:
             self._last_plan = None
             self.plan_available.emit(False)
-            self._set_result_message("养成目标已修改，旧结果已过期。")
+            self._set_result_message(tr("养成目标已修改，旧结果已过期。"))
             if not self._materials_dirty:
                 self._recalculate_timer.start()
             else:
@@ -556,7 +556,7 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
             self._restoring = False
         self._refresh_target_state()
         self.plan_available.emit(False)
-        self._set_result_message("已加载历史配置；请确认当前状态与材料数量后点击计算。")
+        self._set_result_message(tr("已加载历史配置；请确认当前状态与材料数量后点击计算。"))
         self._prepare_timer.start()
 
     def set_material_scope(self, scope: str) -> None:
@@ -615,7 +615,7 @@ class CultivationBatchContent(CultivationBatchResultMixin, QWidget):
         self._expanded_results.clear()
         self.plan_available.emit(False)
         self._refresh_target_state()
-        self._set_result_message("选择角色目标后计算跨角色合计。")
+        self._set_result_message(tr("选择角色目标后计算跨角色合计。"))
 
     def close_controller(self) -> None:
         self._recalculate_timer.stop()

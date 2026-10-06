@@ -168,7 +168,7 @@ def _populate_role_tab(window, scroll: QScrollArea, character_id: int) -> None:
     scroll._detail_requested = True
     scroll.setEnabled(False)
     if scroll.widget() is None:
-        scroll.setWidget(QLabel("正在加载角色资料…", scroll))
+        scroll.setWidget(QLabel(tr("正在加载角色资料…"), scroll))
 
     def apply(result) -> None:
         if not isValid(scroll) or getattr(window, "_official_role_controller", None) is not controller:
@@ -187,9 +187,9 @@ def _populate_role_tab(window, scroll: QScrollArea, character_id: int) -> None:
         if not isValid(scroll) or getattr(window, "_official_role_controller", None) is not controller:
             return
         scroll._detail_requested = False
-        scroll.setToolTip(f"角色资料加载失败：{error}；重新进入角色页可重试。")
+        scroll.setToolTip(tr("角色资料加载失败：{error}；重新进入角色页可重试。", error=error))
         if isinstance(scroll.widget(), QLabel):
-            scroll.widget().setText("角色资料加载失败，请重新进入角色页重试。")
+            scroll.widget().setText(tr("角色资料加载失败，请重新进入角色页重试。"))
 
     def discarded() -> None:
         if isValid(scroll):
@@ -265,7 +265,7 @@ def _render_role_tab(window, scroll: QScrollArea, character_id: int, detail: dic
         except Exception as exc:
             content.deleteLater()
             scroll.setUpdatesEnabled(True)
-            scroll.setToolTip(f"角色页面准备失败：{exc}；重新进入角色页可重试。")
+            scroll.setToolTip(tr("角色页面准备失败：{exc}；重新进入角色页可重试。", exc=exc))
             logger.warning(f"角色页面准备失败：{exc}")
 
     QTimer.singleShot(0, build_next)
@@ -299,7 +299,7 @@ def _submit_role_change(window, work, committed, *, completion=None):
     def failed(error):
         unlock()
         if current():
-            QMessageBox.warning(window, "操作未完成", f"编辑已保留；请核对已保存内容后重试。\n{error}")
+            QMessageBox.warning(window, tr("操作未完成"), tr("编辑已保留；请核对已保存内容后重试。\n{error}", error=error))
             if completion is not None:
                 completion(False)
         elif completion is not None:
@@ -308,7 +308,7 @@ def _submit_role_change(window, work, committed, *, completion=None):
     def application_failed(error):
         unlock()
         if current():
-            QMessageBox.warning(window, "提交后刷新失败", f"数据已提交，请重新进入角色页；不要重复保存。\n{error}")
+            QMessageBox.warning(window, tr("提交后刷新失败"), tr("数据已提交，请重新进入角色页；不要重复保存。\n{error}", error=error))
             if completion is not None:
                 completion(False)
 
@@ -553,7 +553,7 @@ def _page_my_role(window) -> QWidget:
     else:
         from src.features.input_operation_entry import show_input_unavailable
         sync.clicked.connect(lambda: show_input_unavailable(
-            window, "同步角色状态", "角色状态同步服务尚未就绪，请检查组件连接。"))
+            window, tr("同步角色状态"), tr("角色状态同步服务尚未就绪，请检查组件连接。")))
     window.official_role_search = search
     window._official_role_dirty_ids = set()
     window._official_role_world_bonus_dirty = False
@@ -600,7 +600,7 @@ def _refresh_my_role(window, *, restore_scroll_value: int | None = None, force: 
     def failed(error: str) -> None:
         if getattr(window, "_official_role_controller", None) is controller:
             window._official_role_source_key = None
-            window.my_role_form_area.setToolTip(f"角色目录加载失败：{error}；重新进入角色页可重试。")
+            window.my_role_form_area.setToolTip(tr("角色目录加载失败：{error}；重新进入角色页可重试。", error=error))
             logger.warning(f"角色目录加载失败：{error}")
 
     controller.request_index(apply, failed)
