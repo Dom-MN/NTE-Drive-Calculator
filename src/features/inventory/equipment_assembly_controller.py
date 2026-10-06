@@ -3,16 +3,19 @@
 
 from __future__ import annotations
 
-from src.features.input_operation_entry import request_input_entry, show_input_unavailable
+from src.features.input_operation_entry import request_input_entry, show_input_unavailable, show_sync_required
 
 from collections.abc import Callable
+from concurrent.futures import CancelledError
+from threading import Event
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QMessageBox, QProgressBar, QProgressDialog
+from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtWidgets import QLabel, QMessageBox, QProgressBar, QProgressDialog
 
 from src.i18n import tr, display_term
 from src.app.workers import WorkerThread
+from src.app.window_geometry import fit_dialog_to_available_screen
 from src.observability.context import OperationContext
 from src.integrations.nte_core import is_mods_plugin_unavailable_error
 from src.features.inventory.equipment_assembly_dialogs import (
@@ -57,6 +60,10 @@ def _equipment_failure_details(
     """Render one concrete failure category without conflating pipe states."""
 
     message = str(error or tr("未知错误"))
+    if failure_kind == "recovery_exhausted":
+        return "组件状态更新期间的自动补救已停止；已下发步骤保持原状，请等待同步并核对后再继续。"
+    if failure_kind == "cancelled":
+        return "已停止后续装配，已经下发的操作不会回滚；请核对游戏内实际装备。"
     if failure_kind == "plugin_unavailable":
         return f"原生装备通道不可用：{message}。请在工作模式检测详情中核对当前原生组件连接与装备能力。"
     if failure_kind == "plugin_busy":
@@ -90,7 +97,7 @@ def _equipment_assembly_is_running(window: Any) -> bool:
 
 
 def _run_nte_core_equipment_apply(
-    self: Any,
+    service: BulkEquipmentApplyService,
     role_names: list[str],
     *,
     slot_ids: list[int] | None = None,
@@ -98,32 +105,7 @@ def _run_nte_core_equipment_apply(
     job_id: int | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    sync_service = getattr(self, "_inventory_sync_service", None)
-    if sync_service is None:
-        raise RuntimeError(tr("背包同步服务尚未启动，请先在首页启动后台同步"))
-    app_context = getattr(self, "app_context", None)
-    database_path = (
-        app_context.account.user_database_path if app_context is not None else getattr(self, "user_database_path", None)
-    )
-    if database_path is None:
-        raise RuntimeError(tr("极速装配缺少当前账号数据库依赖"))
-    return BulkEquipmentApplyService(
-        database_path,
-        sync_service,
-        dao_factory=UserDataDao,
-        apply_service_factory=EquipmentApplyService,
-        operation_guard=getattr(self, "operation_guard", None),
-        operation_context=OperationContext.create(
-            "equipment_apply",
-            account_id=(
-                app_context.account.active_account_id
-                if app_context is not None
-                else None
-            ),
-            context_generation=(app_context.generation if app_context is not None else None),
-            job_id=job_id,
-        ),
-    ).run(
+    return service.run(
         role_names,
         slot_ids=slot_ids,
         identity_overrides=identity_overrides,
@@ -176,12 +158,50 @@ def _start_nte_core_equipment_apply(
         return
     sync = getattr(self, "_inventory_sync_service", None)
     if sync is None or not sync.is_running:
-        show_input_unavailable(self, "极速装配", "游戏装备连接尚未就绪，请查看检测详情；需部署组件时先完全退出游戏，部署完成后再启动并进入游戏场景。")
+        show_sync_required(self, "极速装配")
         return
     current_worker = getattr(self, "_equipment_apply_worker", None)
     if current_worker is not None and current_worker.isRunning():
         QMessageBox.information(self, tr("正在装配"), tr("已有装配任务正在执行，请等待指令下发完成。"))
         return
+    hotkey_manager = getattr(self, "global_hotkey_manager", None)
+    hotkey_owner = "fast_equipment_apply"
+    if getattr(hotkey_manager, "active_owner", None) not in (None, hotkey_owner):
+        QMessageBox.information(self, "极速装配", "当前全局停止键正由其他任务使用，请先停止该任务。")
+        return
+    configuration = getattr(hotkey_manager, "configuration", None)
+    stop_hotkey = str(getattr(configuration, "stop", "F12"))
+    stop_hint = f"关闭此窗口或按 {stop_hotkey} 停止后续装配。"
+
+    # Freeze all account dependencies on the controller thread, before work starts.
+    app_context = getattr(self, "app_context", None)
+    generation = app_context.generation if app_context is not None else None
+    account_id = app_context.account.active_account_id if app_context is not None else None
+    database_path = app_context.account.user_database_path if app_context is not None else getattr(self, "user_database_path", None)
+    if database_path is None:
+        show_input_unavailable(self, "极速装配", "当前账号数据库尚未就绪")
+        return
+    cancel_event = Event()
+
+    def is_current():
+        return app_context is None or (
+            getattr(self, "app_context", None) is app_context
+            and app_context.generation == generation
+            and app_context.account.active_account_id == account_id
+            and app_context.account.user_database_path == database_path
+        )
+
+    def check_current():
+        if not is_current():
+            raise CancelledError("账号上下文已变化")
+
+    service = BulkEquipmentApplyService(
+        database_path, sync, dao_factory=UserDataDao, apply_service_factory=EquipmentApplyService,
+        operation_guard=getattr(self, "operation_guard", None), cancel_event=cancel_event,
+        check_current=check_current,
+        operation_context=OperationContext.create("equipment_apply", account_id=account_id,
+                                                  context_generation=generation, job_id=job_id),
+    )
 
     progress_state: dict[str, Any] = {
         "current": 0,
@@ -190,28 +210,36 @@ def _start_nte_core_equipment_apply(
         "show_progress_bar": True,
     }
     progress_dialog = QProgressDialog(
-        progress_state["message"],
+        "",
         "",
         0,
         progress_state["total"],
         self,
     )
     progress_dialog.setWindowTitle(tr("极速装配进度"))
-    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+    progress_label = QLabel(f"{progress_state['message']}\n{stop_hint}", progress_dialog)
+    progress_label.setWordWrap(True)
+    progress_label.setAlignment(Qt.AlignCenter)
+    progress_dialog.setLabel(progress_label)
     progress_dialog.setCancelButton(None)
+    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
     progress_dialog.setAutoClose(False)
     progress_dialog.setAutoReset(False)
     progress_dialog.setMinimumDuration(0)
     progress_dialog.setValue(0)
-    progress_dialog.show()
+    fit_dialog_to_available_screen(progress_dialog, QSize(420, 120))
 
     progress_timer = QTimer(progress_dialog)
 
     def update_progress_dialog() -> None:
+        if cancel_event.is_set():
+            progress_timer.stop()
+            progress_dialog.close()
+            return
         total = max(1, int(progress_state.get("total", 1)))
         progress_dialog.setMaximum(total)
         progress_dialog.setValue(min(total, max(0, int(progress_state.get("current", 0)))))
-        progress_dialog.setLabelText(str(progress_state.get("message") or tr("正在极速装配…")))
+        progress_dialog.setLabelText(f"{progress_state.get('message') or tr('正在极速装配…')}\n{stop_hint}")
         progress_bar = progress_dialog.findChild(QProgressBar)
         if progress_bar is not None:
             progress_bar.setVisible(bool(progress_state.get("show_progress_bar", True)))
@@ -220,16 +248,27 @@ def _start_nte_core_equipment_apply(
     progress_timer.start(80)
 
     def update_progress(payload: dict) -> None:
-        progress_state.update(payload)
+        if is_current():
+            progress_state.update(payload)
+
+    def request_cancel():
+        cancel_event.set()
+
+    progress_dialog.canceled.connect(request_cancel)
+    progress_dialog.rejected.connect(request_cancel)
 
     def close_progress_dialog() -> None:
+        if hotkey_manager is not None:
+            hotkey_manager.stop(owner=hotkey_owner)
+        progress_dialog.canceled.disconnect(request_cancel)
+        progress_dialog.rejected.disconnect(request_cancel)
         progress_timer.stop()
         progress_dialog.close()
         progress_dialog.deleteLater()
 
     worker = WorkerThread(
         target=lambda: _run_nte_core_equipment_apply(
-            self,
+            service,
             role_names,
             slot_ids=slot_ids,
             identity_overrides=identity_overrides,
@@ -242,6 +281,8 @@ def _start_nte_core_equipment_apply(
 
     def on_result(report: dict) -> None:
         close_progress_dialog()
+        if not is_current():
+            return
         preflight_errors = report.get("preflight_errors") or []
         if preflight_errors:
             details = "\n".join(
@@ -260,6 +301,8 @@ def _start_nte_core_equipment_apply(
         applied = report.get("applied") or []
         requests = report.get("identity_requests") or []
         summary, role_details = build_fast_apply_completion_summary(applied)
+        confirmed_count = sum(bool(row.get("verified")) and not row.get("scoped_verified") for row in applied)
+        partial_summary = f"此前已下发 {len(applied)} 个角色，其中 {confirmed_count} 个已确认"
         if report.get("failed_role"):
             error_message = str(report.get("error") or tr("未知错误"))
             failure_kind = str(report.get("failure_kind") or "apply_error")
@@ -274,27 +317,25 @@ def _start_nte_core_equipment_apply(
                 QMessageBox.warning(
                     self,
                     tr("装备插件不可用"),
-                    tr(
-                        "任务 #{job} 在 [{role}] 停止。\n{reason}\n\n"
-                        "请先确认：\n"
-                        "1. 先完全退出游戏，再在“设置 → 环境配置”重新部署与当前 nte-core 匹配的 "
-                        "原生采集组件；\n"
-                        "2. 部署完成后启动游戏并进入游戏场景，从工作台重启同步，等待“持续监听”；\n"
-                        "3. 完成上述检查后，再点击右上角“极速装配”重新执行。\n\n"
-                        "此前已确认 {applied} 个角色；任务日志已保存。此次不会立即重试。",
-                        job=report.get("job_id"), role=display_term(report["failed_role"]),
-                        reason=reason, applied=len(applied),
-                    ),
+                    f"任务 #{report.get('job_id')} 在 [{report['failed_role']}] 停止。\n"
+                    f"{reason}\n\n"
+                    "请先确认：\n"
+                    "1. 先完全退出游戏，再在“设置 → 环境配置”重新部署与当前 nte-core 匹配的 "
+                    "原生采集组件；\n"
+                    "2. 部署完成后启动游戏并进入游戏场景，从工作台重启同步，等待“持续监听”；\n"
+                    "3. 完成上述检查后，再点击右上角“极速装配”重新执行。\n\n"
+                    f"{partial_summary}；任务日志已保存。此次不会立即重试。",
                 )
                 return
             reason = _equipment_failure_details(failure_kind, error_message)
+            if failure_kind in {"cancelled", "outcome_unknown", "core_request_timeout"}:
+                QMessageBox.warning(self, "装配已停止", f"{reason}\n\n{partial_summary}。")
+                return
             retry = QMessageBox.question(
                 self,
                 tr("装配暂停"),
-                tr("任务 #{job} 在 [{role}] 停止。\n{reason}\n\n"
-                   "此前已确认 {count} 个角色；任务日志已保存。是否重试失败角色并继续？",
-                   job=report.get("job_id"), role=display_term(report["failed_role"]),
-                   reason=reason, count=len(applied)),
+                f"任务 #{report.get('job_id')} 在 [{report['failed_role']}] 停止。\n{reason}\n\n"
+                f"{partial_summary}；任务日志已保存。是否重试失败角色并继续？",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
@@ -308,6 +349,11 @@ def _start_nte_core_equipment_apply(
                 refresh()
             return
         snapshot_failure = report.get("snapshot_wait_failure")
+        if report.get("repair_errors") and not isinstance(snapshot_failure, dict):
+            details = "\n".join(f"• [{row.get('role_name', '未知角色')}]：{row.get('error', '复核不一致')}"
+                                for row in report["repair_errors"])
+            QMessageBox.warning(self, "装配复核未通过", f"{summary}。\n\n{details}\n\n请同步后检查实际装备。")
+            return
         if isinstance(snapshot_failure, dict):
             attempt = int(snapshot_failure.get("attempt") or 1)
             reason = _equipment_failure_details(
@@ -336,11 +382,23 @@ def _start_nte_core_equipment_apply(
 
     def on_error(message: str) -> None:
         close_progress_dialog()
+        if not is_current():
+            return
+        if cancel_event.is_set():
+            QMessageBox.information(self, "装配已停止", "已停止后续装配；已下发的操作保持原状，请同步后检查实际装备。")
+            return
         show_input_unavailable(self, "极速装配", str(message))
 
     worker.result_ready.connect(on_result)
     worker.error.connect(on_error)
-    worker.start()
+    try:
+        if hotkey_manager is not None:
+            hotkey_manager.start(owner=hotkey_owner, on_stop=request_cancel)
+        progress_dialog.show()
+        worker.start()
+    except Exception:
+        close_progress_dialog()
+        raise
 
 
 def _confirm_automatic_assembly_fallback(

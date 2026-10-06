@@ -17,8 +17,11 @@ def test_upgrade_cleans_application_proxy_only_for_native_bundle(tmp_path, monke
     deletes = script.split("[InstallDelete]", 1)[1].split("[Dirs]", 1)[0]
     assert ('Type: files; Name: "{app}\\_internal\\dwmapi.dll"' in deletes) == (layout == "native-capture-v1")
     expected = {"icuuc.dll", "icudt78.dll"} | ({"dwmapi.dll"} if layout == "native-capture-v1" else set())
-    assert {line.strip() for line in deletes.splitlines() if line.strip()} == {
+    expected_lines = {
         f'Type: files; Name: "{{app}}\\_internal\\{name}"' for name in expected
     }
-    assert 'Type: filesandordirs' not in script
+    # The retired image directory belongs to the app bundle. Keep the exact
+    # deletion allowlist: no broader directory, game path or account cleanup.
+    expected_lines.add('Type: filesandordirs; Name: "{app}\\_internal\\assets\\game_ui"')
+    assert {line.strip() for line in deletes.splitlines() if line.strip()} == expected_lines
     assert 'CloseApplicationsFilter=NTE_Drive_Calc.exe,nte-mod-loader.exe,nte-core.exe,nte-analysis-core.exe' in script

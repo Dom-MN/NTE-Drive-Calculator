@@ -218,6 +218,37 @@ class ProgressTransportTests(unittest.TestCase):
             self.client._run_progress(b"{}", checkpoint=None, progress_callback=Mock())
         self.assert_clean()
 
+    def test_progress_keeps_work_alive_beyond_original_total_timeout(self):
+        self.client.timeout = .5
+        source = (
+            "import sys,json,time\n"
+            "sys.stdin.buffer.read()\n"
+            f"line=json.dumps({event()!r})+'\\n'\n"
+            "for _ in range(4):\n"
+            " sys.stderr.write(line);sys.stderr.flush();time.sleep(.2)\n"
+            "print('{}')\n"
+        )
+        with self.child(source):
+            result = self.client._run_progress(b"{}", checkpoint=None, progress_callback=Mock())
+        self.assertEqual(json.loads(result), {})
+        self.assert_clean()
+
+    def test_progress_cannot_extend_the_hard_deadline(self):
+        from src.integrations.native_analysis_stream import communicate_progress
+        source = (
+            "import sys,json,time\n"
+            f"line=json.dumps({event()!r})+'\\n'\n"
+            "while True:\n"
+            " sys.stderr.write(line);sys.stderr.flush();time.sleep(.05)\n"
+        )
+        def bounded(*args, **kwargs):
+            return communicate_progress(*args, **{**kwargs, "total_timeout": .5})
+        with self.child(source), patch(
+            "src.integrations.native_analysis_stream.communicate_progress", side_effect=bounded
+        ), self.assertRaisesRegex(NativeAnalysisError, "超时"):
+            self.client._run_progress(b"{}", checkpoint=None, progress_callback=Mock())
+        self.assert_clean()
+
     def test_legacy_and_no_callback_use_unchanged_nonstream_run(self):
         request = {"account_id": "fixture", "generation": 8, "battle_record_id": 7}
         response = {"schema_version": "nte-analysis-response-v1", "engine_version": "0.3.0",

@@ -89,14 +89,20 @@ def participation_toggle(parent: QWidget, label: str) -> QToolButton:
     toggle.setObjectName("cultivationParticipationToggle")
     toggle.setCheckable(True)
     toggle.setChecked(True)
-    toggle.setToolTip(tr("{label}：参与计算（点击关闭）", label=label))
-    toggle.toggled.connect(lambda enabled: toggle.setToolTip(
-        tr("{label}：{state}", label=label,
-           state=tr("参与计算（点击关闭）") if enabled else tr("不参与计算（点击开启）"))
-    ))
+    toggle.setProperty("participationLabel", label)
+    refresh_participation_tooltip(toggle)
+    toggle.toggled.connect(lambda _enabled: refresh_participation_tooltip(toggle))
     toggle.setCursor(Qt.CursorShape.PointingHandCursor)
     toggle.setFixedSize(36, 26)
     return toggle
+
+
+def refresh_participation_tooltip(toggle: QToolButton) -> None:
+    """历史恢复屏蔽信号时仍更新参与状态提示，不派发编辑或计算动作。"""
+    label = toggle.property("participationLabel")
+    state = "参与计算（点击关闭）" if toggle.isChecked() else "不参与计算（点击开启）"
+    toggle.setToolTip(f"{label}：{state}")
+    toggle.setAccessibleDescription(f"{label}：{state}")
 
 
 def level_spinbox(parent: QWidget) -> QSpinBox:

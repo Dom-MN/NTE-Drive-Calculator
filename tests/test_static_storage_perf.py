@@ -1,13 +1,12 @@
 # 测试静态数据库连接复用、PRAGMA 优化与资产缓存。
 """Unit tests verifying SQLite static DB connection reuse, PRAGMAs, and asset caching."""
 
-import sqlite3
 import tempfile
 import threading
 import unittest
 from pathlib import Path
 
-from src.features.inventory.warehouse import _legacy_character_avatar, _role_avatar_index
+from src.features.inventory.warehouse import _role_avatar_index
 from src.storage.sqlite.static_game_data_dao import (
     StaticGameDataDao,
     _SHARED_STATIC_CONNECTIONS,

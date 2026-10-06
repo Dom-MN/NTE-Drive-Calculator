@@ -80,6 +80,8 @@ def decode_page(value: dict):
                 'marginal_benefits', 'marginal_panel', 'candidate_display_analysis'}
     if not isinstance(value, dict) or not required <= value.keys():
         raise NativeAnalysisError('分析核心页面响应字段不匹配')
+    from src.integrations.native_battle_payload_wire import restore_payloads
+    value = restore_payloads(value)
     catalog = value['target_catalog']
     if catalog is not None and not isinstance(catalog, dict):
         raise NativeAnalysisError('分析核心目标目录无效')

@@ -11,10 +11,11 @@ from src.domain.work_mode import (
     CheckState, NativeFeatureProbe, WorkMode, WorkModeProbe, WorkModeSettings,
 )
 from src.integrations.nte_core_protocol import (
-    NteCoreProcessError, NteCoreRpcError, NteCoreTimeoutError,
+    NteCoreProcessError, NteCoreRequestContext, NteCoreRpcError, NteCoreTimeoutError,
 )
 from src.services.work_mode_checks import build_work_mode_report
 from src.services.work_mode_diagnostics import detection_failure_detail
+from src.services.work_mode_diagnostics import detection_failure_state
 
 
 def test_known_identity_failure_has_actionable_reason():
@@ -29,6 +30,75 @@ def test_known_identity_failure_has_actionable_reason():
 def test_timeout_keeps_method_and_duration_without_claiming_handshake_failed():
     detail = detection_failure_detail(NteCoreTimeoutError('native.snapshot.status', 12))
     assert 'native.snapshot.status' in detail and '12' in detail
+    assert '握手失败' not in detail
+    assert detection_failure_state(NteCoreTimeoutError('native.snapshot.status', 12)) == CheckState.WARNING
+
+
+def test_protocol_and_mapping_failures_remain_actionable():
+    error = NteCoreRpcError({'code': -32000, 'data': {'domain_code': 'NATIVE_MAPPING_UNSUPPORTED'}})
+    assert detection_failure_state(error) == CheckState.FAULT
+
+
+def test_busy_and_game_readiness_are_not_reported_as_hard_failures():
+    busy = NteCoreRpcError({'code': -32000, 'data': {'domain_code': 'REQUEST_IN_PROGRESS'}})
+    waiting = NteCoreRpcError({
+        'code': -32001, 'message': 'not_ready', 'data': {'reason': 'pawn_unavailable'},
+    })
+    assert detection_failure_state(busy) == CheckState.WARNING
+    assert detection_failure_state(waiting) == CheckState.WAITING_LOGIN
+
+
+@pytest.mark.parametrize('code,reason', [
+    ('NATIVE_MAPPING_UNSUPPORTED', '映射'),
+    ('NATIVE_SNAPSHOT_INCOMPLETE', '完整'),
+    ('NATIVE_CAPABILITY_MISSING', '能力'),
+    ('REQUEST_IN_PROGRESS', '请求'),
+])
+def test_business_failure_identifies_rpc_and_component_without_copying_payload(code, reason):
+    error = NteCoreRpcError({'code': -32000, 'message': 'secret-user',
+                            'data': {'domain_code': code, 'detail': 'uid=123456789'}})
+    error.request_context = NteCoreRequestContext(
+        'native.inventory.page', r'C:\private\nte-core.exe', 'a' * 64, True,
+    )
+    detail = detection_failure_detail(error)
+    assert code in detail and reason in detail
+    assert 'native.inventory.page' in detail and 'a' * 64 in detail
+    assert '本次握手：已确认' in detail
+    assert 'secret-user' not in detail and '123456789' not in detail
+    assert 'C:\\private' not in detail
+
+
+def test_local_failure_log_keeps_actual_component_path(monkeypatch):
+    from src.utils.logger import logger
+
+    records = []
+    monkeypatch.setattr(logger, 'warning', lambda template, *args: records.append(template.format(*args)))
+    error = NteCoreRpcError({'code': -32000, 'data': {'domain_code': 'NATIVE_MAPPING_UNSUPPORTED'}})
+    error.request_context = NteCoreRequestContext(
+        'native.inventory.page', r'C:\local-core\nte-core.exe', 'b' * 64, True,
+    )
+    detection_failure_detail(error, record=True)
+    assert r'C:\local-core\nte-core.exe' in records[0]
+
+
+def test_unknown_rpc_context_does_not_invent_handshake_or_copy_external_fields():
+    error = NteCoreRpcError({'code': -32000, 'message': 'secret-user',
+                            'data': {'domain_code': 'secret-user', 'detail': 'token=abc'}})
+    error.request_context = NteCoreRequestContext('private-method', None, 'private-hash', False)
+    detail = detection_failure_detail(error)
+    assert '本次握手：已确认' not in detail
+    assert all(value not in detail for value in ('secret-user', 'token=abc', 'private-method', 'private-hash'))
+
+
+@pytest.mark.parametrize('code,reason', [
+    ('control_timeout', '游戏内采集请求等待执行或完成超时'),
+    ('not_ready', '游戏内采集接口尚未就绪'),
+])
+def test_native_control_failure_preserves_known_reason(code, reason):
+    error = NteCoreRpcError({'code': -32001, 'message': code, 'data': {'detail': 'secret'}})
+    detail = detection_failure_detail(error)
+    assert reason in detail and f'原因码：{code}' in detail
+    assert 'secret' not in detail
     assert '握手失败' not in detail
 
 

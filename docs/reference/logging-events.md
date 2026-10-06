@@ -4,6 +4,11 @@
 
 事件名使用稳定英文点分格式，中文说明只用于阅读。日志记录业务阶段和安全摘要，不作为数据库事实源。
 
+`inventory_sync.stopped` 记录 `stop_stage` 与受控 `stop_reason`：显式停止请求、账号上下文变化、权限撤销、战报让出、维护、明确连接中断、原生会话取消或其他操作取消。`connection_lost` 同时进入同步展示状态，供有限自动恢复使用；笼统的 `native_session_cancelled` 不授权自动恢复。同步异常退出也记录停止原因，不从异常文本推断恢复资格。
+
+`native_session.inspection_failed` 记录检测异常类型、RPC 数字错误码、白名单原因和 `connection_retained`。`REQUEST_IN_PROGRESS` 等明确可重试状态保留共享连接；协议或传输故障仍收尾。禁止记录完整 RPC 错误数据或任意服务端错误文本。
+原生会话取消仅说明取消来自会话链路，不能据此推断是用户点击、游戏退出或组件故障；不会记录任意取消异常正文。
+
 ## 公共字段
 
 | 字段 | 含义 |
@@ -34,7 +39,7 @@ duration；取消、过期丢弃、待确认和降级使用独立事件，不伪
 | 同步 | `inventory_sync.*` | 连接、候选、稳定化、提交、运行时状态增量、保留策略和停止原因 |
 | 扫描 | `scanning.*` | 冻结依赖、捕获驱动、分页、解析、提交与扫描后状态管理 |
 | 计算 | `allocation.*` | 冻结请求、求解、目标槽位、保存、失败和过期丢弃 |
-| 页面性能 | `PERF allocation.catalog_read`、`PERF allocation.catalog_apply`、`PERF equipment.render` | 目录读取、主线程应用和配装控件重建耗时；只记耗时、模式与是否跳过，不记角色名、路径或方案内容。 |
+| 页面性能 | `PERF allocation.catalog_read`、`PERF allocation.catalog_validate`、`PERF allocation.catalog_apply`、`PERF basic_weight.form_apply`、`PERF home.summary_apply`、`PERF ui.event_loop_lag`、`PERF equipment.render` | 分开记录后台读取/校验与主线程应用。事件循环每 250 ms 采样，仅额外延迟达到 250 ms 时记录，日志间隔至少 5 秒；只记耗时、页面 key 和是否复用，不记角色名、路径或方案内容。 |
 | 配装槽位 | `loadout_slot.*` | 创建、重命名、归档、当前方案切换与锁冲突 |
 | 角色 | `role.*` | 索引/详情、配置、替换、动态权重与 dirty 决策 |
 | 基础权重 | `basic_weight.*` | 账号权重、自建角色与底盘保存/重置 |
@@ -42,12 +47,12 @@ duration；取消、过期丢弃、待确认和降级使用独立事件，不伪
 | 图纸 | `blueprint.*` | 生成、失败和旧账号结果丢弃 |
 | 仓库 | `warehouse.*` | 固定快照、运行时覆盖、筛选、计划、RPC、待确认和最终状态 |
 | 鉴定 | `identification.*` | 输入来源、热键 owner、识别与展示生命周期 |
-| 极速装配 | `equipment_apply.*` | 槽位预检、下发、完整快照/范围事件确认、重试和摘要 |
+| 极速装配 | `equipment_apply.*` | 槽位预检、下发、完整快照/范围事件确认、重试和摘要；补救用 `command_retry`、`recovery_waiting`、`recovery_resumed`，步骤用 `command_accepted`、`command_failed`、`role_failed`。返回未完成结果记录 `bulk_failed`，不得仅因无异常而记录成功；摘要成功仅表示派发完成。 |
 | 自动装配 | `drive_assembly.*` | 页面阶段、输入后端、动作、停止与可见结果 |
 | 倒带 | `rewind.*` | 推荐请求、八槽保存、OCR 阶段、十连计划和停止 |
 | 战报 | `battle_report.*` | capture 生命周期、摘要持久化、历史恢复和保留策略 |
 | 环境 | `environment.*` | Npcap、nte-core、dwmapi、Mod Loader、VC Runtime、SDK 缓存、pipe、部署与恢复 |
-| 手动环境检测 | `environment.detection_failed` | 固定原因、下一步、异常类型和已识别错误码；不写原始异常、RPC 数据或 stderr，后台轮询不重复记录。 |
+| 手动环境检测 | `environment.detection_failed` | 固定原因、下一步、异常类型、失败 RPC 接口、已识别业务原因码、实际 Core SHA-256 和请求发出前已确认的握手事实；本地故障日志额外保留实际启动文件绝对路径。不写完整 RPC 或 stderr，后台轮询不重复记录。 |
 | 更新 | `update.*` | 检查、下载、取消、失败、完成和安装器启动 |
 
 同步与仓库允许记录驱动、卡带、已装备、锁定和角色实例的聚合数量，不记录 UID 列表。战报允许字段包括
@@ -104,10 +109,33 @@ duration；取消、过期丢弃、待确认和降级使用独立事件，不伪
 - 账号切换先结束旧账号会话，再按新账号设置创建会话；
 - 设置页“清空”只清空界面文本，不删除日志文件。
 
+## 性能排错记录
+
+性能记录使用 `logs/performance/performance_<时间>_<会话>.jsonl`，格式 `calc.performance/2`，
+指标身份 `calc.performance.metrics/1`。指标口径、来源、开关组合、覆盖范围与生命周期只在
+[性能指标契约](performance-metrics.md)维护，不在各层另定义近似公式。
+
+后台约每半秒读取；服务耗时继续来自 `native_status.runtimePerformance` version=1 的白名单计数，
+帧指标来自同一游戏进程的 PresentMon 呈现间隔，组件耗时携带 `cost_coverage` 与 `cost_complete`。
+日志仅保存这些统计、UTC、单调时间、会话 ID 和采样错误状态；原始 CSV、完整 RPC、游戏对象、伤害和 UID 不写入。
+未采到的值为 null，不把缺失当作零，也不拿 HUD 回调间隔冒充呈现帧时间。
+
+常驻日志的 `performance.started/stopped` 使用相同会话 ID。性能目录与 `nte_core/raw_capture/` 相邻，
+可按 UTC 对照；原始采集文件不携带此性能会话 ID，不能声称已完成逐事件精确关联。
+正常结束写 `session_end`；缺少尾记录按部分记录处理。单会话上限 16 MiB，写入失败或达到上限停止该次记录，
+实时显示继续；不自动删除历史日志。账号切换先结束旧文件，不将晚到样本写入新账号。
+
+日志与原始采集互相独立：有性能日志不证明原始战报采集成功；关闭悬浮窗也不取消已开启的排错记录。
+日志不进入默认账号导出或发行包。
+
 ## 脱敏边界
 
 日志不写 Mirror CDK、Token、Cookie、Authorization、鉴权查询参数、完整 nte-core RPC、完整背包、UID
-列表、账号显示名、OCR 全文、截图内容、窗口标题和可复原业务 payload。本机故障日志可保留必要的文件路径、异常类型和调用位置，便于离线排查；日志不进默认账号导出，用户复制或外发前应检查路径。
+列表、账号显示名、OCR 全文、截图内容、窗口标题和可复原业务 payload。
+
+本地故障日志允许保留与故障定位直接相关的文件绝对路径，不对其作路径脱敏；日志不进入默认账号导出或发行物。
+手动检测的复制文本提供失败接口、业务原因码与组件哈希，实际启动路径只附加到本地故障日志。
+部分业务读取失败时，检测可以保留本次请求发出前已确认的握手事实，但未完成的业务快照与就绪状态仍为未知。
 
 结构化日志入口仍按原规则脱敏路径；本地日志 sink 对普通消息中的常见凭据执行统一遮盖，保留文件路径。计算与目录加载异常只记录有界消息和最多八个堆栈位置，不写原始整段 traceback 或局部变量。其他遗留直接日志仍可能包含业务值，后续收口见[路线图](../roadmap.md#6-遗留日志入口收口)。自动测试入口为
 `tests.test_observability_logging` 与 `tests.test_runtime_logging`。

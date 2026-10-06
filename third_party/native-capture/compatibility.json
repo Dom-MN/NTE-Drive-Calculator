@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "core_rebuilt": false,
-  "core_sha256": "bc1a48ff5d284c53808f22b624b8c53d79d277e16213e4526834a49d74213da4",
-  "capture_sha256": "e3711292bbeba7ce08d43cc5998383098c95b2e64b744cb97da6b8a29947330f",
-  "proxy_sha256": "6a714f2e633b22942f0efade16a5f0a623c435d98446d681e7182fa5683a5293",
+  "core_sha256": "1f875858409ad47eed83ded7991d7a3133eb4afafebf2c2b09cd52802c7b2fed",
+  "capture_sha256": "5105f4fa6042f7235aec6757c2f22559ad0690c5f950e8b8a4dddb9cf74155c9",
+  "proxy_sha256": "15fb3dfed69aedde7efe5a645af325abff8973301fd292c85b6981b0eb5f208c",
   "protocol_version": 1,
   "provider_capabilities": [
     "hud.configure.v1",
@@ -23,7 +23,13 @@
     "equipment.state_batch.v1",
     "combat.clock.v1",
     "snapshot.changes.v1",
-    "snapshot.pinned.v1"
+    "snapshot.pinned.v1",
+    "performance.overlay.v1",
+    "combat.abyss.v1",
+    "combat.abyss.v2",
+    "combat.abyss.restart_scope.v1",
+    "combat.rounds.v1",
+    "performance.trace.v1"
   ],
   "core_capabilities": [
     "capture",
@@ -49,14 +55,21 @@
     "native_equipment_state_batch_v1",
     "native_combat_clock_v1",
     "native_character_profile_v1",
-    "native_inventory_dto_v1"
+    "native_inventory_dto_v1",
+    "native_performance_v1",
+    "native_battle_lifecycle_v1",
+    "native_performance_trace_v1",
+    "native_battle_equipped_v1"
   ],
   "validation": {
-    "build": "Release x64 protected standalone capture and proxy rebuilt for 2.3.2.test; existing Core retained.",
-    "non_game": "Exact candidate direct/proxy isolated-host handshake, refusal and shutdown checks passed.",
-    "capture_integration": "Deterministic C++ snapshot timing fixture passed; other capture integration suites not rerun.",
-    "calc": "20 focused native diagnostic and lifecycle tests passed.",
-    "game": "not_run_for_exact_binaries; synchronization performance and capture acceptance pending"
+    "build": "Release x64 candidate, selected-function protection and four final-byte signatures verified. Core and Loader reused unchanged.",
+    "focused": "23 HUD tests, performance channel/accounting, and Hook retirement fixtures passed. MCP tooling tested separately and excluded from this bundle.",
+    "isolated_final": "Exact signed five-DLL set passed loading, tamper rejection, dependencies, HUD lifecycle, trace completion and SDK-not-ready refusal. Actual performance DLL passed raw/diagnostic output, drain, reload and output failure tests.",
+    "game_developer": "Not run for this candidate.",
+    "game_protected": "Not run for this candidate; HUD behavior and runtime performance require game acceptance.",
+    "frames": "No new real-game frame measurements.",
+    "defender": "No new explicit antivirus scan for this candidate.",
+    "core_equipped": "Production mapping passed synthetic coverage checks and archived first-hit equipment projection (4 members, 32 items); live acceptance pending."
   },
   "limits": [
     "Counterfactual modifier and formula evidence remains partial; capability advertisement does not prove runtime coverage.",
@@ -65,6 +78,11 @@
     "Conflicting configurations across halves cannot yet be replayed as multiple versions.",
     "Retail SDK removed OnAbyssStateChangeLogCallBack; only existing supported callbacks are captured.",
     "All-items collection proves the observed client containers, not complete server account assets.",
-    "Final protected standalone binaries and Calc application require user final in-game regression."
-  ]
+    "Final protected host, plugins and Calc require real-game acceptance."
+  ],
+  "user_sha256": "c5d323b712ad0019c7b74916dae59c041934e46141cdc4678ea4547a2beb7cae",
+  "performance_sha256": "ecde84ee27434280d4479efaa89b9f2f284b96fb75652048fe0fa217c97d1dfb",
+  "layout": "native-plugins-v3",
+  "hud_sha256": "3b44220d87b77e618281aec5124476d65c54ad05a9162a34719d172c9c543b68",
+  "core_reused": true
 }

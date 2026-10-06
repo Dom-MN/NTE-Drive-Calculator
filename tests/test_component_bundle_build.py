@@ -39,13 +39,13 @@ def test_identical_bytes_override_preserves_source_identity(tmp_path):
     validate_packaged_component_bundle(result.resource_root, source_manifest_path=source)
 
 
-@pytest.mark.parametrize('layout', [None, 'legacy-mods-v1'])
+@pytest.mark.parametrize('layout', [None, 'legacy-mods-v1', 'native-capture-v1', 'native-plugins-v2'])
 def test_build_rejects_retired_layout_even_if_bytes_match(tmp_path, layout):
     root, source, payload = native_source(tmp_path)
     inputs = native_component_build_inputs(root)
     payload['layout'] = layout
     source.write_text(json.dumps(payload), encoding='utf-8')
-    with pytest.raises(ValueError, match='native-capture-v1'):
+    with pytest.raises(ValueError, match='原生|组件|native-plugins-v3'):
         prepare_component_bundle(application_root=root, inputs=inputs, output_parent=root/'build')
     assert not (root/'build').exists()
 

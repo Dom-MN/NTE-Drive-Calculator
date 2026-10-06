@@ -47,10 +47,15 @@ def test_saved_context_and_calculation_copy_exclude_full_baseline(capture):
         raw = json.loads(dao._db().execute("SELECT raw_record_json FROM battle_axis_capture").fetchone()[0])
         context = raw["calc_capture_context"]
         assert set(context["profiles"]) == {"1072"}
-        assert len(context["equipment"]) == 1
-        assert context["equipment"][0]["uid_serial"] == 202
-        for snapshot in (context["native_runtime_snapshot"]["scopes"]["combat"]["snapshot"],
-                         context["native_scope_builds"]["combat"]["snapshot"]):
-            assert len(snapshot["inventory_projection"]["items"]) == 1
-            assert len(snapshot["domains"]["character"]["records"]) == 1
+        assert "equipment" not in context
+        assert "native_runtime_snapshot" not in context
+        entry = context["native_scope_builds"]["combat"]
+        assert "equipment" not in entry
+        assert len(entry["equipment_refs"]) == 1
+        assert entry["equipment_refs"][0]["uid_serial"] == 202
+        assert entry["equipment_refs"][0]["storage"] == "battle_equipment_snapshot"
+        snapshot = entry["snapshot"]
+        assert "inventory_projection" not in snapshot
+        assert "inventory" not in snapshot["domains"]
+        assert len(snapshot["domains"]["character"]["records"]) == 1
         assert len(dao.load_battle_build_snapshot(result.battle_record_id)["characters"]) == 1

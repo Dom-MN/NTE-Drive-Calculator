@@ -289,7 +289,7 @@ def export_account_data(manager: AccountManager, account_id: str, target_zip: Pa
             ),
         )
         for child in sorted(source_root.iterdir()):
-            if child.name in {"logs", "scanned_images"}:
+            if child.name in {"logs", "scanned_images", ".migration-backups"}:
                 continue
             if child.is_dir():
                 _write_tree_to_zip(zf, child, f"account/{child.name}")
@@ -438,18 +438,18 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
     layout.addWidget(name_edit)
 
     btn_row = QHBoxLayout()
-    add_btn = QPushButton(tr("添加"))
-    add_btn.setObjectName("btnAction")
+    add_btn = QPushButton("新建")
+    add_btn.setObjectName("btnPrimary")
     rename_btn = QPushButton(tr("保存命名"))
     rename_btn.setObjectName("btnAction")
-    delete_btn = QPushButton(tr("删除账号"))
+    delete_btn = QPushButton("删除")
     export_btn = QPushButton(tr("导出数据"))
     export_btn.setObjectName("btnAction")
     import_btn = QPushButton(tr("导入数据"))
     import_btn.setObjectName("btnAction")
     delete_btn.setObjectName("btnDanger")
     close_btn = QPushButton(tr("关闭"))
-    for btn in (add_btn, rename_btn, export_btn, import_btn, delete_btn):
+    for btn in (rename_btn, export_btn, import_btn, add_btn, delete_btn):
         btn_row.addWidget(btn)
     btn_row.addStretch()
     btn_row.addWidget(close_btn)
@@ -471,7 +471,7 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
         name_edit.setText(account.get("name", ""))
 
     def add_account():
-        name, ok = QInputDialog.getText(dialog, "添加账号", "请输入账号名称：")
+        name, ok = QInputDialog.getText(dialog, "新建账号", "请输入账号名称：")
         if not ok or not name.strip():
             return
         account_id = manager.create_account(name.strip())

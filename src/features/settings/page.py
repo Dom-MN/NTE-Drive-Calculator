@@ -28,12 +28,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
     QKeySequenceEdit,
 )
 
 from src.features.settings.work_mode_card import build_work_mode_card
+from src.features.settings.performance_card import PerformanceCard
 from src.app.constants import NETDISK_DOWNLOAD_LINKS
 from src.app.context import AppContext
 from src.app.theme import THEME_LABELS, themed_style
@@ -145,7 +147,10 @@ def _build_capture_diagnostics_card(window):
 
     def save_capture_diagnostics() -> None:
         if callable(save_handler):
-            save_handler()
+            settings = save_handler()
+            window.performance_controller.capture_changed(settings)
+            if settings is None and callable(settings_reader):
+                window._sync_raw_capture_toggle.setChecked(bool(settings_reader()["raw_capture_enabled"]))
 
     window._sync_capture_device_edit.editingFinished.connect(save_capture_diagnostics)
 
@@ -174,6 +179,14 @@ def _build_capture_diagnostics_card(window):
 
     window._sync_raw_capture_toggle.clicked.connect(save_raw_capture_diagnostics)
     form.addRow(tr("采集排错:"), raw_capture_row)
+    performance_link = QCheckBox("同时记录性能")
+    performance_link.setToolTip("排错开启时保存服务耗时到账号日志目录；不额外启动同步、战报或 HUD。")
+    performance_link.clicked.connect(window.performance_controller.set_linked)
+    def refresh_performance_link():
+        performance_link.setChecked(window.performance_controller.snapshot()["linked"])
+    window.performance_controller.changed.connect(refresh_performance_link)
+    refresh_performance_link()
+    form.addRow("性能日志:", performance_link)
     card.layout().addLayout(form)
     return card
 
@@ -181,7 +194,7 @@ def _build_capture_diagnostics_card(window):
 def _build_environment_card(window):
     card = window._card(tr("环境配置"))
     window._environment_configuration_card = card
-    npcap_title = QLabel(tr("Npcap · 数据同步、战报采集"))
+    npcap_title = QLabel("Npcap · 背包同步、基础战报")
     npcap_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(npcap_title)
     npcap_row = QHBoxLayout()
@@ -233,7 +246,13 @@ def _build_environment_card(window):
     window._equipment_plugin_loading_method_combo.currentIndexChanged.connect(
         window._equipment_plugin_loading_method_changed
     )
-    form.addRow(tr("加载方式:"), window._equipment_plugin_loading_method_combo)
+    loading_row = QHBoxLayout()
+    loading_row.addWidget(window._equipment_plugin_loading_method_combo)
+    loading_hint = QLabel("若不可用，请选择备用加载方式")
+    loading_hint.setWordWrap(True)
+    loading_hint.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
+    loading_row.addWidget(loading_hint, 1)
+    form.addRow(tr("加载方式:"), loading_row)
     window._equipment_plugin_game_executable_edit = QLineEdit()
     window._equipment_plugin_game_executable_edit.setPlaceholderText(
         tr("可手动粘贴 HTGame.exe 的完整文件地址")
@@ -259,7 +278,10 @@ def _build_environment_card(window):
     card.layout().addLayout(form)
 
     window._equipment_plugin_status_label = QLabel()
-    window._equipment_plugin_status_label.setWordWrap(False)
+    window._equipment_plugin_status_label.setMinimumWidth(0)
+    window._equipment_plugin_status_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+    window._equipment_plugin_status_label.setTextFormat(Qt.PlainText)
+    window._equipment_plugin_status_label.setWordWrap(True)
     window._equipment_plugin_status_label.setStyleSheet(
         themed_style("color:#8b949e;font-size:12px")
     )
@@ -333,7 +355,7 @@ def build_settings_page(
     protagonist_row = QHBoxLayout()
     protagonist_row.addWidget(QLabel(tr("主角游戏名:")))
     window._protagonist_game_name_edit = QLineEdit()
-    window._protagonist_game_name_edit.setPlaceholderText(tr("零在游戏内显示的玩家名字"))
+    window._protagonist_game_name_edit.setPlaceholderText("仅自动装配需要")
     protagonist_name_width = (
         window._protagonist_game_name_edit.fontMetrics().horizontalAdvance("零" * 8) + 36
     )
@@ -548,6 +570,9 @@ def build_settings_page(
     layout.addWidget(about_card)
 
     layout.addWidget(plugin_card)
+    performance_card = window._card("性能监控")
+    performance_card.layout().addWidget(PerformanceCard(window.performance_controller))
+    layout.addWidget(performance_card)
     layout.addWidget(sync_card)
 
     paths = _settings_paths(app_context)

@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QApplication, QPlainTextEdit, QPushButton, QWidget
 
 from src.domain.native_role_sync import NativeRoleSyncResult
 from src.features.official_role.dependencies import OfficialRoleDependencies
-from src.features.official_role.sync_controller import CharacterProfileSyncController
+from src.features.official_role.sync_controller import CharacterProfileSyncController, RoleSyncResultText
 
 
 class DeferredThread:
@@ -76,6 +76,30 @@ class CharacterProfileSyncControllerTests(unittest.TestCase):
         self.assertTrue(window.my_role_form_area.isEnabled())
         self.service.patch_native_profiles.assert_called_once()
         page.close()
+
+    def test_sync_result_fits_short_messages_and_preserves_long_copyable_diagnostics(self):
+        result_text = RoleSyncResultText(self.owner)
+        self.controller.attach_controls(self.button, (self.editor,), result_text=result_text)
+        self.owner.resize(600, 400)
+        result_text.resize(560, result_text.height())
+        self.owner.show()
+        self.controller._show_result("已同步 19 个角色的已确认字段。其余养成配置保持原值。")
+        self.app.processEvents()
+        short_height = result_text.height()
+        self.assertTrue(result_text.isVisible())
+        self.assertTrue(result_text.isReadOnly())
+        details = "\n".join(f"角色 {index} · 弧盘身份未确认，保持原值。" for index in range(30))
+        self.controller._show_result(details)
+        self.app.processEvents()
+        self.assertGreater(result_text.height(), short_height)
+        self.assertEqual(result_text.toPlainText(), details)
+        result_text.selectAll()
+        self.assertEqual(result_text.textCursor().selectedText().replace("\u2029", "\n"), details)
+        self.controller._show_result("同步完成。")
+        self.app.processEvents()
+        self.assertLessEqual(result_text.height(), short_height)
+        self.controller._show_result("")
+        self.assertTrue(result_text.isHidden())
 
     def test_paused_connection_guides_before_worker(self):
         self.controller._connection_paused = lambda: True

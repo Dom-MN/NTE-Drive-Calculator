@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
+import copy
 import shutil
 import threading
 from concurrent.futures import CancelledError
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -18,12 +19,12 @@ from src.i18n import tr, display_term
 from src.app.theme import current_style_sheet
 from src.app.workers import WorkerThread
 from src.integrations.global_hotkeys import GlobalHotkeyManager
-from src.optimizer.plan_diff import build_plan_diff
+from src.services.allocation_comparison_scoring import persist_comparison_diff
+from src.services.legacy_allocation_comparison_service import (
+    freeze_legacy_slot_comparisons, refresh_legacy_slot_comparisons, single_slot_comparison_diffs,
+)
 from src.optimizer.contracts import (
-    DIFF_ADDED,
-    DIFF_ADDED_UIDS,
     DIFF_CHANGED,
-    DIFF_REMOVED,
     EQUIP_IS_CHANGED,
     EQUIP_UID,
     PLAN_ASSIGNED_TAPE,
@@ -39,9 +40,6 @@ from src.services.sqlite_allocation_inventory import SqliteAllocationInventory
 from src.services.allocation_filter_settings import (
     AllocationFilterSettings,
     filter_allocation_candidates,
-)
-from src.features.allocation.slot_plan_diff import (
-    single_slot_loadout_state,
 )
 from src.services.allocation_lock_service import (
     AllocationLockSnapshot,
@@ -80,6 +78,20 @@ class AllocationRunResult:
     static_database_path: Path
     static_dataset_id: str
     static_file_identity: tuple[int, int]
+    context_identity: tuple[int | None, str | None, Path]
+    run_id: int | None = None
+    comparisons: dict = field(default_factory=dict)
+
+
+def _allocation_context_identity(window: Any) -> tuple[int | None, str | None, Path]:
+    context = getattr(window, "app_context", None)
+    if context is None:
+        return (None, None, _allocation_paths(window)[0])
+    return (
+        int(context.generation),
+        str(context.account.active_account_id),
+        Path(context.account.user_database_path),
+    )
 
 
 def _allocation_paths(window: Any) -> tuple[Path, Path, Path, Path, Path]:
@@ -137,8 +149,13 @@ def _run_allocation(
     filter_settings: AllocationFilterSettings | None = None,
     blueprint_combo_limit: int = 2000,
     cancel_check=None,
+    *, expected_context_identity: tuple[int | None, str | None, Path] | None = None,
+    expected_run_id: int | None = None,
 ) -> Any:
     try:
+        context_identity = expected_context_identity or _allocation_context_identity(self)
+        if _allocation_context_identity(self) != context_identity:
+            raise CancelledError("计算账号已切换，丢弃旧任务")
         database_path, config_dir, user_config_dir, _, static_database_path = _allocation_paths(self)
         logger.info(f"开始分配计算: 策略={strat}, 角色={sel}")
         if not database_path.is_file():
@@ -196,15 +213,29 @@ def _run_allocation(
             user_database_path=database_path,
             allocation_static_database_path=static_database_path,
         )
+        comparisons = {}
+
+        def freeze_comparisons(request, scorer):
+            def checkpoint():
+                if (cancel_check is not None and cancel_check()) or _allocation_context_identity(self) != context_identity:
+                    raise CancelledError("分配计算已取消或账号已切换")
+            comparisons.update(freeze_legacy_slot_comparisons(
+                database_path, static_database_path, request, scorer,
+                snapshot_id=projection.snapshot_id, checkpoint=checkpoint,
+            ))
+
         if unlocked_sel:
             if cancel_check is not None and cancel_check():
                 raise CancelledError(tr("分配计算已取消"))
+            if _allocation_context_identity(self) != context_identity:
+                raise CancelledError("计算账号已切换，丢弃旧任务")
             fp, _ = a.execute_allocation_inventory(
                 list(filtered_items),
                 unlocked_sel,
                 cs,
                 strat,
                 locked_uids=set(lock_snapshot.reserved_uids),
+                allocation_observer=freeze_comparisons,
                 **allocation_options,
             )
         else:
@@ -212,6 +243,8 @@ def _run_allocation(
         latest_stat = static_database_path.stat()
         if (latest_stat.st_size, latest_stat.st_mtime_ns) != static_file_identity:
             raise RuntimeError("计算期间静态数据集已更新，请重新执行计算。")
+        if _allocation_context_identity(self) != context_identity:
+            raise CancelledError("计算账号已切换，丢弃旧任务")
         logger.info(f"分配计算完成: result_type={type(fp).__name__}")
         return AllocationRunResult(
             plans=fp,
@@ -221,6 +254,9 @@ def _run_allocation(
             static_database_path=static_database_path,
             static_dataset_id=static_dataset_id,
             static_file_identity=static_file_identity,
+            context_identity=context_identity,
+            run_id=expected_run_id,
+            comparisons=refresh_legacy_slot_comparisons(comparisons, fp),
         )
     except Exception as e:
         logger.error(f"allocation.run_failed | {format_local_exception(e)}")
@@ -229,60 +265,41 @@ def _run_allocation(
 
 def _start_allocation_worker(self: Any) -> None:
     logger.info("启动分配工作线程...")
+    context_identity = self._pending_allocation_context_identity
+    run_id = self._pending_run_id
+    frozen_args = copy.deepcopy((
+        self._pending_strat,
+        self._pending_sel,
+        self._pending_cs,
+        self._pending_tape_main_filters,
+        self._pending_crit_priority_modes,
+        self._pending_set_effect_modes,
+        self._pending_priority_groups,
+        self._pending_crit_rate_caps,
+        self._pending_crit_rate_baselines,
+        self._pending_custom_weapons,
+        self._pending_filter_settings,
+        self._pending_blueprint_combo_limit,
+    ))
+    cancel_check = self._cancel_event.is_set
     self._worker = WorkerThread(
         target=lambda: self._run_allocation(
-            self._pending_strat,
-            self._pending_sel,
-            self._pending_cs,
-            getattr(self, "_pending_tape_main_filters", {}),
-            getattr(self, "_pending_crit_priority_modes", {}),
-            getattr(self, "_pending_set_effect_modes", {}),
-            getattr(self, "_pending_priority_groups", None),
-            getattr(self, "_pending_crit_rate_caps", {}),
-            getattr(self, "_pending_crit_rate_baselines", {}),
-            getattr(self, "_pending_custom_weapons", {}),
-            getattr(self, "_pending_filter_settings", AllocationFilterSettings()),
-            getattr(self, "_pending_blueprint_combo_limit", 2000),
-            self._cancel_event.is_set,
+            *frozen_args,
+            cancel_check=cancel_check,
+            expected_context_identity=context_identity,
+            expected_run_id=run_id,
         ),
         parent=self,
     )
     self._worker.result_ready.connect(self._on_done)
-    self._worker.error.connect(self._on_exec_error)
+    self._worker.error.connect(
+        lambda error: self._on_exec_error(error)
+        if (_allocation_context_identity(self) == context_identity
+            and self._pending_run_id == run_id)
+        else logger.info("旧账号分配任务错误回调已丢弃")
+    )
     self._worker.start()
     logger.info("分配线程已启动")
-
-
-def _active_sqlite_loadout_state(
-    database_path: str | Path,
-) -> dict[str, dict[str, Any]]:
-    """Build a baseline only for roles that have exactly one visible slot."""
-
-    with UserDataDao(database_path) as user_dao:
-        return single_slot_loadout_state(user_dao)
-
-
-def _sqlite_allocation_plan_diff(
-    database_path: str | Path,
-    final_plan: dict[str, Any],
-) -> dict[str, Any]:
-    """Compare with a slot only when it is unambiguous before saving."""
-
-    return build_plan_diff(_active_sqlite_loadout_state(database_path), final_plan)
-
-
-def _calculation_plan_diff(
-    self: Any,
-    final_plan: dict[str, Any],
-) -> dict[str, Any]:
-    """Prefer active SQLite plans; retain a no-database test-host fallback."""
-
-    try:
-        database_path = _allocation_paths(self)[0]
-        return _sqlite_allocation_plan_diff(database_path, final_plan)
-    except Exception as exc:
-        logger.warning(f"读取 SQLite 配装差异失败，改用无数据库兼容基线：{exc}")
-    return build_plan_diff({}, final_plan)
 
 
 def _persistable_plan_diff(
@@ -290,13 +307,7 @@ def _persistable_plan_diff(
 ) -> dict[str, Any]:
     """Convert in-memory diff sets to JSON-compatible plan payload data."""
 
-    source = role_diff or {}
-    return {
-        DIFF_CHANGED: bool(source.get(DIFF_CHANGED)),
-        DIFF_ADDED_UIDS: sorted(str(uid) for uid in (source.get(DIFF_ADDED_UIDS) or ()) if uid),
-        DIFF_ADDED: [dict(item) for item in (source.get(DIFF_ADDED) or ()) if isinstance(item, dict)],
-        DIFF_REMOVED: [dict(item) for item in (source.get(DIFF_REMOVED) or ()) if isinstance(item, dict)],
-    }
+    return persist_comparison_diff(role_diff)
 
 
 def _plan_changed_uids(
@@ -404,12 +415,16 @@ def _confirm_unsaved_allocation_before_recompute(self: Any) -> bool:
 
 def _on_done(self: Any, r: Any) -> None:
     try:
-        self._hotkey_manager.stop(owner="allocation")
         logger.info(
             f"_on_done 收到结果: type={type(r).__name__}, keys={list(r.keys()) if isinstance(r, dict) else 'N/A'}"
         )
         if not isinstance(r, AllocationRunResult):
             raise RuntimeError("分配线程返回了未绑定快照的结果")
+        if (r.context_identity != _allocation_context_identity(self)
+            or r.run_id != getattr(self, "_pending_run_id", None)):
+            logger.info("过期分配任务结果回调已丢弃")
+            return
+        self._hotkey_manager.stop(owner="allocation")
         current_static = _allocation_paths(self)[4]
         current_stat = current_static.stat()
         if current_static != r.static_database_path or (
@@ -427,7 +442,8 @@ def _on_done(self: Any, r: Any) -> None:
         self.btn_run.setEnabled(True)
         self.btn_run.setText(tr("⚡  开始计算"))
         self._allocation_custom_weapons = dict(getattr(self, "_pending_custom_weapons", {}) or {})
-        self.allocation_plan_diff = _calculation_plan_diff(self, self.final_plan)
+        self._allocation_frozen_comparisons = r.comparisons
+        self.allocation_plan_diff = single_slot_comparison_diffs(r.comparisons)
         self._allocation_dirty = bool(self.final_plan)
         self._render_results(self.final_plan)
         logger.info("_render_results 完成")
@@ -455,10 +471,10 @@ def _select_allocation_save_slots(
     user_dao: UserDataDao,
     static_dao: StaticGameDataDao,
     snapshot_id: int,
-) -> dict[str, tuple[int, int]] | None:
-    """Choose existing role slots before any calculation plan is persisted."""
+) -> dict[str, tuple[int, int | None]] | None:
+    """Choose slots without creating an empty slot before the save transaction."""
 
-    targets: dict[str, tuple[int, int]] = {}
+    targets: dict[str, tuple[int, int | None]] = {}
     for role_name, plan in self.final_plan.items():
         if not isinstance(plan, dict) or not plan.get(PLAN_VALID):
             continue
@@ -467,8 +483,8 @@ def _select_allocation_save_slots(
         )
         slots = user_dao.list_loadout_slots(character_id)
         if not slots:
-            user_dao.create_loadout_slot(character_id, role_name, slot_key="primary")
-            slots = user_dao.list_loadout_slots(character_id)
+            targets[role_name] = (character_id, None)
+            continue
         if len(slots) == 1:
             slot = slots[0]
         else:
@@ -574,6 +590,7 @@ class AllocationController(QObject):
         self._saving = False
         self.btn_save: QPushButton | None = None
         self.final_plan: dict = {}
+        self._allocation_frozen_comparisons: dict = {}
         self.allocation_plan_diff: dict = {}
         self._allocation_dirty = False
         self._pending_allocation_snapshot_id: int | None = None
@@ -591,6 +608,9 @@ class AllocationController(QObject):
         self._pending_crit_rate_caps: dict[str, Any] = {}
         self._pending_crit_rate_baselines: dict[str, Any] = {}
         self._pending_custom_weapons: dict[str, Any] = {}
+        self._pending_allocation_context_identity: tuple[int | None, str | None, Path] | None = None
+        self._run_sequence = 0
+        self._pending_run_id: int | None = None
         self._pending_filter_settings = AllocationFilterSettings()
         self._pending_blueprint_combo_limit = 2000
         self._allocation_custom_weapons: dict[str, Any] = {}
@@ -625,6 +645,8 @@ class AllocationController(QObject):
     ) -> None:
         if self.btn_run is None:
             raise RuntimeError("allocation run button has not been bound")
+        if self.is_running():
+            raise RuntimeError("已有分配计算任务正在运行")
         self._pending_strat = strategy
         self._pending_sel = selected_roles
         self._pending_cs = custom_sets
@@ -640,7 +662,10 @@ class AllocationController(QObject):
         self._pending_blueprint_combo_limit = int(blueprint_combo_limit)
         if self._pending_blueprint_combo_limit < 1:
             raise ValueError(tr("图纸组合数必须为正整数"))
-        self._cancel_event.clear()
+        self._pending_allocation_context_identity = _allocation_context_identity(self)
+        self._run_sequence += 1
+        self._pending_run_id = self._run_sequence
+        self._cancel_event = threading.Event()
         self._hotkey_manager.start(owner="allocation", on_stop=self.cancel)
         _start_allocation_worker(self)
 
@@ -663,6 +688,7 @@ class AllocationController(QObject):
         """Discard a displayed calculation without changing persisted plans or inputs."""
 
         self.final_plan = {}
+        self._allocation_frozen_comparisons = {}
         self.allocation_plan_diff = {}
         self._allocation_dirty = False
         self._pending_allocation_snapshot_id = None
@@ -674,12 +700,15 @@ class AllocationController(QObject):
 
     def reset_account_state(self) -> None:
         self.final_plan = {}
+        self._allocation_frozen_comparisons = {}
         self.allocation_plan_diff = {}
         self._allocation_dirty = False
         self._pending_allocation_snapshot_id = None
         self._pending_allocation_static_identity = None
         self._allocation_lock_snapshot = None
         self._selected_locked_role_names = frozenset()
+        self._pending_allocation_context_identity = None
+        self._pending_run_id = None
         self._pending_filter_settings = AllocationFilterSettings()
         self._cancel_event.set()
         self._hotkey_manager.stop(owner="allocation")

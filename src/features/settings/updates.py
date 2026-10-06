@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, Q
 
 from src.i18n import tr
 from src.app.constants import NETDISK_DOWNLOAD_LINKS
+from src.app.version import version_order_key
 from src.app.theme import themed_style
 from src.app.window_geometry import fit_dialog_to_available_screen
 
@@ -32,11 +33,7 @@ class UpdateDownloadCancelled(RuntimeError):
 
 
 def is_newer_version(remote, current) -> bool:
-    def nums(value):
-        parts = [int(item) for item in re.findall(r"\d+", str(value))]
-        return (parts + [0, 0, 0])[:3]
-
-    return nums(remote) > nums(current)
+    return version_order_key(remote) > version_order_key(current)
 
 
 def mirror_update_request_url(api_url: str, app_version: str, cdk: str = "") -> str:

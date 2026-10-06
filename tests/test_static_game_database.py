@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
+from src.storage.sqlite.static_game_data_metadata import SCHEMA_VERSION
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -437,6 +438,10 @@ class StaticGameDatabaseTests(unittest.TestCase):
         )
 
     def test_weight_page_rejects_official_shape_bonus_edit(self):
+        import time
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        application = QApplication.instance() or QApplication([])
         from src.features.configuration import page as configuration_page
         from src.services.character_shape_bonus_service import get_effective_character_shape_bonus
         from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
@@ -459,6 +464,7 @@ class StaticGameDatabaseTests(unittest.TestCase):
                     paths=SimpleNamespace(
                         config_dir=PROJECT_ROOT / "config",
                         static_database_path=static_database,
+                        equipment_allocation_database_path=static_database,
                         shared_database_path=shared_database,
                     ),
                 ),
@@ -481,6 +487,13 @@ class StaticGameDatabaseTests(unittest.TestCase):
             with patch.object(configuration_page.QMessageBox, "information"), \
                  patch.object(configuration_page.QMessageBox, "warning") as warning:
                 configuration_page.save_config_form(window, PROJECT_ROOT / "config", None)
+                controller = configuration_page._basic_weight_controller(window)
+                deadline = time.monotonic() + 10
+                while controller.is_writing() and time.monotonic() < deadline:
+                    QTest.qWait(5)
+                self.assertFalse(controller.is_writing())
+                controller.close()
+                application.processEvents()
             with UserDataDao(database) as user_dao:
                 weights = user_dao.get_character_weight_preferences(1051)
             with StaticGameDataDao(static_database) as static_dao:
@@ -542,7 +555,7 @@ class StaticGameDatabaseTests(unittest.TestCase):
             connection.close()
 
         self.assertEqual(0, payload_count)
-        self.assertEqual(38, schema_version)
+        self.assertEqual(SCHEMA_VERSION, schema_version)
         self.assertGreater(character_count, 0)
         self.assertEqual(source_row_count, source_hash_count)
         # The role-template DAO adds official ID 1051 as the default avatar

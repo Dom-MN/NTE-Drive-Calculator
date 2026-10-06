@@ -64,6 +64,7 @@ def read_native_projection(call: Callable[..., dict[str, Any]], check: Callable[
     projection_missing = set()
     stat_provenance = None
     result_rows, characters, references = [], None, None
+    equipped_pages = []
     offset = total_bytes = 0
     while True:
         check()
@@ -112,6 +113,8 @@ def read_native_projection(call: Callable[..., dict[str, Any]], check: Callable[
             if references is not None and references != page_references:
                 raise NteCoreProtocolError("原生背包分页的角色装备引用发生变化。")
             references = deepcopy(page_references)
+        if domain == "character":
+            equipped_pages.append(deepcopy(page.get("battleEquipment")))
         result_rows.extend(deepcopy(rows))
         offset = end
         if next_offset is None:
@@ -134,7 +137,7 @@ def read_native_projection(call: Callable[..., dict[str, Any]], check: Callable[
             raise NteCoreProtocolError("原生角色状态分页包含重复角色，已丢弃本次更新。")
     return {**metadata, field: result_rows, "projectionMissing": sorted(projection_missing),
             **({"characters": characters, "projectionComplete": True, "statProvenance": stat_provenance,
-                                              "referencedItemUids": references} if domain == "inventory" else {})}
+                                              "referencedItemUids": references} if domain == "inventory" else {"battleEquipment": _equipped_subset(equipped_pages)})}
 
 
 def _formal_uid(value):
@@ -144,3 +147,30 @@ def _formal_uid(value):
     if any(type(part) is not int or not 0 < part < 4294967295 for part in parts):
         raise NteCoreProtocolError("原生装备实例身份不在正式接口范围内。")
     return parts
+
+
+def _equipped_subset(pages):
+    """Validate the versioned Core subset; never route it to inventory storage."""
+    unavailable = {"schemaVersion": 1, "scope": "character_equipped_only", "complete": False}
+    if any(not isinstance(page, dict) or page.get("complete") is not True for page in pages):
+        return unavailable
+    items, characters, provenance = [], [], None
+    for page in pages:
+        if page.get("schemaVersion") != 1 or page.get("scope") != "character_equipped_only":
+            raise NteCoreProtocolError("战报已装备物品的来源范围无效。")
+        if not isinstance(page.get("items"), list) or not isinstance(page.get("characters"), list):
+            raise NteCoreProtocolError("战报已装备物品的投影不完整。")
+        if provenance is not None and provenance != page.get("statProvenance"):
+            raise NteCoreProtocolError("战报已装备物品的词条来源发生变化。")
+        provenance = page.get("statProvenance")
+        items.extend(page["items"])
+        characters.extend(page["characters"])
+    if any(not isinstance(row, dict) for row in [*items, *characters]):
+        raise NteCoreProtocolError("战报已装备物品格式无效。")
+    ids = [row.get("character_id") for row in characters]
+    if any(type(cid) is not int or cid <= 0 for cid in ids) or len(ids) != len(set(ids)):
+        raise NteCoreProtocolError("战报已装备物品包含重复或无效角色。")
+    uids = [_formal_uid(row.get("uid")) for row in items]
+    if len(uids) != len(set(uids)) or any(row.get("equipped_character_id") not in ids for row in items):
+        raise NteCoreProtocolError("战报已装备物品的实例或归属冲突。")
+    return {**unavailable, "complete": True, "items": items, "characters": characters, "statProvenance": provenance}

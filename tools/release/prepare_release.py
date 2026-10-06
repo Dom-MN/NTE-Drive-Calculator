@@ -49,7 +49,9 @@ BUNDLED_STATIC_MANIFEST = APP_INTERNAL / "data" / "manifest.json"
 BUNDLED_GAME_UI_ASSET_ROOT = APP_INTERNAL / "data" / "role_catalog" / "game_ui"
 BUNDLED_GAME_UI_ASSET_MANIFEST = BUNDLED_GAME_UI_ASSET_ROOT / "manifest.json"
 LOCAL_CONFIG_ENV = "NTE_LOCAL_CONFIG"
-REQUIRED_CORE_CAPABILITIES = frozenset({"capture_wait_v1", "buff_snapshot_v1"})
+REQUIRED_CORE_CAPABILITIES = frozenset({
+    "capture_wait_v1", "buff_snapshot_v1", "inventory_observed_items_v1",
+})
 def run(command: Sequence[str]) -> None:
     """在仓库根目录执行命令，失败时立即终止准备流程。"""
 
@@ -295,9 +297,9 @@ def validate_components() -> None:
 
 
 def validate_core_capabilities(core: Path) -> None:
-    """实际握手防止同版本 Core 更新时静默丢失既有能力。"""
+    """实际抓包入口握手；原生入口仍需配套 DLL 隔离验证和实机验收。"""
     with NteCoreClient(executable=core, required_source="packet") as client:
-        capabilities = set(client.hello_result["capabilities"])
+        capabilities = set((client.hello_result or {}).get("capabilities", []))
     missing = REQUIRED_CORE_CAPABILITIES - capabilities
     if missing:
         raise RuntimeError("Core 握手缺少发行所需能力：" + "、".join(sorted(missing)))

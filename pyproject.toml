@@ -60,7 +60,7 @@ dev = [
 ]
 
 [tool.setuptools.dynamic]
-version = { attr = "src.app.version.__version__" }
+version = { attr = "src.app.version.__package_version__" }
 
 [tool.setuptools.packages.find]
 where = ["."]

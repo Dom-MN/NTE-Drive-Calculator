@@ -1,84 +1,19 @@
-# 验证二件套图纸选择的额外形状加成。
-"""二件套图纸选择的额外形状加成回归测试。"""
+# 验证二件套图纸的额外形状层次与必要槽身份。
+"""二件套图纸候选规则回归测试。"""
 
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
-from src.models.equipment import Drive, DriveShape
-from src.optimizer.role_priority_strategy import RolePriorityStrategy
+from src.models.equipment import DriveShape
 from src.solver.combinatorics import PuzzleCombinatorics
+from src.solver.blueprint_utils import dedupe_blueprints_by_piece_signature
+from src.solver.orchestrator import NTEPipelineOrchestrator
 
 
 class TwoPieceShapePriorityTests(unittest.TestCase):
-    """二件套候选形状本身命中额外形状时，应参与图纸择优。"""
-
-    def _strategy(self, strategy_class):
-        strategy = strategy_class(
-            roles_db={
-                "A": {
-                    "default_set": "Set",
-                    "weights": {"攻击力%": 1.0},
-                    "extra_shape_label": "2型",
-                    "extra_shape_buffs": {"攻击力%": 10.0},
-                }
-            },
-            sets_db={"Set": {"shapes": []}},
-            blueprints_db={
-                "A": [
-                    {
-                        "set_pieces": ["H_2"],
-                        "extra_pieces": [],
-                        "set_effect_mode": "two_piece",
-                        "board": [[1]],
-                    },
-                    {
-                        "set_pieces": ["H_3"],
-                        "extra_pieces": [],
-                        "set_effect_mode": "two_piece",
-                        "board": [[1]],
-                    },
-                ]
-            },
-        )
-        strategy.stat_catalog.gold_base_values["攻击力%"] = 1.25
-        return strategy
-
-    @staticmethod
-    def _drives() -> list[Drive]:
-        return [
-            Drive(
-                uid="visible_better",
-                quality="Gold",
-                area=3,
-                shape_id="H_3",
-                set_name="Set",
-                main_stats={"攻击力": 1.0, "生命值": 1.0},
-                sub_stats={},
-                role_scores={"A": 20.0},
-            ),
-            Drive(
-                uid="hidden_better",
-                quality="Gold",
-                area=2,
-                shape_id="H_2",
-                set_name="Set",
-                main_stats={"攻击力": 1.0, "生命值": 1.0},
-                sub_stats={},
-                role_scores={"A": 1.0},
-            ),
-        ]
-
-    def test_role_priority_uses_extra_shape_bonus_for_two_piece_choice(self) -> None:
-        result = self._strategy(RolePriorityStrategy).execute(
-            {"drives": self._drives(), "tapes": {"A": []}},
-            ["A"],
-            {},
-            crit_priority_modes={},
-        )
-
-        self.assertTrue(result["A"]["valid"])
-        self.assertEqual("hidden_better", result["A"]["assigned_set_drives"][0].uid)
+    """优先层保留必要槽身份，缺件时仍可检查低层。"""
 
     def test_none_mode_can_use_other_shape_to_fill_extra_shape_remainder(self) -> None:
         shapes = {
@@ -93,6 +28,81 @@ class TwoPieceShapePriorityTests(unittest.TestCase):
         combinations = PuzzleCombinatorics(shapes).generate_piece_combinations([], "3型")
 
         self.assertEqual([["Extra3"] * 6 + ["Other2"]], combinations)
+
+    def test_two_piece_keeps_lower_extra_count_as_fallback(self) -> None:
+        shapes = {
+            "Extra3": DriveShape(
+                shape_id="Extra3", label="3型", matrix=[[1, 1, 1]], area=3,
+            ),
+            "Other2": DriveShape(
+                shape_id="Other2", label="2型", matrix=[[1, 1]], area=2,
+            ),
+        }
+        combinatorics = PuzzleCombinatorics(shapes)
+
+        strict = combinatorics.generate_piece_combinations(["Other2"], "3型")
+        relaxed = combinatorics.generate_piece_combinations(
+            ["Other2"], "3型", only_max_extra=False,
+        )
+
+        self.assertEqual(strict, relaxed[:len(strict)])
+        self.assertGreater(len(relaxed), len(strict))
+
+    def test_identical_total_shapes_preserve_distinct_two_piece_set_pairs(self) -> None:
+        blueprints = [
+            {"set_effect_mode": "two_piece", "set_pieces": ["A", "B"], "extra_pieces": ["C", "D"]},
+            {"set_effect_mode": "two_piece", "set_pieces": ["A", "C"], "extra_pieces": ["B", "D"]},
+        ]
+
+        self.assertEqual(blueprints, dedupe_blueprints_by_piece_signature(blueprints))
+
+    def test_equal_area_set_pairs_reuse_fill_combinations(self) -> None:
+        shapes = {
+            name: DriveShape(shape_id=name, label="1型", matrix=[[1]], area=1)
+            for name in ("A", "B", "C", "D")
+        }
+        solver = NTEPipelineOrchestrator.from_frozen_inputs(
+            roles_db={"Role": {
+                "default_set": "Set", "extra_shape_label": "1型",
+                "board_matrix": [[0, 0]],
+            }},
+            sets_db={"Set": {"shapes": ["A", "B", "C", "D"]}},
+            shapes_db=shapes,
+        )
+        with patch.object(
+            PuzzleCombinatorics, "generate_piece_combinations", return_value=[[]],
+        ) as generate:
+            blueprints = solver.solve_blueprints(
+                ["Role"], set_effect_modes={"Role": "two_piece"},
+            )["Role"]
+
+        self.assertEqual(1, generate.call_count)
+        self.assertIs(generate.call_args.kwargs["only_max_extra"], False)
+        self.assertEqual(6, len(blueprints))
+        self.assertIsNot(blueprints[0]["extra_pieces"], blueprints[1]["extra_pieces"])
+
+    def test_four_piece_and_no_effect_keep_maximum_extra_count_gate(self) -> None:
+        shapes = {
+            name: DriveShape(shape_id=name, label="1型", matrix=[[1]], area=1)
+            for name in ("A", "B", "C", "D")
+        }
+        for mode in ("four_piece", "none"):
+            with self.subTest(mode=mode):
+                solver = NTEPipelineOrchestrator.from_frozen_inputs(
+                    roles_db={"Role": {
+                        "default_set": "Set", "extra_shape_label": "1型",
+                        "board_matrix": [[0, 0]],
+                    }},
+                    sets_db={"Set": {"shapes": ["A", "B", "C", "D"]}},
+                    shapes_db=shapes,
+                )
+                with patch.object(
+                    PuzzleCombinatorics, "generate_piece_combinations", return_value=[[]],
+                ) as generate:
+                    solver.solve_blueprints(["Role"], set_effect_modes={"Role": mode})
+
+                self.assertEqual(1, generate.call_count)
+                self.assertIs(generate.call_args.kwargs["only_max_extra"], True)
 
 
 if __name__ == "__main__":

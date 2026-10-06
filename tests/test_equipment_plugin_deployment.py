@@ -1,6 +1,7 @@
 # 测试装备插件的部署、备份与清理流程。
 from __future__ import annotations
 
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -123,3 +124,22 @@ class EquipmentPluginDeploymentTests(unittest.TestCase):
         run.return_value.stdout = "INFO: No tasks are running which match the specified criteria.\n"
 
         self.assertFalse(game_process_running())
+
+    @patch("src.services.equipment_plugin_deployment.subprocess.run")
+    def test_nonzero_tasklist_exit_reports_unconfirmed(self, run) -> None:
+        run.return_value.returncode = 1
+        run.return_value.stdout = "ERROR: Invalid argument/option - '/NH'\n"
+
+        self.assertIsNone(game_process_running())
+
+    @patch("src.services.equipment_plugin_deployment.subprocess.run")
+    def test_probe_launch_failure_reports_unconfirmed(self, run) -> None:
+        run.side_effect = OSError("tasklist unavailable")
+
+        self.assertIsNone(game_process_running())
+
+    @patch("src.services.equipment_plugin_deployment.subprocess.run")
+    def test_probe_timeout_reports_unconfirmed(self, run) -> None:
+        run.side_effect = subprocess.TimeoutExpired("tasklist", 3)
+
+        self.assertIsNone(game_process_running())

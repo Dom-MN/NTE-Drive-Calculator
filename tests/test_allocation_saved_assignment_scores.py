@@ -3,7 +3,8 @@
 
 from types import SimpleNamespace
 
-from src.features.allocation.slot_plan_diff import loadout_plan_state, selected_slot_plan_diff
+from src.services.legacy_allocation_comparison_service import selected_legacy_comparison_diffs
+from src.services.weighted_loadout_comparison_service import WeightedLoadoutComparison
 from src.features.allocation.runner import (
     _plan_assignment_scores,
     _plan_changed_uids,
@@ -123,100 +124,34 @@ def test_replacing_a_saved_slot_preserves_real_changed_equipment_markers() -> No
     assert _plan_changed_uids(plan, {DIFF_CHANGED: True}) == {"nte-core-8-80"}
 
 
-class _SlotDiffDao:
-    def __init__(self, slots):
-        self._slots = slots
-
-    def get_loadout_slot(self, slot_id):
-        return self._slots.get(slot_id)
+def _comparison(slot_id, old_items=()):
+    return WeightedLoadoutComparison(
+        slot_id=slot_id, slot_name="测试", slot_key="primary", old_items=old_items,
+        diff={"comparison_version": 1, "score_basis": "calculation_weights",
+              "baseline_slot_id": slot_id, "baseline_plan_id": 7 if old_items else None},
+    )
 
 
 def test_selected_slot_diff_does_not_compare_against_another_slot() -> None:
-    first_plan = {
-        "assignments": [{"kind": "core", "uid_slot": 1, "uid_serial": 10}],
-    }
-    dao = _SlotDiffDao({
-        1: {"character_id": 1003, "current_plan": first_plan},
-        2: {"character_id": 1003, "current_plan": None},
-    })
-    final_plan = {
-        "早雾": {
-            "valid": True,
-            "assigned_tape": {"uid": "nte-core-2-20"},
-        }
-    }
-
-    result = selected_slot_plan_diff(dao, final_plan, {"早雾": (1003, 2)})
-
+    rows = (_comparison(1, ({"uid": "nte-core-1-10", "type": "tape", "score": 40},)), _comparison(2))
+    plans = {"早雾": {"valid": True, "assigned_tape": {"uid": "nte-core-2-20"}}}
+    result = selected_legacy_comparison_diffs({"早雾": rows}, plans, {"早雾": (1003, 2)})
     assert result["早雾"][DIFF_CHANGED] is False
-    assert result["早雾"][DIFF_ADDED_UIDS] == set()
+    assert result["早雾"][DIFF_ADDED_UIDS] == []
 
 
-def test_selected_slot_diff_uses_the_selected_slot_as_its_only_baseline() -> None:
-    second_plan = {
-        "assignments": [{"kind": "core", "uid_slot": 1, "uid_serial": 10}],
-    }
-    dao = _SlotDiffDao({
-        1: {"character_id": 1003, "current_plan": None},
-        2: {"character_id": 1003, "current_plan": second_plan},
-    })
-    final_plan = {
-        "早雾": {
-            "valid": True,
-            "assigned_tape": {"uid": "nte-core-2-20"},
-        }
-    }
-
-    result = selected_slot_plan_diff(dao, final_plan, {"早雾": (1003, 2)})
-
+def test_selected_slot_diff_uses_the_frozen_selected_slot_as_its_only_baseline() -> None:
+    rows = (_comparison(1), _comparison(2, ({"uid": "nte-core-1-10", "type": "tape", "score": 40},)))
+    plans = {"早雾": {"valid": True, "assigned_tape": {"uid": "nte-core-2-20"}}}
+    result = selected_legacy_comparison_diffs({"早雾": rows}, plans, {"早雾": (1003, 2)})
     assert result["早雾"][DIFF_CHANGED] is True
-    assert result["早雾"][DIFF_ADDED_UIDS] == {"nte-core-2-20"}
+    assert result["早雾"][DIFF_ADDED_UIDS] == ["nte-core-2-20"]
+    assert result["早雾"]["baseline_plan_id"] == 7
 
 
 def test_selected_slot_diff_keeps_old_tape_main_value_for_summary() -> None:
-    old_uid = "nte-core-1-10"
-    old_plan = {
-        "payload": {"tape_main_values": {old_uid: 30.0}},
-        "assignments": [{"kind": "core", "uid_slot": 1, "uid_serial": 10}],
-    }
-    dao = _SlotDiffDao({
-        2: {"character_id": 1003, "current_plan": old_plan},
-    })
-    final_plan = {
-        "早雾": {
-            "valid": True,
-            "assigned_tape": {"uid": "nte-core-2-20"},
-        }
-    }
-
-    result = selected_slot_plan_diff(dao, final_plan, {"早雾": (1003, 2)})
-
+    old = {"uid": "nte-core-1-10", "type": "tape", "score": 40, "main_value": 30.0}
+    rows = (_comparison(2, (old,)),)
+    plans = {"早雾": {"valid": True, "assigned_tape": {"uid": "nte-core-2-20"}}}
+    result = selected_legacy_comparison_diffs({"早雾": rows}, plans, {"早雾": (1003, 2)})
     assert result["早雾"]["removed"][0]["main_value"] == 30.0
-
-
-def test_loadout_plan_state_preserves_frozen_item_score_and_area() -> None:
-    uid = "nte-module-1-10"
-    state = loadout_plan_state({
-        "payload": {"assignment_scores": {uid: 12.5}},
-        "assignments": [{
-            "kind": "module",
-            "uid_slot": 1,
-            "uid_serial": 10,
-            "raw_assignment": {"geometry": "EquipmentGeometry_Hen2"},
-        }],
-    })
-
-    drive = state["equipped_drives"][0]
-    assert drive["score"] == 12.5
-    assert drive["area"] == 2
-    assert drive["score_area"] == 2
-
-
-def test_loadout_plan_state_preserves_frozen_tape_main_value() -> None:
-    uid = "nte-core-8-80"
-    state = loadout_plan_state({
-        "payload": {"tape_main_values": {uid: 30.0}},
-        "assignments": [{"kind": "core", "uid_slot": 8, "uid_serial": 80}],
-    })
-
-    assert state["equipped_tape"]["main_value"] == 30.0

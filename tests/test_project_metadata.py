@@ -7,7 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.app.constants import APP_VERSION
-from src.app.version import __version__
+from src.app.version import __package_version__, __version__, windows_numeric_version
+from src.features.settings.updates import is_newer_version
 from tools.release import prepare_release
 
 
@@ -37,9 +38,28 @@ class ProjectMetadataTests(unittest.TestCase):
         )
         self.assertIn("ruff", " ".join(metadata["dependency-groups"]["dev"]).lower())
         self.assertEqual(
-            "src.app.version.__version__",
+            "src.app.version.__package_version__",
             metadata["tool"]["setuptools"]["dynamic"]["version"]["attr"],
         )
+
+    def test_dated_test_versions_keep_release_order_and_package_identity(self):
+        self.assertEqual(__package_version__, __version__.replace(".T", ".dev"))
+        for remote, current, newer in (
+            ("2.3.1.T261003", "2.3.1.T261002", True),
+            ("2.3.1.T261002", "2.3.1.T261002", False),
+            ("2.3.1.T261001", "2.3.1.T261002", False),
+            ("2.3.1", "2.3.1.T261002", True),
+            ("2.3.1.T261002", "2.3.1", False),
+            ("2.3.2", "2.3.1.T261002", True),
+            ("2.3.0", "2.3.1.T261002", False),
+            ("v2.3.1.T261002", "2.3.0", True),
+        ):
+            with self.subTest(remote=remote, current=current):
+                self.assertEqual(is_newer_version(remote, current), newer)
+        self.assertEqual(windows_numeric_version("2.3.1.T261002"), "2.3.1.0")
+        self.assertEqual(windows_numeric_version("2.3.1"), "2.3.1.0")
+        with self.assertRaises(ValueError):
+            windows_numeric_version("2.3.1.T261002\nInjected=yes")
 
     def test_release_tag_must_equal_application_version(self):
         prepare_release.ensure_tag_matches_version(__version__)

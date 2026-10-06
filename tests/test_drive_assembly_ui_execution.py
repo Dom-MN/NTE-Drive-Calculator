@@ -560,6 +560,57 @@ class DriveAssemblyUiExecutionTests(unittest.TestCase):
 
 
 
+class AutomaticAssemblyRecommendationTests(unittest.TestCase):
+    def test_only_confirmed_medium_mode_offers_fast_assembly_recommendation(self):
+        from unittest.mock import patch
+        from src.domain.work_mode import WorkMode
+        from src.features.inventory import equipment_automatic_assembly_controller as module
+
+        for mode in WorkMode:
+            window = SimpleNamespace(work_mode_service=SimpleNamespace(settings=SimpleNamespace(mode=mode)))
+            with self.subTest(mode=mode), patch.object(module, "confirm_operation_recommendation", return_value=False) as warning:
+                accepted = module._confirm_automatic_assembly_recommendation(window)
+                self.assertEqual(accepted, mode != WorkMode.MEDIUM)
+                if mode == WorkMode.MEDIUM:
+                    self.assertEqual(warning.call_args.kwargs["action_text"], "继续")
+                    self.assertEqual(warning.call_args.kwargs["message"],
+                                     "当前已是中风险工作模式，强烈建议使用极速装配！是否继续？")
+                else:
+                    warning.assert_not_called()
+
+    def test_medium_cancellation_stops_single_and_batch_before_any_operation(self):
+        from unittest.mock import patch
+        from src.domain.work_mode import WorkMode
+        from src.features.inventory import equipment_automatic_assembly_controller as module
+
+        window = SimpleNamespace(work_mode_service=SimpleNamespace(settings=SimpleNamespace(mode=WorkMode.MEDIUM)))
+        with patch.object(module, "confirm_operation_recommendation", return_value=False) as warning, \
+                patch.object(module, "request_input_entry") as gate, \
+                patch.object(module, "UserDataDao") as dao, \
+                patch.object(module, "_start_automatic_equipment_assembly") as start:
+            module._preview_automatic_assemble_role(window, "角色", confirmed=True)
+            module._preview_automatic_assemble_all_roles(window)
+        self.assertEqual(warning.call_count, 2)
+        gate.assert_not_called()
+        dao.assert_not_called()
+        start.assert_not_called()
+
+    def test_medium_continue_preserves_selected_slot_and_existing_execution_guards(self):
+        from unittest.mock import patch
+        from src.domain.work_mode import WorkMode
+        from src.features.inventory import equipment_automatic_assembly_controller as module
+
+        window = SimpleNamespace(work_mode_service=SimpleNamespace(settings=SimpleNamespace(mode=WorkMode.MEDIUM)))
+        with patch.object(module, "confirm_operation_recommendation", return_value=True) as warning, \
+                patch.object(module, "request_input_entry", return_value=True) as gate, \
+                patch.object(module, "_confirm_automatic_assembly_duplicate_warning", return_value=True), \
+                patch.object(module, "_start_automatic_equipment_assembly") as start:
+            module._preview_automatic_assemble_role(window, "角色", slot_id=21, confirmed=True)
+        warning.assert_called_once()
+        gate.assert_called_once_with(window, "interface_input", "自动装配")
+        start.assert_called_once_with(window, [], slot_ids=[21])
+
+
 if __name__ == "__main__":
 
     unittest.main()

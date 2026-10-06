@@ -1,4 +1,4 @@
-# 打包并部署独立分析程序，不构建或覆盖采集 Core。
+# 核对构建记录后打包独立分析程序，仅显式指定时构建，不覆盖采集 Core。
 """Deliver verified analysis binaries and licenses; record source hashes without source files."""
 
 from __future__ import annotations
@@ -8,7 +8,6 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 import zipfile
 
@@ -19,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 from src.integrations.nte_analysis_core import NteAnalysisCoreClient
 from tools.game_data.build_analysis_catalogs import validate_catalog_inputs
+from tools.counterfactual.rust_core_build import build_analysis_core, verify_build_record
 
 
 def sha256(path: Path) -> str:
@@ -29,6 +29,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--executable", type=Path)
+    parser.add_argument("--build", action="store_true", help="先构建独立分析工程并生成源码/产物核对记录")
     parser.add_argument("--output", type=Path, default=ROOT / "output/nte-analysis-core")
     parser.add_argument("--destination", type=Path, default=ROOT / "third_party/analysis-core")
     parser.add_argument("--static-database", type=Path, default=ROOT / "data/game_static.sqlite3")
@@ -36,8 +37,12 @@ def main() -> int:
     source = args.source.resolve()
     if not (source / "Cargo.toml").is_file() or source.name != "analysis-core":
         raise ValueError("source must be the independent analysis-core crate")
+    if args.build and args.executable is not None:
+        parser.error("--build 不可与 --executable 同时使用")
     validate_catalog_inputs(args.static_database)
-    executable = (args.executable or source / "target/release/nte-analysis-core.exe").resolve()
+    executable = (build_analysis_core(source) if args.build else
+                  (args.executable or source / "target/release/nte-analysis-core.exe").resolve())
+    build_record = verify_build_record(source, executable)
     client = NteAnalysisCoreClient(executable, "packaging-validation")
     version = client.version()
     capabilities = version.get("capabilities")
@@ -46,39 +51,26 @@ def main() -> int:
         or not isinstance(capabilities, list)
         or "battle_page_v1" not in capabilities
         or "main_static_catalog_v1" not in capabilities
-        or "allocation_v1" not in capabilities
+        or "allocation_v2" not in capabilities
     ):
         raise RuntimeError("分析组件缺少战报数据库直读或空幕分配能力")
-    source_files = [source / name for name in (
-        "Cargo.toml", "Cargo.lock", "AGENTS.md", "README.md", "THIRD_PARTY_NOTICES.txt",
-    )]
-    source_files.extend(sorted((source / "src").rglob("*.rs")))
-    source_files.extend(sorted((source / "tests").rglob("*.rs")))
-    for directory in ("data", "resources", "tests/fixtures"):
-        source_files.extend(sorted(path for path in (source / directory).rglob("*")
-                                   if path.is_file() and path.suffix in {".json", ".sql"}))
-    if not all(path.is_file() for path in source_files):
-        raise ValueError("missing source inputs")
     license_path = source.parent / "LICENSE"
     manifest = {
         **version,
-        "sha256": sha256(executable),
+        "sha256": build_record["sha256"],
         "size_bytes": executable.stat().st_size,
-        "source_files": {path.relative_to(source).as_posix(): sha256(path) for path in source_files},
-        "source_base_commit": subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=source, text=True,
-        ).strip(),
-        "source_worktree_modified": bool(subprocess.check_output(
-            ["git", "status", "--porcelain", "--", ".", "../LICENSE"], cwd=source, text=True,
-        ).strip()),
-        "rustc": subprocess.check_output(["rustc", "--version"], cwd=source, text=True).strip(),
+        "source_files": build_record["source_files"],
+        "source_base_commit": build_record["source_base_commit"],
+        "source_worktree_modified": build_record["source_worktree_modified"],
+        "rustc": build_record["rustc"],
         "license_sha256": sha256(license_path),
         "dependency_notices_sha256": sha256(source / "THIRD_PARTY_NOTICES.txt"),
         "scope": "native read-only account and static database loading, frozen battle analysis, replay, robust target fitting, buff and equipment counterfactuals, marginal panel, frozen drive allocation; Python owns user input, blueprint generation, process lifecycle and rendering",
     }
-    manifest["source_input_sha256"] = hashlib.sha256(json.dumps(
-        manifest["source_files"], sort_keys=True, separators=(",", ":"),
-    ).encode("utf-8")).hexdigest()
+    manifest["source_input_sha256"] = build_record["source_input_sha256"]
+    # Recheck after the executable probe, before modifying the destination.
+    if verify_build_record(source, executable) != build_record:
+        raise RuntimeError("分析组件构建记录在核对期间发生变化，请重新打包")
     destination = args.destination.resolve()
     (destination / "bin").mkdir(parents=True, exist_ok=True)
     shutil.copy2(executable, destination / "bin/nte-analysis-core.exe")
@@ -88,7 +80,7 @@ def main() -> int:
     if source_notice.resolve() != (destination / "SOURCE.md").resolve():
         shutil.copy2(source_notice, destination / "SOURCE.md")
     text = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
-    (destination / "component.json").write_text(text, encoding="utf-8")
+    (destination / "component.json").write_text(text, encoding="utf-8", newline="\n")
     if sha256(destination / "bin/nte-analysis-core.exe") != manifest["sha256"]:
         raise RuntimeError("deployed binary hash mismatch")
     output = args.output.resolve()
@@ -105,7 +97,7 @@ def main() -> int:
             raise RuntimeError("archive verification failed")
     print(json.dumps({"engine_version": version["engine_version"],
                       "sha256": manifest["sha256"], "size_bytes": manifest["size_bytes"],
-                      "source_file_count": len(source_files)}, ensure_ascii=False))
+                      "source_file_count": len(manifest["source_files"])}, ensure_ascii=False))
     return 0
 
 

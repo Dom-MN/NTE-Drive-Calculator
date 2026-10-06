@@ -544,6 +544,11 @@ class BattleReportPage(QWidget):
     def end_analysis_details(self) -> None:
         self.analysis_progress.finish()
 
+    def show_marginal_error(self, message: str) -> None:
+        self.analysis_progress.show_error(
+            f"边际计算未完成：{message}。请点击“重算”重试。"
+        )
+
     def set_target_catalog(self, catalog: dict[str, object]) -> None:
         self.long_analysis_view.set_target_catalog(catalog)
 

@@ -86,6 +86,126 @@ def found(watcher, pid=12):
     watcher.on_change(SimpleNamespace(kind="started", process=(pid, 1), error=""))
 
 
+def test_stopped_subscription_is_not_presented_as_waiting_for_inventory(owner):
+    from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton
+    c, window, _policy, starts, _jobs, watchers, _app = owner
+    window.home_auto_sync_toggle = QCheckBox(window)
+    window.home_restart_sync_button = QPushButton(window)
+    for name in ('home_sync_source_label', 'home_sync_action_hint', 'home_sync_detail', 'home_sync_badge', 'status_lbl'):
+        setattr(window, name, QLabel(window))
+    found(watchers[-1])
+    service = window._inventory_sync_service
+    service.is_running = False
+    service.state.phase = 'stopped'
+    c.refresh()
+    assert len(starts) == 1  # Unknown cancellation is not permission for an automatic retry loop.
+    assert window.home_sync_badge.text() == '同步已停止'
+    assert window.status_lbl.text() == '同步已停止'
+    assert '重启同步' in window.home_sync_detail.text()
+    assert '已保存背包仍可用于计算' in window.home_sync_detail.text()
+
+
+def test_native_connection_loss_recovers_after_delay_and_stops_after_three_failures(owner):
+    c, window, policy, starts, _jobs, _watchers, _app = owner
+    clock = [0.0]
+    c._recovery.clock = lambda: clock[0]
+    policy.select_mode('medium', risk_confirmed=True)
+    c.refresh()
+    probe = WorkModeProbe(game_running=True, core_available=True,
+                          native_inventory=NativeFeatureProbe(handshake=True))
+    c.observe_probe(probe)
+    assert len(starts) == 1
+    for count, delay in enumerate((2, 5, 15), 1):
+        service = window._inventory_sync_service
+        service.is_running = False
+        service.state.phase = 'stopped'
+        service.state.stop_reason = 'connection_lost'
+        c.refresh()
+        assert c._recovery.waiting and len(starts) == count
+        # A failed/fresh environment probe must not bypass the backoff.
+        c.observe_probe(WorkModeProbe(game_running=True, core_available=True))
+        c.observe_probe(probe)
+        assert len(starts) == count
+        clock[0] += delay
+        c.refresh()
+        assert len(starts) == count + 1
+    service = window._inventory_sync_service
+    service.is_running = False
+    service.state.phase = 'stopped'
+    service.state.stop_reason = 'connection_lost'
+    clock[0] += 100
+    for _ in range(5):
+        c.refresh()
+    assert len(starts) == 4
+
+
+@pytest.mark.parametrize('reason', ['stop_requested', 'context_changed', 'permission_revoked',
+                                   'maintenance', 'native_session_cancelled', 'operation_failed'])
+def test_native_stop_or_unknown_reason_does_not_trigger_recovery(owner, reason):
+    c, window, policy, starts, _jobs, _watchers, _app = owner
+    policy.select_mode('medium', risk_confirmed=True)
+    c.refresh()
+    c.observe_probe(WorkModeProbe(game_running=True, core_available=True,
+                                 native_inventory=NativeFeatureProbe(handshake=True)))
+    service = window._inventory_sync_service
+    service.is_running = False
+    service.state.phase = 'stopped'
+    service.state.stop_reason = reason
+    c._recovery.clock = lambda: 10000
+    for _ in range(5):
+        c.refresh()
+    assert len(starts) == 1 and not c._recovery.waiting
+
+
+def test_disable_during_recovery_does_not_restart(owner):
+    c, window, policy, starts, jobs, _watchers, _app = owner
+    clock = [0]
+    c._recovery.clock = lambda: clock[0]
+    policy.select_mode('medium', risk_confirmed=True)
+    c.refresh()
+    c.observe_probe(WorkModeProbe(game_running=True, core_available=True,
+                                 native_inventory=NativeFeatureProbe(handshake=True)))
+    service = window._inventory_sync_service
+    service.is_running = False
+    service.state.phase = 'stopped'
+    service.state.stop_reason = 'connection_lost'
+    c.refresh()
+    assert c._recovery.waiting
+    c.set_enabled(False)
+    for job in jobs:
+        job()
+    clock[0] = 100
+    c.refresh()
+    assert len(starts) == 1 and not policy.settings.auto_sync_enabled
+
+
+def test_plugin_update_stops_subscription_without_changing_saved_switch(owner):
+    c, window, policy, starts, jobs, watchers, _app = owner
+    found(watchers[-1])
+    assert len(starts) == 1
+    revision = policy.settings.revision
+    c.suspend_for_plugin_update()
+    assert policy.settings.auto_sync_enabled and policy.settings.revision == revision
+    assert window._inventory_sync_service.requested
+    jobs.pop(0)()
+    for _ in range(3):
+        c.refresh()
+    assert len(starts) == 1
+    c.resume_after_plugin_update()
+    assert len(starts) == 2
+
+
+def test_user_turning_sync_off_during_update_is_not_overridden(owner):
+    c, _window, policy, starts, jobs, watchers, _app = owner
+    found(watchers[-1])
+    c.suspend_for_plugin_update()
+    c.set_enabled(False)
+    jobs.pop(0)()
+    c.resume_after_plugin_update()
+    assert not policy.settings.auto_sync_enabled
+    assert len(starts) == 1
+
+
 def test_no_core_until_game_and_no_duplicate_start(owner):
     c, window, _policy, starts, _jobs, watchers, _app = owner
     assert not starts and len(watchers) == 1

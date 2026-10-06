@@ -27,10 +27,12 @@ class FakeNativeCore:
             raise RuntimeError("failed status")
         return {"native_status": {"ready": True}}
 
-    def call(self, method, params, **kwargs):
+    def call(self, method, params=None, **kwargs):
         self.calls.append((method, params))
         if self.on_call:
             self.on_call(method, params)
+        if method == 'core.status':
+            return self.status()
         return {"domains": []}
 
     def start_capture(self, **kwargs):
@@ -113,7 +115,7 @@ def test_raw_snapshot_write_failure_keeps_business_connection_available(monkeypa
     core = FakeNativeCore()
     core.hello_result['capabilities'].append('native_snapshot_archive_v1')
     warnings = []
-    monkeypatch.setattr(NativeGameSession, '_archive_failed', staticmethod(lambda *_: warnings.append(True)))
+    monkeypatch.setattr('src.services.native_game_session.archive_failed', lambda *_: warnings.append(True))
     def fail_configure(method, _params):
         if method == 'native.diagnostics.configure':
             raise NteCoreRpcError({'code': -32000, 'data': {'domain_code': 'NATIVE_SNAPSHOT_ARCHIVE_WRITE_FAILED'}})

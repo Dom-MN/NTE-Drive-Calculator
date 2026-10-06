@@ -223,6 +223,11 @@ class NteCoreClientTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, -32000)
         self.assertEqual(raised.exception.domain_code, "NPCAP_NOT_FOUND")
+        context = raised.exception.request_context
+        self.assertEqual(context.method, "test.rpc_error")
+        self.assertTrue(context.handshake_confirmed)
+        self.assertIsNone(context.executable_path)  # Explicit test command is not a deployed Core.
+        self.assertIsNone(context.executable_sha256)
 
     def test_mods_plugin_domain_codes_accept_current_and_legacy_core_names(self):
         current_unavailable = NteCoreRpcError({
@@ -261,8 +266,10 @@ class NteCoreClientTests(unittest.TestCase):
 
     def test_request_timeout_keeps_client_usable(self):
         with fake_client() as client:
-            with self.assertRaises(NteCoreTimeoutError):
+            with self.assertRaises(NteCoreTimeoutError) as raised:
                 client.call("test.timeout", timeout=0.05)
+            self.assertEqual(raised.exception.request_context.method, "test.timeout")
+            self.assertTrue(raised.exception.request_context.handshake_confirmed)
             self.assertEqual(client.status(), {"core_state": "idle"})
 
     def test_inventory_groups_only_resolved_stable_character_ids(self):
@@ -484,6 +491,19 @@ class NteCoreClientTests(unittest.TestCase):
     def test_event_queue_rejects_negative_timeout(self):
         with self.assertRaisesRegex(ValueError, "non-negative"):
             CoalescingEventQueue().get(timeout=-0.1)
+
+    def test_packet_item_events_coalesce_without_dropping_reliable_events(self):
+        events = CoalescingEventQueue()
+        for method, sequence in (
+            ("event.inventory.items_observed", 1),
+            ("event.capture.status", 2),
+            ("event.inventory.items_observed", 3),
+        ):
+            events.put({"method": method, "params": {"sequence": sequence}})
+        self.assertEqual(events.get_nowait()["params"]["sequence"], 2)
+        self.assertEqual(events.get_nowait()["params"]["sequence"], 3)
+        with self.assertRaises(queue.Empty):
+            events.get_nowait()
 
 
 if __name__ == "__main__":

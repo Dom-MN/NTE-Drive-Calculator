@@ -8,6 +8,22 @@ from tests.test_native_battle_scopes import attempt
 from tests.test_battle_capture_build_freeze import native_snapshot
 
 
+def test_pinned_warmup_requires_live_domains_but_preserves_existing_first_hit():
+    from types import SimpleNamespace
+    from src.services.native_battle_preparation import observe_pinned_scopes
+    frozen = {"attempt_id": "1", "snapshot": {"state": "observed", "retention": "dll_pinned"}}
+    calls = []
+    lease = SimpleNamespace(_scope_snapshots={"combat": deepcopy(frozen)},
+                            _preparation=NativeBattlePreparation())
+    def read(stop_requested, **kwargs):
+        calls.append(kwargs)
+        return native_snapshot()
+    lease._read_battle_snapshot = read
+    observe_pinned_scopes(lease, waiting(), {"combat": {"attemptId": "1"}}, False, None)
+    assert calls == [{"require_current": True}]
+    assert lease._scope_snapshots["combat"] == frozen
+
+
 def waiting(revision="1"):
     return {"native_capture": {"providerId": "p", "scopeAttempts": {},
             "cloneAttempt": {"revision": revision}, "contextEvents": [{"kind": "combat_context",

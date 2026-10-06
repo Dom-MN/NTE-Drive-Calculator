@@ -37,6 +37,16 @@ def test_query_uses_only_formal_dry_run_contract(tmp_path, monkeypatch):
     assert kwargs['cwd'] == str(path.parent.resolve())
 
 
+def test_calc_host_requires_its_own_payload_kind(tmp_path, monkeypatch):
+    run = Mock(return_value=query_result())
+    monkeypatch.setattr(loader.subprocess, 'run', run)
+    with pytest.raises(loader.ModLoaderRuntimeError):
+        loader.probe_mod_loader_capabilities(tmp_path / 'nte-mod-loader.exe', required_kind='nte_calc_host_v1')
+    run.return_value = query_result(capabilities(payload_kinds=['nte_capture_runtime_v1', 'nte_calc_host_v1']))
+    assert 'loadlibrary' in loader.probe_mod_loader_capabilities(
+        tmp_path / 'nte-mod-loader.exe', required_kind='nte_calc_host_v1')
+
+
 @pytest.mark.parametrize('result', [
     query_result(text='old Loader preview only'), query_result(text='[]'), query_result(text='null'),
     query_result(text='{"schema_version":1,"schema_version":1}'),

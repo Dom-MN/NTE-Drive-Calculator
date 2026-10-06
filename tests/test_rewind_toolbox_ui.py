@@ -6,35 +6,6 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
-def test_rewind_role_picker_adds_highest_calculation_score_below_name() -> None:
-    from PySide6.QtWidgets import QApplication, QLabel
-
-    from src.features.toolbox.page import _RoleSelectionDialog
-    from src.services.rewind_shape_recommendation_service import RewindTargetRole
-
-    QApplication.instance() or QApplication([])
-    dialog = _RoleSelectionDialog(
-        None,
-        title="选择角色",
-        description="测试",
-        roles=(
-            RewindTargetRole(1004, "安魂曲", None, calculation_score=251.25),
-            RewindTargetRole(9001, "自建角色", None, is_custom=True),
-        ),
-        selected_character_ids=set(),
-    )
-
-    cards = {character_id: card for card, character_id, _name in dialog._cards}
-    scored_label = cards[1004].findChild(QLabel, "rewindRoleCalculationScore")
-    empty_label = cards[9001].findChild(QLabel, "rewindRoleCalculationScore")
-    assert cards[1004].text() == "安魂曲"
-    assert scored_label.text() == "最高分 251.25 · SS"
-    assert cards[1004].property("rewindCalculationScore") == 251.25
-    assert cards[9001].text() == "自建角色"
-    assert empty_label.text() == "暂无计算方案"
-    assert not cards[9001].icon().isNull()
-    assert cards[9001].property("rewindCalculationScore") is None
-
 
 def test_cultivation_calculator_prefills_role_state_and_renders_merged_totals() -> None:
     from PySide6.QtCore import Qt
@@ -381,7 +352,8 @@ def test_rewind_custom_percentage_persists_and_is_passed_to_analysis(monkeypatch
     assert reopened._custom_percent_input.value() == 90.0
     assert reopened._custom_percent_input.isEnabled()
 
-    monkeypatch.setattr(toolbox_page, "WorkerThread", ImmediateWorker)
+    from src.features.toolbox import rewind_selection_ui
+    monkeypatch.setattr(rewind_selection_ui, "WorkerThread", ImmediateWorker)
     dialog._refresh_analysis()
 
     assert service.request is not None

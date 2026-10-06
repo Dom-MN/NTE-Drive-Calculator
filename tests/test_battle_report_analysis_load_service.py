@@ -572,6 +572,7 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
         page = _AsyncPage(loop)
         page.cleared_messages = []
         page.clear_analysis = page.cleared_messages.append
+        page.show_marginal_error = Mock()
         host = self._host(page)
         request = SimpleNamespace(
             load=BattleReportAnalysisLoadRequest(
@@ -586,6 +587,7 @@ class BattleReportAnalysisControllerMixinTests(unittest.TestCase):
         host._analysis_load_failed(1, request, "boom")
 
         self.assertEqual([], page.cleared_messages)
+        page.show_marginal_error.assert_called_once_with("boom")
 
     def test_topple_failure_preserves_overview_and_reports_specific_error(self) -> None:
         page = _AsyncPage(QEventLoop())

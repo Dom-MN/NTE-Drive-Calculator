@@ -159,6 +159,11 @@ class ComponentUpgradeGuideMixin:
             self._set_upgrade_progress(False)
             self._refresh_upgrade_banner()
         elif stage == "mode":
+            if self._controls:
+                combo = self._controls[0]
+                combo.setPlaceholderText("未选择")
+                # currentIndexChanged only refreshes emphasis; activated confirms a mode.
+                combo.setCurrentIndex(-1)
             self.open_settings("mode")
         elif stage == "deploy":
             self.open_settings("loading_method")

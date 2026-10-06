@@ -110,7 +110,7 @@ def test_native_projection_freezes_actual_equipment_without_importing_inventory_
         assert build["characters"][0]["character_level"] == 70
         assert dao.latest_native_inventory_snapshot_id() == snapshot_id
         assert dao.list_character_profiles(include_inactive=True) == []
-        assert dao.load_battle_capture_build("capture")["native_runtime_snapshot"]["scopes"]["combat"]["snapshot"]["domains"]["inventory"]["revision"] == "1"
+        assert dao.load_battle_capture_build("capture")["native_scope_builds"]["combat"]["snapshot"]["domains"]["character"]["revision"] == "1"
 
 
 def test_native_awakening_selection_is_frozen_separately_from_level(capture):
@@ -146,7 +146,7 @@ def test_trial_identity_is_archived_and_database_fallback_is_explicit(capture, f
         build = dao.load_battle_build_snapshot(outcome.battle_record_id)
         assert build["characters"][0]["profile"]["capture_equipment_source"] == "account_settlement_fallback"
         assert dao.load_battle_capture_build("capture")["settlement_fallback"]["1072"]["reason"] == "temporary_character_projection_unavailable"
-        assert dao.load_battle_capture_build("capture")["native_runtime_snapshot"] == scoped(native)
+        assert dao.load_battle_capture_build("capture")["native_scope_builds"]["combat"]["snapshot"]["domains"]["character"] == native["domains"]["character"]
         assert dao.latest_native_inventory_snapshot_id() == snapshot_id
 
 
@@ -166,7 +166,7 @@ def test_midbattle_change_retains_start_observation_but_does_not_replay_old_buil
         assert dao.load_battle_capture_build("capture")["settlement_fallback"]["1072"]["reason"] == "native_scope_configuration_changed"
         raw = json.loads(dao._db().execute("SELECT raw_record_json FROM battle_axis_capture").fetchone()[0])
         assert raw["native_capture"] == record["native_capture"]
-        assert raw["calc_capture_context"]["native_runtime_snapshot"] == scoped(native)
+        assert raw["calc_capture_context"]["native_scope_builds"]["combat"]["snapshot"]["domains"]["character"] == native["domains"]["character"]
 
 
 def test_binding_is_idempotent_but_replacing_snapshot_is_rejected(capture):
@@ -195,7 +195,7 @@ def test_unprojectable_native_growth_preserves_measurements_as_unknown(capture):
         restored = dao.load_battle_build_snapshot(outcome.battle_record_id)["characters"][0]
         assert restored["character_level"] == 80
         assert restored["equipment"][0]["uid_serial"] == 202
-        assert dao.load_battle_capture_build("capture")["native_runtime_snapshot"] == scoped(native)
+        assert dao.load_battle_capture_build("capture")["native_scope_builds"]["combat"]["snapshot"]["domains"]["character"] == native["domains"]["character"]
 
 
 @pytest.mark.parametrize("capture", ["packet"], indirect=True)
@@ -220,7 +220,11 @@ def test_failed_packet_save_retries_the_same_durable_settlement_input(capture):
         outcome = finish(service)
     with UserDataDao(deps.user_database_path) as dao:
         assert dao.load_battle_build_snapshot(outcome.battle_record_id)["characters"][0]["equipment"][0]["uid_serial"] == 101
-        assert dao.load_battle_capture_build("capture") == before
+        after = dao.load_battle_capture_build("capture")
+        assert after["profiles"] == before["profiles"]
+        assert after["stat_snapshots"] == before["stat_snapshots"]
+        assert after.get("settlement_fallback") == before.get("settlement_fallback")
+        assert "equipment" not in after and after["equipment_storage"]["canonical"] == "battle_equipment_snapshot"
 
 
 def test_native_missing_record_metadata_uses_labeled_settlement_database(capture):
@@ -245,7 +249,7 @@ def test_missing_native_equipment_keeps_observed_growth_and_labels_only_equipmen
         assert character["character_level"] == 70
         assert character["equipment"][0]["uid_serial"] == 101
         assert frozen["settlement_fallback"]["1072"]["fields"] == ["equipment"]
-        assert frozen["native_runtime_snapshot"] == scoped(native)
+        assert frozen["native_scope_builds"]["combat"]["snapshot"]["domains"]["character"] == native["domains"]["character"]
 
 
 def test_failed_native_save_retries_frozen_database_input_and_rejects_late_binding(capture):
@@ -270,7 +274,11 @@ def test_failed_native_save_retries_frozen_database_input_and_rejects_late_bindi
         character = dao.load_battle_build_snapshot(outcome.battle_record_id)["characters"][0]
         assert character["character_level"] == 80
         assert character["equipment"][0]["uid_serial"] == 202
-        assert dao.load_battle_capture_build("capture") == before
+        after = dao.load_battle_capture_build("capture")
+        assert after["profiles"] == before["profiles"]
+        assert after["stat_snapshots"] == before["stat_snapshots"]
+        assert after.get("settlement_fallback") == before.get("settlement_fallback")
+        assert "equipment" not in after and after["equipment_storage"]["canonical"] == "battle_equipment_snapshot"
 
 
 def test_settlement_cannot_rewrite_original_native_evidence(capture):

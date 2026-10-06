@@ -143,4 +143,5 @@ class WorkModeService:
             raise WorkModeDenied("当前工作模式或暂停设置不允许此操作，请检查工作模式设置。")
 
     def build_report(self, probe: WorkModeProbe) -> WorkModeReport:
-        return build_work_mode_report(self._settings, probe)
+        settings = self._settings
+        return build_work_mode_report(settings, probe, deployment_record=json.loads(settings.deployment_json))

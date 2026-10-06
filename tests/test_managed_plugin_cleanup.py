@@ -119,6 +119,16 @@ class ManagedPluginCleanupTests(unittest.TestCase):
         self.assertTrue(self.dll.exists())
         self.clear_registry.assert_not_called()
 
+    def test_unconfirmed_process_state_attempts_cleanup_after_user_action(self) -> None:
+        self.assertEqual(self.clean(game_running=lambda: None).status, "cleaned")
+        self.assertFalse(self.dll.exists())
+
+    def test_blocked_deletion_reports_existing_failure_and_keeps_files(self) -> None:
+        with patch.object(Path, "unlink", side_effect=PermissionError("in use")):
+            with self.assertRaisesRegex(EquipmentPluginDeploymentError, "请保持游戏关闭"):
+                self.clean(game_running=lambda: None)
+        self.assertTrue(self.dll.exists())
+
     def test_read_only_inspection_does_not_claim_pipe_or_business_readiness(self) -> None:
         result = inspect_managed_plugin(
             game_executable_path=self.game,

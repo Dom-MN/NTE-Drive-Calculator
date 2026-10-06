@@ -8,6 +8,7 @@ from src.services.static_catalog_character_service import StaticCatalogCharacter
 from src.storage.sqlite.static_catalog_character_queries import (
     StaticCatalogCharacterQueries,
 )
+from src.storage.sqlite.static_game_data_metadata import SCHEMA_VERSION
 
 
 NTE_TEST_TIER = "core"
@@ -41,7 +42,7 @@ class StaticCatalogCharacterDomainTests(unittest.TestCase):
         for page in (by_ga, by_ge, by_buff, by_path):
             self.assertIn(1036, {item.character_id for item in page.items})
             self.assertTrue(page.dataset.dataset_id)
-            self.assertEqual(38, page.dataset.schema_version)
+            self.assertEqual(SCHEMA_VERSION, page.dataset.schema_version)
 
     def test_character_search_treats_sql_wildcards_as_literal_text(self) -> None:
         page = self.service.list_characters(query="%_", limit=200)

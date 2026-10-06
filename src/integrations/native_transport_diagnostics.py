@@ -7,6 +7,11 @@ from src.integrations.native_snapshot_timing import SnapshotTimingLog
 from src.integrations.native_hud_interaction import HudInteractionLog
 
 
+def archive_failed(_event=None):
+    from src.utils.logger import logger
+    logger.warning("DLL 原始快照未能保存，已停止本次诊断归档；请检查账号日志目录可写性与磁盘空间。")
+
+
 def invalid_json(line, error, *, executable_sha256, exit_code, core_pid=None):
     log_event("ERROR", "native_core.invalid_json", "采集 Core 响应无法解析，已停止本次连接",
               OperationContext.create("native_core"), line_chars=len(line),

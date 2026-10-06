@@ -60,6 +60,10 @@ class PackagingScriptTests(unittest.TestCase):
         self.assertIn("安装程序", text)
         self.assertIn("创建桌面快捷方式", text)
         self.assertNotIn("瀹夎", text)
+        self.assertIn(f'#define MyAppVersion "{APP_VERSION}"', text)
+        self.assertIn(f"VersionInfoVersion={build_installer.windows_numeric_version(APP_VERSION)}", text)
+        self.assertIn("VersionInfoTextVersion={#MyAppVersion}", text)
+        self.assertIn("VersionInfoProductTextVersion={#MyAppVersion}", text)
 
     def test_stats_catalog_is_always_replaced_without_an_installer_choice(self):
         build_installer._write_iss(APP_VERSION, build_installer.VIGEM_BUNDLE_EXE, True)
@@ -202,19 +206,31 @@ class PackagingScriptTests(unittest.TestCase):
         inspection = inspect_game_component_bundle(Path.cwd())
 
         self.assertTrue(inspection.ready, inspection.issues)
-        self.assertEqual("native-capture-v1", inspection.layout)
+        self.assertEqual("native-plugins-v3", inspection.layout)
         self.assertEqual(
             "third_party/native-capture/capture/d3d12.dll",
             inspection.roles["host"],
         )
         self.assertEqual(
-            "third_party/native-capture/capture/NTE_Capture.dll",
+            "third_party/native-capture/capture/plugins/NTE_PluginCombat.dll",
             inspection.roles["capture_plugin"],
         )
         self.assertEqual(
             "third_party/native-capture/core/nte-core.exe",
             inspection.roles["core"],
         )
+        for role, name in (
+            ("user_plugin", "NTE_PluginUser.dll"),
+            ("hud_plugin", "NTE_PluginHUD.dll"),
+            ("performance_plugin", "NTE_PluginPerformance.dll"),
+            ("user_signature", "NTE_PluginUser.dll.sig"),
+            ("capture_signature", "NTE_PluginCombat.dll.sig"),
+            ("hud_signature", "NTE_PluginHUD.dll.sig"),
+            ("performance_signature", "NTE_PluginPerformance.dll.sig"),
+        ):
+            with self.subTest(role=role):
+                self.assertEqual("third_party/native-capture/capture/plugins/" + name, inspection.roles[role])
+                self.assertIn(inspection.roles[role], inspection.files)
         for role in (
             "capture_license",
             "capture_source",

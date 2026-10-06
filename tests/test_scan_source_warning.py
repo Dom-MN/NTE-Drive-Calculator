@@ -1,4 +1,4 @@
-# 验证工作台同步快照会在切换到三种扫描模式时立即触发继续确认。
+# 验证三种扫描入口按库存来源确认继续或仅引导工作台同步。
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -11,7 +11,8 @@ from src.features.scanning import scan_source_warning as warning_module
 from src.features.scanning.scan_source_warning import (
     SCAN_SOURCE_WARNING,
     ScanSourceWarningDialog,
-    confirm_scan_mode_after_workbench_sync,
+    SCAN_SYNC_RECOMMENDATION,
+    confirm_scan_mode_entry,
     current_snapshot_is_workbench_sync,
     restore_scan_mode_selection,
 )
@@ -78,20 +79,64 @@ def test_warning_sound_uses_windows_exclamation_sound(monkeypatch):
     assert sounds == [warning_module.winsound.MB_ICONEXCLAMATION]
 
 
-def test_confirmation_is_skipped_for_visual_snapshot():
-    calls = []
+@pytest.mark.parametrize("summary", [None, {"source": "vision"}, {"source": "gamepad"}])
+@pytest.mark.parametrize("choice", [QDialog.Accepted, QDialog.Rejected])
+def test_unsynced_inventory_only_navigates_on_go_and_never_enters_scan(summary, choice):
+    calls, navigation = [], []
 
-    def dialog_factory(_parent):
-        calls.append(True)
-        raise AssertionError("视觉快照不应显示工作台同步警告")
+    class Dialog:
+        def __init__(self, _parent, *, recommend_sync):
+            calls.append(recommend_sync)
 
-    assert confirm_scan_mode_after_workbench_sync(
-        None,
-        "unused.db",
-        dao_factory=dao_factory({"source": "vision"}),
-        dialog_factory=dialog_factory,
+        def exec(self):
+            return choice
+
+    assert not confirm_scan_mode_entry(
+        None, "unused.db", dao_factory=dao_factory(summary), dialog_factory=Dialog,
+        navigate_home=lambda: navigation.append("home"),
     )
-    assert not calls
+    assert calls == [True]
+    assert navigation == (["home"] if choice == QDialog.Accepted else [])
+
+
+def test_sync_recommendation_uses_go_and_cancel_with_sound(monkeypatch):
+    app, sounds = application(), []
+    monkeypatch.setattr(warning_module, "play_warning_sound", lambda: sounds.append(True))
+    dialog = ScanSourceWarningDialog(recommend_sync=True)
+    assert dialog.message.text() == SCAN_SYNC_RECOMMENDATION
+    assert dialog.continue_button.text() == "前往"
+    assert dialog.cancel_button.text() == "取消"
+    assert dialog.cancel_button.isDefault()
+    dialog.show()
+    app.processEvents()
+    assert sounds == [True]
+    dialog.close()
+    assert dialog.result() == QDialog.Rejected
+    dispose(dialog)
+
+
+@pytest.mark.parametrize("action_text", ["前往", "继续"])
+def test_shared_recommendation_plays_once_and_escape_is_cancel(monkeypatch, action_text):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from src.features import input_operation_entry
+
+    app, sounds = application(), []
+    monkeypatch.setattr(input_operation_entry.winsound, "MessageBeep", sounds.append)
+    dialog = input_operation_entry.OperationRecommendationDialog(
+        None, title="操作提示", message="仅提供建议，不自动执行操作。", action_text=action_text,
+    )
+    dialog.show()
+    app.processEvents()
+    dialog.hide()
+    dialog.show()
+    app.processEvents()
+    assert sounds == [input_operation_entry.winsound.MB_ICONEXCLAMATION]
+    assert dialog.continue_button.text() == action_text
+    assert dialog.cancel_button.isDefault()
+    QTest.keyClick(dialog, Qt.Key_Escape)
+    assert dialog.result() == QDialog.Rejected
+    dispose(dialog)
 
 
 def test_confirmation_returns_dialog_choice_for_workbench_snapshot():
@@ -102,11 +147,12 @@ def test_confirmation_returns_dialog_choice_for_workbench_snapshot():
         def exec(self):
             return QDialog.Rejected
 
-    assert not confirm_scan_mode_after_workbench_sync(
+    assert not confirm_scan_mode_entry(
         None,
         "unused.db",
         dao_factory=dao_factory({"source": "nte_core"}),
         dialog_factory=Dialog,
+        navigate_home=lambda: pytest.fail("同步快照不应跳转工作台"),
     )
 
 
@@ -171,11 +217,11 @@ def test_three_scan_modes_warn_immediately_and_cancel_restores_previous_mode(mon
         lambda _owner: type("Dependencies", (), {"user_database_path": "unused.db"})(),
     )
     confirmations = []
-    def cancel_warning(_parent, path):
+    def cancel_warning(_parent, path, **_kwargs):
         confirmations.append(path)
         return False
 
-    monkeypatch.setattr(workflow, "confirm_scan_mode_after_workbench_sync", cancel_warning)
+    monkeypatch.setattr(workflow, "confirm_scan_mode_entry", cancel_warning)
 
     workflow._on_scan_change(owner, scan_mode, True)
 
@@ -190,8 +236,8 @@ def test_unchecked_signal_and_direct_inventory_mode_do_not_warn(monkeypatch):
     owner = scan_owner()
     monkeypatch.setattr(
         workflow,
-        "confirm_scan_mode_after_workbench_sync",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("不应显示警告")),
+        "confirm_scan_mode_entry",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("不应显示警告")),
     )
     workflow._on_scan_change(owner, 3, False)
     workflow._on_scan_change(owner, 4, True)
@@ -209,8 +255,8 @@ def test_continue_commits_selected_mode_and_updates_visible_options(monkeypatch)
     )
     monkeypatch.setattr(
         workflow,
-        "confirm_scan_mode_after_workbench_sync",
-        lambda _parent, _path: True,
+        "confirm_scan_mode_entry",
+        lambda _parent, _path, **_kwargs: True,
     )
 
     workflow._on_scan_change(owner, 3, True)
@@ -219,3 +265,56 @@ def test_continue_commits_selected_mode_and_updates_visible_options(monkeypatch)
     assert owner.offline_frame.visible
     assert not owner.total_count_frame.visible
     assert not owner.drone_frame.visible
+
+
+@pytest.mark.parametrize("scan_mode", [1, 2, 3])
+def test_workbench_recommendation_restores_previous_mode_on_go(monkeypatch, scan_mode):
+    from src.features.scanning import workflow
+
+    owner, navigation = scan_owner(), []
+    owner.navigate = navigation.append
+    monkeypatch.setattr(workflow, "_current_scanning_dependencies", lambda _owner:
+                        type("Dependencies", (), {"user_database_path": "unused.db"})())
+
+    def recommend(_parent, _path, *, navigate_home):
+        navigate_home()
+        return False
+
+    monkeypatch.setattr(workflow, "confirm_scan_mode_entry", recommend)
+    workflow._on_scan_change(owner, scan_mode, True)
+    assert navigation == ["home"]
+    assert owner._confirmed_scan_mode_id == 4
+    assert owner.scan_group.buttons[4].checked
+
+
+@pytest.mark.parametrize("choice", [True, False])
+def test_medium_scan_management_only_offers_warehouse_navigation(monkeypatch, choice):
+    from src.domain.work_mode import WorkMode
+    from src.features.scanning import entry_controls
+
+    navigation = []
+    owner = type("Owner", (), {"dialog_parent": None})()
+    owner.work_mode_provider = lambda: WorkMode.MEDIUM
+    owner.navigate = navigation.append
+    monkeypatch.setattr(entry_controls, "confirm_operation_recommendation", lambda *_args, **_kwargs: choice)
+    monkeypatch.setattr(entry_controls, "_current_scanning_dependencies", lambda _owner:
+                        pytest.fail("中风险引导不读取或修改扫描管理配置"))
+    entry_controls.open_scan_post_action_manager(owner)
+    assert navigation == (["warehouse"] if choice else [])
+
+
+def test_non_medium_scan_management_retains_existing_dialog(monkeypatch):
+    from src.domain.work_mode import WorkMode
+    from src.features.scanning import entry_controls
+
+    owner = type("Owner", (), {"dialog_parent": None})()
+    owner.work_mode_provider = lambda: WorkMode.LOW
+    dependencies = type("Dependencies", (), dict.fromkeys(
+        ("user_config_dir", "config_dir", "user_database_path", "static_database_path", "game_ui_asset_root"), "unused"))()
+    calls = []
+    monkeypatch.setattr(entry_controls, "_current_scanning_dependencies", lambda _owner: dependencies)
+    monkeypatch.setattr(entry_controls, "confirm_operation_recommendation", lambda *_args, **_kwargs:
+                        pytest.fail("低风险不显示中风险建议"))
+    monkeypatch.setattr(entry_controls, "show_scan_post_action_dialog", lambda *_args, **_kwargs: calls.append(True))
+    entry_controls.open_scan_post_action_manager(owner)
+    assert calls == [True]

@@ -89,7 +89,7 @@ def explain_operation_unavailable(parent, feature: str, detail: str, navigate, t
     target = target if target in {"deployment", "home"} else "detection"
     if target == "home":
         prompt_operation_settings(
-            parent, title=tr("暂时无法同步"), feature=feature, detail=detail,
+            parent, title="功能暂不可用", feature=feature, detail=detail,
             navigate=navigate, target=target, action_text=tr("前往工作台"),
         )
         return

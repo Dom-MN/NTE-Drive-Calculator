@@ -30,10 +30,19 @@ def save_allocation_plans(*, database_path, static_database_path, static_identit
             checkpoint()
             arguments = {key: value for key, value in row.items() if key != "slot_id"}
             plan = bridge.prepare_role_plan(**arguments)
-            slot = user_dao.get_loadout_slot(row["slot_id"])
-            if slot is None or int(slot["character_id"]) != plan.character_id:
-                raise RuntimeError("目标配装槽位已改变，请重新选择。")
-            prepared.append({**plan.as_record(), "slot_id": row["slot_id"]})
+            slot_id = row["slot_id"]
+            if slot_id is None:
+                if user_dao.list_loadout_slots(plan.character_id):
+                    raise RuntimeError("目标配装槽位已改变，请重新选择。")
+            else:
+                slot = user_dao.get_loadout_slot(slot_id)
+                if slot is None or int(slot["character_id"]) != plan.character_id:
+                    raise RuntimeError("目标配装槽位已改变，请重新选择。")
+            prepared.append({
+                **plan.as_record(), "slot_id": slot_id,
+                "comparison_baseline": (row.get("payload") or {}).get("last_diff"),
+                "create_slot_name": row["role_name"] if slot_id is None else None,
+            })
             progress((f"已校验配装方案 {index}/{len(rows)}", index, len(rows) + 4))
         checkpoint()
         verify_static()

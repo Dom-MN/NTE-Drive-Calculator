@@ -29,8 +29,8 @@ from src.features.scanning.scan_contracts import (
     offline_scope_replaces_inventory,
     vision_cancel_message,
 )
-from src.features.scanning.scan_source_warning import confirm_scan_mode_after_workbench_sync, restore_scan_mode_selection
-from src.features.scanning.post_action_summary import append_state_mismatch_summary
+from src.features.scanning.scan_source_warning import confirm_scan_mode_entry, restore_scan_mode_selection
+from src.features.scanning.post_action_summary import append_scan_post_action_summary, show_scan_completion
 from src.domain.post_actions import post_actions_enabled, validate_post_action_config
 from src.features.scanning.vision_worker import VisionWorkerThread
 from src.services.full_visual_snapshot_commit import IncompleteVisionScanError, append_tape_main_warning, commit_completed_vision_inventory
@@ -59,7 +59,10 @@ def _on_scan_change(self, id, checked=True):
     previous_id = getattr(self, "_confirmed_scan_mode_id", 4)
     if id in {1, 2, 3}:
         dependencies = _current_scanning_dependencies(self)
-        if not confirm_scan_mode_after_workbench_sync(self.dialog_parent, dependencies.user_database_path ):
+        if not confirm_scan_mode_entry(
+            self.dialog_parent, dependencies.user_database_path,
+            navigate_home=lambda: self.navigate("home"),
+        ):
             restore_scan_mode_selection(self.scan_group, previous_id)
             return
     self._confirmed_scan_mode_id = id
@@ -440,27 +443,7 @@ def _on_vision_done(self, stats):
         snapshot_id=vision_snapshot_id,
         snapshot_written=bool(vision_snapshot_id),
     )
-    if stats.get("post_actions_enabled"):
-        summary += (
-            "\n扫描后管理："
-            f"参与计算 {int(stats.get('post_action_candidate_count', 0) or 0)} 件，"
-            f"目标变更 {int(stats.get('post_action_target_count', 0) or 0)} 个，"
-            f"已处理 {int(stats.get('post_action_applied_count', 0) or 0)} 个。"
-            f"\n弃置 {int(stats.get('discard_set_count', 0) or 0)} 个，"
-            f"取消弃置 {int(stats.get('discard_clear_count', 0) or 0)} 个；"
-            f"锁定 {int(stats.get('lock_set_count', 0) or 0)} 个，"
-            f"取消锁定 {int(stats.get('lock_clear_count', 0) or 0)} 个。"
-        )
-        filtered_parts = []
-        if int(stats.get("post_action_quality_filtered_count", 0) or 0):
-            filtered_parts.append(f"品质范围过滤 {int(stats.get('post_action_quality_filtered_count', 0) or 0)} 件")
-        if int(stats.get("post_action_type_filtered_count", 0) or 0):
-            filtered_parts.append(f"处理类别过滤 {int(stats.get('post_action_type_filtered_count', 0) or 0)} 件")
-        if int(stats.get("post_action_type_range_filtered_count", 0) or 0):
-            filtered_parts.append(f"类型范围过滤 {int(stats.get('post_action_type_range_filtered_count', 0) or 0)} 件")
-        if filtered_parts:
-            summary += "\n" + "，".join(filtered_parts) + "。"
-        summary = append_state_mismatch_summary(summary, stats)
+    summary = append_scan_post_action_summary(summary, stats)
     details = []
     if post.get("moved_failed"):
         details.append(f"失败截图已移动到 failed 文件夹 {post['moved_failed']} 张。")
@@ -473,17 +456,17 @@ def _on_vision_done(self, stats):
         self.btn_run.setEnabled(True)
         self.btn_run.setText(tr("⚡  开始计算"))
         self._update_inventory_status()
-        QMessageBox.information(
+        show_scan_completion(
             self.dialog_parent,
             tr("库存数据已生成"),
-            tr("{summary}\n\n本次未配置角色优先级，仅更新了背包记录，未进行配装计算。",
-               summary=summary),
+            summary + "\n\n本次未配置角色优先级，仅更新了背包记录，未进行配装计算。",
+            stats,
         )
         self._pending_parse_only = False
         return
     from PySide6.QtCore import QTimer
 
-    QMessageBox.information(self.dialog_parent, tr("截图解析完成"), summary)
+    show_scan_completion(self.dialog_parent, tr("截图解析完成"), summary, stats)
     QTimer.singleShot(100, self._start_allocation_worker)
 
 

@@ -67,6 +67,31 @@ class WorkModeRuntimeTests(unittest.TestCase):
         self.runtime._bundle = self.bundle_value
         self.runtime._native_deployed = self.deployed_value
 
+    def test_missing_deployment_does_not_reuse_completed_cleanup_message(self):
+        self.policy.select_mode("medium", risk_confirmed=True)
+        self.policy.set_cleanup_pending(False)
+        self.runtime.cleanup_detail = "旧代理与本程序拥有的加载登记已清理。"
+        with patch.object(self.runtime, "_inspect_component_files"), patch.object(self.runtime, "_automatic_deploy"):
+            self.runtime._bundle = self.bundle_value
+            self.runtime._native_deployed = self.deployed_value
+            probe = self.runtime.tick(preview=True)
+        self.assertEqual(probe.component_update_state, CheckState.MISSING)
+        self.assertIn("尚未部署", probe.component_update_detail)
+        self.assertNotIn("已清理", probe.component_update_detail)
+
+    def test_pending_cleanup_is_not_described_as_completed_deployment(self):
+        self.policy.select_mode("medium", risk_confirmed=True)
+        self.policy.set_cleanup_pending(True)
+        self.deployed_value.files_compatible = True
+        self.runtime.cleanup_detail = "旧组件尚待清理。"
+        with patch.object(self.runtime, "_inspect_component_files"), patch.object(self.runtime, "_automatic_deploy"):
+            self.runtime._bundle = self.bundle_value
+            self.runtime._native_deployed = self.deployed_value
+            probe = self.runtime.tick(preview=True)
+        self.assertEqual(probe.component_update_state, CheckState.CLEANUP_PENDING)
+        self.assertEqual(probe.component_update_detail, "旧组件尚待清理。")
+        self.assertNotIn("已部署", probe.component_update_detail)
+
     def test_preflight_preview_does_not_clean_deploy_or_close_session(self):
         self.enable_auto()
         self.policy.set_cleanup_pending(True)
@@ -89,11 +114,36 @@ class WorkModeRuntimeTests(unittest.TestCase):
         with patch.object(self.runtime, "_inspect_component_files"), patch.object(self.runtime, "_automatic_deploy"):
             probe = self.runtime.tick(allow_connect=True)
         self.assertIn("native.snapshot.status", probe.native_diagnostic)
+        self.assertEqual(probe.native_diagnostic_state, CheckState.WARNING)
         self.assertTrue(probe.native_load.files)
         self.assertTrue(probe.native_inventory.pipe)
         self.assertIsNone(probe.native_inventory.handshake)
         self.assertIsNone(probe.native_inventory.ready)
         self.assertEqual(probe.native_inventory.fault, "")
+
+    def test_rpc_failure_keeps_confirmed_handshake_without_promoting_business(self):
+        from src.integrations.nte_core_protocol import NteCoreRequestContext, NteCoreRpcError
+        from src.services.work_mode_checks import build_work_mode_report
+
+        self.enable_auto()
+        self.bundle_value.native_capabilities = frozenset({"inventory.snapshot.v1"})
+        self.policy.set_cleanup_pending(False)
+        self.process.return_value = True
+        self.deployed_value.files_compatible = True
+        self.stub("native_capture_game_pid", return_value=123)
+        error = NteCoreRpcError({"code": -32000, "data": {"domain_code": "NATIVE_MAPPING_UNSUPPORTED"}})
+        error.request_context = NteCoreRequestContext("native.inventory.page", None, "c" * 64, True)
+        self.native.inspect = MagicMock(side_effect=error)
+        with patch.object(self.runtime, "_inspect_component_files"), patch.object(self.runtime, "_automatic_deploy"):
+            probe = self.runtime.tick(allow_connect=True)
+        self.assertTrue(probe.native_inventory.handshake)
+        self.assertIsNone(probe.native_inventory.ready)
+        self.assertIsNone(probe.native_inventory.snapshot)
+        checks = {item.feature: item for item in build_work_mode_report(self.policy.settings, probe).features}
+        self.assertEqual(checks["native_connection"].state, CheckState.FAULT)
+        self.assertEqual(checks["native_inventory"].state, CheckState.WAITING)
+        self.assertTrue(dict(checks["native_inventory"].facts)["handshake"])
+        self.assertIn("NATIVE_MAPPING_UNSUPPORTED", checks["native_connection"].detail)
 
     def test_endpoint_probe_failure_keeps_file_report_and_reason(self):
         self.enable_auto()
@@ -104,6 +154,7 @@ class WorkModeRuntimeTests(unittest.TestCase):
         with patch.object(self.runtime, "_inspect_component_files"), patch.object(self.runtime, "_automatic_deploy"):
             probe = self.runtime.tick(allow_connect=True)
         self.assertIn("权限", probe.native_diagnostic)
+        self.assertEqual(probe.native_diagnostic_state, CheckState.FAULT)
         self.assertNotIn("private text", probe.native_diagnostic)
         self.assertTrue(probe.native_load.files)
         self.assertIsNone(probe.native_inventory.pipe)
@@ -568,10 +619,18 @@ class WorkModeRuntimeTests(unittest.TestCase):
         self.assertEqual(reopened.deployment_record["deployed_sha256"], "a" * 64)
         self.assertEqual(reopened.deployment_record["game_executable"], str(self.game))
 
+        self.assertTrue(self.runtime._auto_error)
+        self.runtime.cleanup(running=False)
+        self.assertFalse(self.policy.settings.pending_cleanup)
+        self.clock.return_value = 1000.0
+        self.runtime._automatic_deploy(False)
+        self.deploy.assert_called_once()
+
     def test_failed_deployment_is_not_retried_every_tick(self):
         self.enable_auto()
         self.deploy.side_effect = OSError("fixture failure")
         self.runtime._automatic_deploy(False)
+        self.clock.return_value = 1000.0
         self.runtime._automatic_deploy(False)
         self.deploy.assert_called_once()
         self.assertIn("fixture failure", self.runtime._auto_error)
@@ -579,7 +638,28 @@ class WorkModeRuntimeTests(unittest.TestCase):
         self.assertEqual(probe.component_update_state.value, "fault")
         self.assertIn("fixture failure", probe.component_update_detail)
         self.runtime.invalidate()
+        self.runtime._automatic_deploy(False)
+        self.deploy.assert_called_once()
+        self.assertIn("fixture failure", self.runtime._auto_error)
+        self.runtime.invalidate(retry_deployment=True)
         self.assertEqual(self.runtime._auto_error, "")
+        self.runtime._automatic_deploy(False)
+        self.assertEqual(self.deploy.call_count, 2)
+
+    def test_deployment_failure_survives_restart_until_explicit_retry(self):
+        self.enable_auto()
+        self.deploy.side_effect = OSError("fixture quarantine")
+        self.runtime._automatic_deploy(False)
+        restarted = WorkModeRuntime(policy=self.policy, native_session=self.native, loader=self.loader,
+                                    application_root=self.root, config_dir=self.root / "config", game_running=self.process)
+        restarted._bundle = self.bundle_value
+        restarted._native_deployed = self.deployed_value
+        restarted._automatic_deploy(False)
+        self.deploy.assert_called_once()
+        self.assertIn("fixture quarantine", restarted._auto_error)
+        restarted.invalidate(retry_deployment=True)
+        restarted._automatic_deploy(False)
+        self.assertEqual(self.deploy.call_count, 2)
 
     def test_manual_detection_respects_pause(self):
         self.policy.select_mode("medium", risk_confirmed=True)

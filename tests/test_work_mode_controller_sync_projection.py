@@ -86,3 +86,44 @@ def test_settings_card_keeps_only_compact_status_and_explicit_details(controller
     assert all(button.text() not in {"暂停自动管理", "继续自动管理", "暂停", "继续"}
                for button in card.findChildren(QPushButton))
     card.close()
+
+
+def test_upgrade_unselected_mode_clears_emphasis_without_changing_confirmed_mode(controller, monkeypatch):
+    from unittest.mock import Mock
+    from PySide6.QtWidgets import QLabel, QVBoxLayout
+    from src.features.settings.work_mode_card import build_work_mode_card, MODE_LABELS
+    from src.ui.controllers import work_mode_controller
+
+    c, window, policy, _events, _popups, _probe = controller
+    policy.select_mode("medium", risk_confirmed=True)
+    window.work_mode_controller, window.work_mode_service = c, policy
+
+    def make_card(_title):
+        card = QWidget(window)
+        QVBoxLayout(card)
+        return card
+
+    window._card = make_card
+    card = build_work_mode_card(window)
+    labels = {key: card.findChild(QLabel, f"workModeDescription_{key}") for key in MODE_LABELS}
+    assert labels["medium"].property("confirmedMode") is True
+    policy.set_paused(True)
+    frozen = policy.settings
+    c.open_settings = Mock()
+    c._upgrade_action("mode")
+    combo = c._controls[0]
+    assert combo.currentIndex() == -1
+    assert all(label.property("confirmedMode") is False for label in labels.values())
+    assert policy.settings == frozen
+    c.refresh_controls()
+    assert combo.currentIndex() == -1
+    assert all(label.property("confirmedMode") is False for label in labels.values())
+
+    # Cancelling a real selection restores the confirmed mode and its emphasis.
+    monkeypatch.setattr(work_mode_controller, "confirm_mode", lambda *_args: False)
+    combo.setCurrentIndex(combo.findData("medium"))
+    combo.activated.emit(combo.currentIndex())
+    assert labels["medium"].property("confirmedMode") is True
+    assert all(not label.property("confirmedMode") for key, label in labels.items() if key != "medium")
+    assert policy.settings == frozen
+    card.close()

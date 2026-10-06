@@ -17,6 +17,8 @@ from src.integrations.nte_core import NteCoreClient
 from src.integrations.nte_core_protocol import NteCoreError
 from src.utils.logger import logger
 from src.integrations.operation_guard import require_operation
+from src.domain.work_mode import WorkMode
+from src.services.cultivation_owned_material_import import CultivationOwnedMaterialImportService
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,18 @@ def _start_inventory_sync_authorized(self, *, automatic: bool, source: str):
 
 def _get_sync_settings(self):
     return self._account_settings.load("sync")
+
+
+def _import_cultivation_materials(self):
+    account = self.app_context.account
+    service = CultivationOwnedMaterialImportService(
+        user_database_path=account.user_database_path,
+        static_database_path=self.app_context.paths.cultivation_database_path,
+        account_id=account.active_account_id,
+    )
+    if self.work_mode_service.settings.mode != WorkMode.LOW:
+        return service.load_latest()
+    return service.load_latest_packet()
 
 
 def _open_raw_capture_directory(self):
@@ -272,7 +286,10 @@ def _on_inventory_sync_state(self, notification):
     self.home_sync_detail.setText(detail)
     self.auto_sync_controller.inventory_state_changed(state)
     if role_changed or (state.phase=="listening" and state.last_snapshot_id is not None):
-        self._refresh_home()
+        if hasattr(self, "dashboard_controller"):
+            self.dashboard_controller.refresh(version=(
+                notification.run_token, state.last_snapshot_id, state.character_sync_revision,
+            ))
 
 # ── Page: Execute
 
@@ -289,6 +306,7 @@ class InventorySyncControllerMixin:
     invalidate_inventory_sync_notifications = invalidate_inventory_sync_notifications
     _start_inventory_sync = _start_inventory_sync
     _get_sync_settings = _get_sync_settings
+    _import_cultivation_materials = _import_cultivation_materials
     _save_capture_diagnostics = _save_capture_diagnostics
     _open_raw_capture_directory = _open_raw_capture_directory
     _maybe_auto_start_inventory_sync = _maybe_auto_start_inventory_sync

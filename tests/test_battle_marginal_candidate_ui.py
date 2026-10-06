@@ -598,6 +598,16 @@ class BattleMarginalCandidateUiTests(unittest.TestCase):
         self.assertEqual("—", page.attribute_table.item(0, 4).text())
         self.assertNotIn("0.00%", page.attribute_table.item(0, 3).text())
 
+        # A core-provided estimate is displayed without changing evidence coverage.
+        result.estimated_role_gain_percent = 1.25
+        result.estimated_team_gain_percent = 0.5
+        result.assumption = "黯星使用固定轴窗口预估。"
+        render_attribute_results(page.attribute_table, (result,))
+        self.assertEqual("+1.25%", page.attribute_table.item(0, 3).text())
+        self.assertEqual("+0.50%", page.attribute_table.item(0, 4).text())
+        self.assertIn("窗口预估", page.attribute_table.item(0, 3).toolTip())
+        self.assertEqual("unavailable", result.quantification.status)
+
 
 if __name__ == "__main__":
     unittest.main()

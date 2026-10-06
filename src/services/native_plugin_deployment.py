@@ -14,7 +14,7 @@ import tempfile
 from typing import Callable
 
 from src.integrations.native_plugin_bundle import (
-    NATIVE_PLUGIN_DEPLOYMENT_PATHS, inspect_native_plugin_bundle,
+    NATIVE_PLUGIN_DEPLOYMENT_PATHS, HOT_PLUGIN_DEPLOYMENT_PATHS, PERFORMANCE_DEPLOYMENT_PATHS, HUD_DEPLOYMENT_PATHS, inspect_native_plugin_bundle,
 )
 from src.integrations.operation_guard import require_operation
 from src.integrations.legacy_game_proxy import remove_legacy_game_proxy
@@ -68,7 +68,7 @@ def _digest(path: Path) -> str:
 
 
 def _target(directory: Path, relative: str) -> Path:
-    if relative not in NATIVE_PLUGIN_DEPLOYMENT_PATHS.values():
+    if relative not in {*NATIVE_PLUGIN_DEPLOYMENT_PATHS.values(), *HOT_PLUGIN_DEPLOYMENT_PATHS.values(), *PERFORMANCE_DEPLOYMENT_PATHS.values(), *HUD_DEPLOYMENT_PATHS.values()}:
         raise EquipmentPluginDeploymentError(tr('组件记录包含正式布局之外的文件。'))
     target = directory / relative
     if target.is_symlink() or not target.resolve().is_relative_to(directory):
@@ -95,6 +95,7 @@ def _replace_file(source: Path, target: Path, digest: str, require_idle, *, suff
     descriptor, temporary_name = tempfile.mkstemp(prefix='.nte-deploy-', suffix=suffix, dir=target.parent)
     os.close(descriptor)
     temporary = Path(temporary_name)
+    failure = None
     try:
         shutil.copy2(source, temporary)
         if _digest(temporary) != digest:
@@ -106,14 +107,29 @@ def _replace_file(source: Path, target: Path, digest: str, require_idle, *, suff
         if current != expected_target:
             raise EquipmentPluginDeploymentError(tr('组件目标在暂存期间发生变化，未覆盖现场文件。'))
         os.replace(temporary, target)
+    except Exception as error:
+        failure = error
+        if isinstance(error, OSError) and getattr(error, 'winerror', None) in {225, 226}:
+            raise EquipmentPluginDeploymentError(
+                f'Windows 安全防护阻止部署 {target.name}，请查看系统保护历史并核查组件来源。'
+            ) from error
+        if isinstance(error, FileNotFoundError):
+            raise EquipmentPluginDeploymentError(
+                f'部署 {target.name} 时文件消失，写入结果无法核验；请检查系统保护历史和文件占用情况。'
+            ) from error
+        raise
     finally:
-        temporary.unlink(missing_ok=True)
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            if failure is None:
+                raise  # Keep an earlier deployment failure when cleanup is also blocked.
 
 def deploy_native_component_files(
     *, application_root: str | Path, directory_path: str | Path,
     operation_guard: Callable[[str], None] | None,
-    game_running: Callable[[], bool] | None = None,
-    component_roles: tuple[str, ...] = ('capture_plugin', 'host'),
+    game_running: Callable[[], bool | None] | None = None,
+    component_roles: tuple[str, ...] | None = None,
     expected_existing_files: Mapping[str, str | None] | None = None,
     cleanup_legacy_proxy: bool = False,
 ) -> NativeComponentFilesDeployment:
@@ -130,13 +146,17 @@ def deploy_native_component_files(
     if not bundle.ready:
         raise EquipmentPluginDeploymentError('；'.join(bundle.issues))
     directory = Path(directory_path).expanduser().resolve()
+    paths = bundle.deployment_paths
+    component_roles = tuple(paths) if component_roles is None else component_roles
     if (not component_roles or len(set(component_roles)) != len(component_roles)
-            or any(role not in {'capture_plugin', 'host'} for role in component_roles)):
+            or any(role not in paths for role in component_roles)):
         raise EquipmentPluginDeploymentError(tr('部署请求包含无效的采集组件角色。'))
-    order = tuple(role for role in ('capture_plugin', 'host') if role in component_roles)
+    order = tuple(role for role in paths if role != 'host' and role in component_roles)
+    if 'host' in component_roles:
+        order += ('host',)
     sources, targets, expected = {}, {}, {}
     for role in order:
-        relative = NATIVE_PLUGIN_DEPLOYMENT_PATHS[role]
+        relative = paths[role]
         source = root / bundle.roles[role]
         target = _target(directory, relative)
         if source.resolve() == target.resolve():
@@ -207,18 +227,19 @@ def deploy_native_component_files(
 def deploy_native_plugin(
     *, application_root: str | Path, game_executable_path: str | Path,
     operation_guard: Callable[[str], None] | None,
-    game_running: Callable[[], bool] | None = None,
+    game_running: Callable[[], bool | None] | None = None,
     expected_existing_files: Mapping[str, str | None] | None = None,
     cleanup_legacy_proxy: bool = False,
 ) -> NativePluginDeployment:
     require_operation(operation_guard, 'native_load')
     executable = game_executable(game_executable_path)
+    bundle = inspect_native_plugin_bundle(application_root)
 
     def wrap(record: NativeComponentFilesDeployment) -> NativePluginDeployment:
         return NativePluginDeployment(
             executable, record.directory / NATIVE_PLUGIN_DEPLOYMENT_PATHS['host'],
             record.managed_files.get(NATIVE_PLUGIN_DEPLOYMENT_PATHS['host'], ''),
-            record.directory, record.backup_path, dict(record.managed_files),
+            record.directory, record.backup_path, dict(record.managed_files), deployment_layout=bundle.layout,
         )
 
     try:
@@ -235,7 +256,7 @@ def deploy_native_plugin(
 
 def cleanup_native_component_files(
     *, directory_path: str | Path, managed_files: dict[str, str],
-    game_running: Callable[[], bool] | None = None,
+    game_running: Callable[[], bool | None] | None = None,
 ) -> NativePluginCleanupResult:
     probe = game_running or game_process_running
     if probe():
@@ -269,7 +290,7 @@ def cleanup_native_component_files(
 
 def cleanup_native_plugin(
     *, game_executable_path: str | Path, managed_files: dict[str, str],
-    game_running: Callable[[], bool] | None = None,
+    game_running: Callable[[], bool | None] | None = None,
 ) -> NativePluginCleanupResult:
     executable = Path(str(game_executable_path).strip().strip('"')).expanduser()
     if not executable.is_absolute() or executable.name.casefold() != GAME_EXECUTABLE_NAME.casefold():
@@ -280,9 +301,9 @@ def cleanup_native_plugin(
 
 def cleanup_manual_native_plugin(
     *, application_root: str | Path, game_executable_path: str | Path,
-    managed_files: dict[str, str], game_running: Callable[[], bool] | None = None,
+    managed_files: dict[str, str], game_running: Callable[[], bool | None] | None = None,
 ) -> NativePluginCleanupResult:
-    """Explicit cleanup may adopt only bundled or reviewed predecessor DLLs."""
+    """Explicit cleanup removes fixed component filenames in the selected directory."""
     probe = game_running or game_process_running
     if probe():
         return NativePluginCleanupResult('waiting_game_exit', tr('游戏未关闭，暂时不能清理组件。请完全退出游戏后重新检测。'))
@@ -291,28 +312,17 @@ def cleanup_manual_native_plugin(
         raise EquipmentPluginDeploymentError(tr('清理记录中的游戏主程序路径无效。'))
     directory = executable.parent.resolve()
     recorded = dict(managed_files)
-    bundle = inspect_native_plugin_bundle(application_root)
-    allowed: dict[str, set[str]] = {}
-    if bundle.ready:
-        for role, relative in NATIVE_PLUGIN_DEPLOYMENT_PATHS.items():
-            allowed[relative] = {
-                bundle.files[bundle.roles[role]], *bundle.upgrade_from.get(relative, ()),
-            }
     observed: dict[str, str] = {}
     try:
         for relative in recorded:
             _manual_cleanup_target(directory, relative)
-        for relative in NATIVE_PLUGIN_DEPLOYMENT_PATHS.values():
+        for relative in {*NATIVE_PLUGIN_DEPLOYMENT_PATHS.values(), *HOT_PLUGIN_DEPLOYMENT_PATHS.values(), *PERFORMANCE_DEPLOYMENT_PATHS.values(), *HUD_DEPLOYMENT_PATHS.values()}:
             target = _manual_cleanup_target(directory, relative)
             if not target.exists():
                 continue
-            digest = _digest(target)
-            if relative not in recorded and digest not in allowed.get(relative, set()):
-                return NativePluginCleanupResult(
-                    'conflict', tr('游戏目录中的 {relative} 来源未确认，已保留文件；请核对组件归属。',
-                   relative=relative),
-                )
-            observed[relative] = digest
+            # The explicit cleanup action authorizes these exact names, including
+            # unrecorded older versions. Hash only detects changes during this action.
+            observed[relative] = _digest(target)
         ordered = sorted(observed, key=lambda relative: relative != NATIVE_PLUGIN_DEPLOYMENT_PATHS['host'])
         for relative in ordered:
             if probe():
@@ -330,4 +340,4 @@ def cleanup_manual_native_plugin(
         raise EquipmentPluginDeploymentError(tr('无法清理游戏目录原生组件，请保持游戏关闭并重试。')) from error
     if probe():
         return NativePluginCleanupResult('waiting_game_exit', tr('组件文件已清理，游戏仍需退出以结束已加载会话。'))
-    return NativePluginCleanupResult('cleaned', tr('已清理有部署记录或经整包哈希确认的游戏目录原生组件。'))
+    return NativePluginCleanupResult('cleaned', '已按固定文件名清理游戏目录原生组件。')

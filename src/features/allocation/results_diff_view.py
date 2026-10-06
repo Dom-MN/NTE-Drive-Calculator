@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 
+from PySide6.QtCore import QSize
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -15,9 +16,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.i18n import display_term, tr
+from src.i18n import tr
 from src.app.constants import ALLOCATION_TOTAL_SCORE_AREA
 from src.app.theme import current_style_sheet, themed_style
+from src.app.window_geometry import fit_dialog_to_available_screen
 from src.domain.allocation_rating import loadout_total_grade
 from src.features.allocation.bonus_summary import (
     collect_added_uids,
@@ -54,6 +56,7 @@ from src.optimizer.contracts import (
     plan_drives,
 )
 from src.utils.logger import logger
+from src.services.allocation_comparison_scoring import comparison_display_item, comparison_notice
 from src.features.weighted_allocation.result_styles import section_label
 
 
@@ -162,6 +165,8 @@ def _plan_diff_text(self, role_name, diff):
 
 
 def _diff_item_score_info(self, item, role_name=None):
+    if item.get("comparison_score_unavailable"):
+        return None
     item_type = item.get(EQUIP_TYPE, "drive")
     if EQUIP_SCORE in item:
         score = float(item.get(EQUIP_SCORE, 0.0) or 0.0)
@@ -416,8 +421,8 @@ def _hydrate_diff_item(self, role_name, item):
 def _diff_item_card(self, role_name, item, is_new=False):
     item = _hydrate_diff_item(self, role_name, item)
     role_cfg = self.roles_db.get(role_name, {})
-    weights = role_cfg.get("weights", {})
-    main_weights = role_cfg.get("main_weights")
+    weights = item.get("_comparison_weights", role_cfg.get("weights", {}))
+    main_weights = item.get("_comparison_main_weights", role_cfg.get("main_weights"))
     score_info = getattr(self, "_diff_item_score_info", None) or (
         lambda diff_item, role=None: _diff_item_score_info(self, diff_item, role)
     )
@@ -431,7 +436,7 @@ def _diff_item_card(self, role_name, item, is_new=False):
         main_stat = ""
         shape_id = item.get(EQUIP_SHAPE_ID) or ""
     is_changed = bool(item.get(EQUIP_IS_CHANGED, False))
-    return self._equip_card(
+    card = self._equip_card(
         label,
         main_stat,
         item.get(EQUIP_SUB_STATS, {}) or {},
@@ -447,6 +452,9 @@ def _diff_item_card(self, role_name, item, is_new=False):
         card_variant="result",
         item_icon_path=item.get("item_icon_path"),
     )
+    if item.get("comparison_score_unavailable"):
+        card.layout().addWidget(QLabel("评分资料不足"))
+    return card
 
 
 def _append_equipment_swap_frame(body_layout, role_name, old_item, new_item, diff_item_card):
@@ -491,12 +499,15 @@ def _append_equipment_swap_frame(body_layout, role_name, old_item, new_item, dif
 
 def _build_plan_diff_dialog(self, role_name, diff):
     dlg = QDialog(getattr(self, "dialog_parent", None))
-    dlg.setWindowTitle(tr("{role} - 配装变动", role=display_term(role_name)))
-    dlg.setMinimumSize(820, 560)
+    dlg.setWindowTitle(f"{role_name} - 配装变动")
+    dlg.setMinimumSize(320, 240)
     dlg.setStyleSheet(current_style_sheet())
     layout = QVBoxLayout(dlg)
     layout.setContentsMargins(14, 14, 14, 14)
     layout.setSpacing(10)
+    notice = QLabel(comparison_notice(diff))
+    notice.setWordWrap(True)
+    layout.addWidget(notice)
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     body = QWidget()
@@ -509,16 +520,15 @@ def _build_plan_diff_dialog(self, role_name, diff):
     )
 
     removed = [
-        _hydrate_diff_item(self, role_name, item)
+        _hydrate_diff_item(self, role_name, comparison_display_item(item, diff))
         for item in (diff.get(DIFF_REMOVED, []) or [])
         if isinstance(item, dict)
     ]
     added = [
-        _hydrate_diff_item(self, role_name, item)
+        _hydrate_diff_item(self, role_name, comparison_display_item(item, diff))
         for item in (diff.get(DIFF_ADDED, []) or [])
         if isinstance(item, dict)
     ]
-
     if not removed and not added:
         body_layout.addWidget(QLabel(tr("本次配装与已保存方案没有装备变动。")))
     else:
@@ -592,6 +602,7 @@ def _build_plan_diff_dialog(self, role_name, diff):
     buttons = QDialogButtonBox(QDialogButtonBox.Close)
     buttons.rejected.connect(dlg.reject)
     layout.addWidget(buttons)
+    fit_dialog_to_available_screen(dlg, QSize(820, 560))
     return dlg
 
 

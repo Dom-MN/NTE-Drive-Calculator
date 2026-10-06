@@ -52,6 +52,8 @@ class _UserDao:
         self.saved_plans = []
         self.replace_calls = 0
         self.slot_save_calls = 0
+        self.history_plans = []
+        self.current_slot_plans = []
 
     def current_inventory_snapshot_id(self):
         return 7
@@ -81,7 +83,11 @@ class _UserDao:
         return [dict(row) for row in rows]
 
     def list_loadout_plans(self):
-        return []
+        return self.history_plans
+
+    def list_current_loadout_slot_plans(self, *, include_archived=False):
+        return [row for row in self.current_slot_plans
+                if include_archived or not row["slot"].get("is_archived")]
 
     def replace_active_loadout_plans(self, plans):
         self.replace_calls += 1
@@ -133,6 +139,94 @@ def test_projects_game_equipment_into_canonical_importable_plan() -> None:
     assert role.assignments[0]["target_row"] == 1
     assert role.assignments[0]["target_column"] == 1
     assert role.assignments[-1]["kind"] == "core"
+
+
+def _imported_plan(plan_id, fingerprint, *, is_active=False, locked=False, source="game_inventory"):
+    return {"plan_id": plan_id, "character_id": 1003, "name": f"方案 {plan_id}",
+            "is_active": is_active, "allocation_locked": locked,
+            "payload": {"source": source, "equipment_fingerprint": fingerprint}}
+
+
+def _current_slot(plan, *, slot_id=1, archived=False):
+    return {"slot": {"slot_id": slot_id, "character_id": 1003,
+                     "current_plan_id": plan["plan_id"], "is_archived": archived}, "plan": plan}
+
+
+def test_deleted_current_plan_does_not_remain_imported_from_legacy_history():
+    user_dao = _UserDao()
+    service = GameLoadoutProjectionService(user_dao, _StaticDao())
+    fingerprint = service.project_current().roles[0].equipment_fingerprint
+    user_dao.history_plans = [_imported_plan(88, fingerprint, is_active=True, locked=True)]
+
+    role = service.project_current().roles[0]
+
+    assert role.importable
+    assert not role.imported
+    assert role.existing_plan_id is None
+    assert role.existing_plan_name == ""
+    assert not role.existing_plan_locked
+    assert len(user_dao.history_plans) == 1  # Display reads never mutate historical facts.
+
+
+def test_current_slot_is_imported_even_when_legacy_active_flag_is_false():
+    user_dao = _UserDao()
+    service = GameLoadoutProjectionService(user_dao, _StaticDao())
+    fingerprint = service.project_current().roles[0].equipment_fingerprint
+    plan = _imported_plan(89, fingerprint, locked=True)
+    user_dao.current_slot_plans = [_current_slot(plan)]
+
+    role = service.project_current().roles[0]
+
+    assert role.imported
+    assert role.existing_plan_id == 89
+    assert role.existing_plan_name == "方案 89"
+    assert role.existing_plan_locked
+
+
+def test_replaced_current_slot_ignores_matching_history_and_uses_current_lock():
+    user_dao = _UserDao()
+    service = GameLoadoutProjectionService(user_dao, _StaticDao())
+    fingerprint = service.project_current().roles[0].equipment_fingerprint
+    user_dao.history_plans = [_imported_plan(88, fingerprint, is_active=True, locked=True)]
+    user_dao.current_slot_plans = [_current_slot(_imported_plan(89, "different-equipment"))]
+
+    role = service.project_current().roles[0]
+
+    assert not role.imported
+    assert role.existing_plan_id == 89
+    assert not role.existing_plan_locked
+
+
+def test_matching_archived_slot_does_not_count_as_imported():
+    user_dao = _UserDao()
+    service = GameLoadoutProjectionService(user_dao, _StaticDao())
+    fingerprint = service.project_current().roles[0].equipment_fingerprint
+    plan = _imported_plan(88, fingerprint, is_active=True, locked=True)
+    user_dao.history_plans = [plan]
+    user_dao.current_slot_plans = [_current_slot(plan, archived=True)]
+
+    role = service.project_current().roles[0]
+
+    assert not role.imported
+    assert role.existing_plan_id is None
+    assert not role.existing_plan_locked
+
+
+def test_any_matching_visible_current_slot_counts_without_changing_import_origin_rule():
+    user_dao = _UserDao()
+    service = GameLoadoutProjectionService(user_dao, _StaticDao())
+    fingerprint = service.project_current().roles[0].equipment_fingerprint
+    first = _imported_plan(88, fingerprint, source="allocation")
+    second = _imported_plan(89, fingerprint)
+    user_dao.current_slot_plans = [_current_slot(first), _current_slot(second, slot_id=2)]
+    role = service.project_current().roles[0]
+    assert role.imported
+    assert role.existing_plan_id == 89
+
+    user_dao.current_slot_plans = [_current_slot(first)]
+    role = service.project_current().roles[0]
+    assert not role.imported
+    assert role.existing_plan_id == 88
 
 
 def test_imports_projection_as_normal_active_loadout() -> None:

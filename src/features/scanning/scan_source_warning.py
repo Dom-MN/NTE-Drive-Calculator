@@ -1,13 +1,13 @@
-# 在已有工作台同步快照时确认是否继续使用扫描模式。
+# 按当前库存来源确认扫描或引导用户前往工作台同步。
 from src.i18n import tr
 import winsound
+from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QSize
-from PySide6.QtGui import QShowEvent
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QDialog, QWidget
 
-from src.app.window_geometry import fit_dialog_to_available_screen
+from src.features.input_operation_entry import OperationRecommendationDialog
+from src.services.inventory_source_capabilities import is_visual_inventory_source
 from src.storage.sqlite.user_data_dao import UserDataDao
 
 
@@ -15,39 +15,25 @@ SCAN_SOURCE_WARNING = (
     "你已进行过工作台-数据同步，已获取空幕数据，"
     "不建议再使用扫描模式，是否继续？"
 )
+SCAN_SYNC_RECOMMENDATION = (
+    "建议使用工作台-数据同步，可快速获取空幕背包，扫描仅作为兜底功能。是否前往开启？"
+)
 
 
 def play_warning_sound() -> None:
     winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
 
 
-class ScanSourceWarningDialog(QDialog):
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._warning_sound_played = False
-        self.setWindowTitle(tr("扫描模式提示"))
-        layout = QVBoxLayout(self)
-        self.message = QLabel(SCAN_SOURCE_WARNING, self)
-        self.message.setWordWrap(True)
-        layout.addWidget(self.message)
+class ScanSourceWarningDialog(OperationRecommendationDialog):
+    def __init__(self, parent: QWidget | None = None, *, recommend_sync: bool = False) -> None:
+        super().__init__(
+            parent, title=tr("扫描模式提示"),
+            message=SCAN_SYNC_RECOMMENDATION if recommend_sync else SCAN_SOURCE_WARNING,
+            action_text="前往" if recommend_sync else tr("继续"),
+        )
 
-        self.buttons = QHBoxLayout()
-        self.buttons.addStretch()
-        self.continue_button = QPushButton(tr("继续"), self)
-        self.continue_button.clicked.connect(self.accept)
-        self.cancel_button = QPushButton(tr("取消"), self)
-        self.cancel_button.clicked.connect(self.reject)
-        self.cancel_button.setDefault(True)
-        self.buttons.addWidget(self.continue_button)
-        self.buttons.addWidget(self.cancel_button)
-        layout.addLayout(self.buttons)
-        fit_dialog_to_available_screen(self, QSize(520, 150))
-
-    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
-        super().showEvent(event)
-        if not self._warning_sound_played:
-            self._warning_sound_played = True
-            play_warning_sound()
+    def _play_warning_sound(self) -> None:
+        play_warning_sound()
 
 
 def current_snapshot_is_workbench_sync(
@@ -60,16 +46,24 @@ def current_snapshot_is_workbench_sync(
     return bool(summary and summary.get("source") == "nte_core")
 
 
-def confirm_scan_mode_after_workbench_sync(
+def confirm_scan_mode_entry(
     parent: QWidget | None,
     database_path: str | Path,
     *,
+    navigate_home: Callable[[], None],
     dao_factory=UserDataDao,
     dialog_factory=ScanSourceWarningDialog,
 ) -> bool:
-    if not current_snapshot_is_workbench_sync(database_path, dao_factory=dao_factory):
-        return True
-    return dialog_factory(parent).exec() == QDialog.Accepted
+    with dao_factory(database_path) as dao:
+        summary = dao.current_inventory_summary()
+    recommend_sync = not summary or is_visual_inventory_source(summary.get("source"))
+    if recommend_sync:
+        if dialog_factory(parent, recommend_sync=True).exec() == QDialog.Accepted:
+            navigate_home()
+        return False  # 前往和取消都不进入扫描，原模式及已有数据保持不变。
+    if summary.get("source") == "nte_core":
+        return dialog_factory(parent).exec() == QDialog.Accepted
+    return True
 
 
 def restore_scan_mode_selection(button_group, button_id: int) -> None:

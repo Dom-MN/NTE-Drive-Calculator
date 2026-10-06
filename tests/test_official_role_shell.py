@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -50,18 +51,20 @@ class OfficialRoleShellTests(unittest.TestCase):
             observations.append((content is not None, bool(content and content.isHidden())))
             return QWidget()
 
-        controller = SimpleNamespace(load_detail=lambda _character_id: detail)
         builders = (
             "_build_base_group", "_build_awakening_group", "_build_skill_group",
             "_build_margin_group", "_build_fork_group", "_build_drive_summary_group",
             "_build_damage_formula_group", "_build_weight_group",
         )
         patches = [patch.object(role_shell, name, side_effect=build_widget) for name in builders]
-        with patch.object(role_shell, "_role_controller", return_value=controller):
+        with patch.object(role_shell, "_role_controller"):
             for active_patch in patches:
                 active_patch.start()
             try:
-                role_shell._populate_role_tab(window, scroll, 1001)
+                role_shell._render_role_tab(window, scroll, 1001, detail)
+                deadline = time.monotonic() + 2
+                while not scroll.property("loaded") and time.monotonic() < deadline:
+                    self.app.processEvents()
             finally:
                 for active_patch in reversed(patches):
                     active_patch.stop()

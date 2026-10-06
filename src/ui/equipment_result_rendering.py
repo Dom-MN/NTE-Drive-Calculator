@@ -24,6 +24,7 @@ from src.optimizer.contracts import (
     plan_drives,
 )
 from src.services.game_ui_asset_catalog import GameUiAssetCatalog
+from src.services.allocation_failure_text import allocation_failure_text
 from src.services.warehouse_visual_catalog import representative_module_item_id
 from src.ui.puzzle_board import PuzzleBoardWidget
 from src.features.allocation.results_diff_view import _diff_value
@@ -93,7 +94,7 @@ def _render_results(self, plan):
         it = self.result_content_layout.takeAt(0)
         if it.widget():
             it.widget().deleteLater()
-    mode_labels = {"role_priority": tr("角色优先"), "update_mode": tr("增量更新")}
+    mode_labels = {"role_priority": tr("角色优先"), "update_mode": "锁定更新"}
     mode_name = mode_labels.get(getattr(self, "_pending_strat", ""), "")
     plan_diffs = getattr(self, "allocation_plan_diff", {}) or {}
     if locked_roles:
@@ -114,11 +115,8 @@ def _render_results(self, plan):
         return
     for role, p in plan.items():
         if not p or not p.get(PLAN_VALID):
-            reason = str((p or {}).get("reason") or "无法凑齐图纸所需的卡带或驱动")
-            failure = QLabel(
-                tr("❌ {role}: 无有效配装方案\n原因：{reason}",
-                   role=display_term(role), reason=reason)
-            )
+            reason = allocation_failure_text(p)
+            failure = QLabel(f"❌ {role}：{reason}")
             failure.setWordWrap(True)
             failure.setStyleSheet(themed_style("color:#f85149;padding:8px 2px"))
             self.result_content_layout.addWidget(failure)

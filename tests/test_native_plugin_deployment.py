@@ -29,7 +29,8 @@ class NativePluginDeploymentTests(unittest.TestCase):
             data = ('new-' + role).encode()
             (self.package / relative).write_bytes(data)
             self.hashes[relative] = hashlib.sha256(data).hexdigest()
-        self.bundle = SimpleNamespace(ready=True, issues=(), roles=self.roles, files=self.hashes)
+        self.bundle = SimpleNamespace(ready=True, issues=(), roles=self.roles, files=self.hashes,
+                                      layout='native-capture-v1', deployment_paths=module.NATIVE_PLUGIN_DEPLOYMENT_PATHS)
         self.inspection = patch.object(module, 'inspect_native_plugin_bundle', return_value=self.bundle)
         self.inspection.start()
         self.addCleanup(self.inspection.stop)
@@ -129,6 +130,13 @@ class NativePluginDeploymentTests(unittest.TestCase):
                 game_executable_path=self.executable,
                 operation_guard=None, game_running=lambda: False)
         self.assertFalse((self.root / 'backups').exists())
+
+    def test_unconfirmed_process_state_still_deploys_for_explicit_action(self):
+        self.running = None
+        result = self.deploy()
+        self.assertEqual(2, len(result.managed_files))
+        for relative in module.NATIVE_PLUGIN_DEPLOYMENT_PATHS.values():
+            self.assertTrue((self.game / relative).is_file())
 
     def test_write_failure_removes_new_files_and_retry_succeeds(self):
         self.populate_old()
@@ -305,3 +313,23 @@ class NativePluginDeploymentTests(unittest.TestCase):
             'NTE-Platform.dll': hashlib.sha256(b'other tool').hexdigest(),
         }).status)
         self.assertEqual(b'other tool', previous.read_bytes())
+
+    def test_windows_malware_block_is_reported_with_original_error(self):
+        blocked = OSError("blocked by Windows")
+        blocked.winerror = 225
+        with patch.object(module.shutil, 'copy2', side_effect=blocked):
+            with self.assertRaisesRegex(EquipmentPluginDeploymentError, 'Windows 安全防护阻止') as result:
+                self.deploy()
+        self.assertIs(result.exception.__cause__, blocked)
+        self.assertFalse(list(self.game.glob('.nte-deploy-*')))
+
+    def test_disappearing_staging_file_is_not_asserted_to_be_malware(self):
+        copy = module.shutil.copy2
+        def vanished(source, target):
+            copy(source, target)
+            Path(target).unlink()
+        with patch.object(module.shutil, 'copy2', side_effect=vanished):
+            with self.assertRaisesRegex(EquipmentPluginDeploymentError, '文件消失') as result:
+                self.deploy()
+        self.assertIsInstance(result.exception.__cause__, FileNotFoundError)
+        self.assertNotIn('Windows 安全防护阻止', str(result.exception))

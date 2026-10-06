@@ -18,6 +18,7 @@ from src.services.game_observation_service import GameObservationService, Observ
 from src.services.work_mode_diagnostics import detection_failure_detail
 from src.services.sync_enable_preflight import decide_sync_activation, decide_sync_enable
 from src.ui.controllers.component_upgrade_guide import ComponentUpgradeGuideMixin, UpgradeResult
+from src.ui.controllers.work_mode_report_actions import WorkModeReportActionsMixin
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ class _CleanupResult:
 
 
 
-class WorkModeController(ComponentUpgradeGuideMixin, QObject):
+class WorkModeController(ComponentUpgradeGuideMixin, WorkModeReportActionsMixin, QObject):
     observed = Signal(object)
     plugins_applied = Signal(object)
 
@@ -181,6 +182,8 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         allow_unrecorded_legacy_cleanup=False,
         preview=False,
     ):
+        if getattr(self.runtime.native_session, 'maintenance_active', False):
+            return None
         revision, generation = expected or (
             self.policy.settings.revision, self.window.app_context.generation,
         )
@@ -195,10 +198,14 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
             if preview:
                 tick_args["preview"] = True
             probe = self.runtime.tick(**tick_args)
+            if getattr(self.runtime.native_session, 'maintenance_active', False):
+                return None
             if self._observe_plugins is not None:
                 self._observe_plugins(probe)
             return revision, generation, probe, request_id
         except Exception as error:
+            if getattr(self.runtime.native_session, 'maintenance_active', False):
+                return None
             detail = detection_failure_detail(error, record=bool(request_id or allow_connect))
             return ObservationResult("fault", detail, revision, generation, request_id)
 
@@ -257,7 +264,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         return ""
 
     def select_mode(self, mode: str) -> None:
-        if self._closed:
+        if self._closed or mode not in MODE_LABELS:
             return
         if not confirm_mode(self.window, mode):
             self.refresh_controls(reset_selection=True)
@@ -321,9 +328,11 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         self.check(show=True, preview=True)
 
     def check(self, *, show: bool = False, allow_unrecorded_legacy_cleanup: bool = False,
-              preview: bool = False) -> None:
+              preview: bool = False, retry_deployment: bool = False) -> None:
         if self._closed or self._sync_activation_request is not None:
             return
+        if not preview:
+            self.cancel_report_sync_guidance()
         self._request_serial += 1
         request_id = self._request_serial
         if preview:
@@ -337,7 +346,9 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         if show or self._show_request_id is not None:
             self._show_request_id = request_id
             if self._report_dialog is None:
-                self._report_dialog = ModeReportDialog(self.window, self)
+                self._report_dialog = ModeReportDialog(
+                    self.window, self, sync_action_provider=self.sync_enable_action_for_report,
+                )
                 self._report_dialog.finished.connect(self._dismiss_report)
             self._report_dialog.begin(self.policy.settings.mode.value, preview=preview)
             if self._controls:
@@ -348,7 +359,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         def perform():
             if self._closed:
                 return None
-            self.runtime.invalidate()
+            self.runtime.invalidate(retry_deployment=retry_deployment and not preview)
             result = self._observe(
                 allow_connect=not preview,
                 request_id=request_id,
@@ -360,6 +371,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         self._observer.submit(perform, key="check")
 
     def _dismiss_report(self, _result=0) -> None:
+        self.cancel_report_sync_guidance()
         dialog, self._report_dialog = self._report_dialog, None
         self._show_request_id = None
         self._sync_preflight_request = None
@@ -658,7 +670,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
         def perform():
             settings = self.policy.settings
             expected = settings.revision, frozen[1]
-            self.runtime.invalidate()
+            self.runtime.invalidate(retry_deployment=True)
             result = self._observe(allow_connect=True, request_id=request_id, expected=expected)
             if isinstance(result, ObservationResult) or result is None:
                 return result or ObservationResult("superseded", "准备上下文已改变，请重新检测。", *expected, request_id)
@@ -698,6 +710,7 @@ class WorkModeController(ComponentUpgradeGuideMixin, QObject):
             except OSError:
                 pass  # revoke_first already removed the in-process automatic authority.
             self.refresh_controls()
+        self.finish_report_sync_guidance(success)
         if self._report_dialog is not None:
             if success:
                 self._report_dialog.accept()

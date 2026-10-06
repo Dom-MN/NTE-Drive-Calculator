@@ -15,7 +15,7 @@ from src.ui.widgets import NoWheelComboBox
 MODE_LABELS = {"offline": "离线", "low": "低风险", "medium": "中风险", "developer": "开发"}
 MODE_DESCRIPTIONS = {
     "offline": "本地计算、配装、已保存数据与历史战报分析。",
-    "low": "以上功能 + 抓包同步/战报 + 鼠标或手柄扫描；不使用游戏组件。",
+    "low": "以上功能 + 基础同步/抓包 + 鼠标或手柄扫描；不使用游戏组件。",
     "medium": "以上功能 + 原生同步、原生战报、极速装配、锁定/弃置及插件。",
     "developer": "抓包与原生双线对比，仅供开发人员使用。",
 }
@@ -31,7 +31,7 @@ MODE_CONFIRMATIONS = {
     "low": {
         "warning_title": "此模式存在风险",
         "warning_detail": "抓包与模拟输入可能触发游戏保护或兼容问题。",
-        "available": "抓包同步、抓包战报、鼠标或手柄扫描",
+        "available": "基础同步/抓包、鼠标或手柄扫描",
         "unavailable": "角色状态同步、原生同步、原生战报、极速装配、插件",
         "after": "停止原生连接；游戏退出后清理已部署组件。",
         "note": "自动同步仍由工作台开关控制。确认后会保存此模式，后续版本更新继续沿用。",
@@ -40,7 +40,7 @@ MODE_CONFIRMATIONS = {
         "warning_title": "此模式存在风险",
         "warning_detail": "加载游戏组件并执行游戏内操作，可能触发游戏保护或兼容问题。",
         "available": "原生同步、原生战报、极速装配、锁定/弃置、插件",
-        "unavailable": "抓包同步、抓包战报、双线战报对比",
+        "unavailable": "基础同步/抓包、双线战报对比",
         "after": "开启同步并确认准备后，游戏关闭时部署或更新所需组件。",
         "note": "确认模式不等于开启自动同步；工作台首次开启会先显示环境检测。模式选择会保存。",
     },
@@ -53,9 +53,13 @@ MODE_CONFIRMATIONS = {
         "note": "确认模式不等于开启自动同步；工作台首次开启会先显示环境检测。模式选择会保存。",
     },
 }
-STATE_LABELS = {"available": "可用", "waiting": "正常等待", "missing": "缺少条件",
-                "fault": "故障", "cleanup_pending": "清理待完成"}
+STATE_LABELS = {
+    "available": "可用", "waiting": "正常等待", "waiting_login": "等待登录",
+    "warning": "警告", "missing": "缺少条件", "fault": "故障",
+    "cleanup_pending": "清理待完成",
+}
 ISSUE_STATES = frozenset({"fault", "missing", "cleanup_pending"})
+WARNING_STATES = frozenset({"waiting_login", "warning"})
 
 
 def _check_state_label(item) -> str:
@@ -109,10 +113,11 @@ def report_summary(report) -> str:
 
 def _report_groups(report):
     """Keep shared causes together, without discarding any per-feature diagnostic fact."""
-    sections = ([], [], [])
+    sections = ([], [], [], [])
     for item in report.features:
         section = 0 if item.state.value in ISSUE_STATES else (
-            1 if item.state.value == "waiting" else 2
+            1 if item.state.value in WARNING_STATES else
+            2 if item.state.value == "waiting" else 3
         )
         key = (item.state.value, _check_state_label(item), item.detail)
         group = next((group for group in sections[section] if group[0] == key), None)
@@ -165,9 +170,10 @@ _DIAGNOSTIC_MARKER = "\n诊断："
 class ModeReportDialog(QDialog):
     """Keep the explicit check visible from queued work through its final report."""
 
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, *, sync_action_provider=None):
         super().__init__(parent)
         self._controller = controller
+        self._sync_action_provider = sync_action_provider
         self._settings_target = "deployment"
         self._preview = False
         self.setWindowModality(Qt.WindowModal)
@@ -190,6 +196,14 @@ class ModeReportDialog(QDialog):
         self.metadata.setObjectName("modeReportMetadata")
         self.metadata.setStyleSheet(f"color:{theme_color('#8b949e')};font-size:11px")
         layout.addWidget(self.metadata)
+        self.status_hint = QLabel(
+            "红色为需处理项；黄色为等待登录或警告；蓝色为正常等待或待核对，具体请看各项说明。", self,
+        )
+        self.status_hint.setObjectName("modeReportStatusHint")
+        self.status_hint.setWordWrap(True)
+        self.status_hint.setStyleSheet(f"color:{theme_color('#8b949e')};font-size:12px")
+        self.status_hint.hide()
+        layout.addWidget(self.status_hint)
         self.label = QLabel()
         self.label.setTextFormat(Qt.PlainText)
         self.label.setWordWrap(True)
@@ -283,9 +297,8 @@ class ModeReportDialog(QDialog):
             row = QFrame(self.results)
             row.setObjectName("modeReportFeatureRow")
             color = theme_color(
-                "#f85149" if state == "fault" else
-                "#d29922" if state in ISSUE_STATES else
-                "#58a6ff"
+                "#f85149" if state in ISSUE_STATES else
+                "#d29922" if state in WARNING_STATES else "#58a6ff"
             )
             row.setStyleSheet(
                 f"QFrame#modeReportFeatureRow{{background:{theme_color('#161b22')};"
@@ -311,20 +324,28 @@ class ModeReportDialog(QDialog):
 
     def _render_report(self, report):
         self._clear_results()
-        issues, waiting, available = _report_groups(report)
+        issues, warnings, waiting, available = _report_groups(report)
         problem_count = sum(len(labels) for _key, labels in issues)
+        warning_count = sum(len(labels) for _key, labels in warnings)
+        self.status_hint.setVisible(bool(issues or warnings or waiting))
         waiting_count = sum(len(labels) for _key, labels in waiting)
         ready_count = sum(len(labels) for _key, labels in available)
         if problem_count:
-            self.overview.setText(tr(
-                "需处理 {problems} 项 · 等待 {waiting} 项 · 已就绪 {ready} 项",
-                problems=problem_count, waiting=waiting_count, ready=ready_count))
+            self.overview.setText(
+                f"需处理 {problem_count} 项 · 黄色提示 {warning_count} 项 · "
+                f"等待 {waiting_count} 项 · 已就绪 {ready_count} 项"
+            )
+        elif warning_count:
+            self.overview.setText(
+                f"黄色提示 {warning_count} 项 · 等待 {waiting_count} 项 · 已就绪 {ready_count} 项"
+            )
         elif waiting_count:
             self.overview.setText(tr("等待 {waiting} 项 · 已就绪 {ready} 项",
                                      waiting=waiting_count, ready=ready_count))
         else:
-            self.overview.setText(tr("全部 {ready} 项已就绪", ready=ready_count))
+            self.overview.setText(f"全部 {ready_count} 项已就绪")
         self._add_result_section(tr("需处理"), issues, "#f85149")
+        self._add_result_section("等待登录或警告", warnings, "#d29922")
         self._add_result_section(tr("等待或待核对"), waiting, "#58a6ff")
         if available:
             heading = QLabel(tr("已就绪（{ready} 项）", ready=ready_count), self.results)
@@ -348,7 +369,7 @@ class ModeReportDialog(QDialog):
         if self._preview:
             self._controller.check(show=True, preview=True)
         else:
-            self._controller.check(show=True)
+            self._controller.check(show=True, retry_deployment=True)
 
     def _clear_actions(self):
         while self.actions.count():
@@ -364,6 +385,7 @@ class ModeReportDialog(QDialog):
         self.overview.setText(
             tr("正在核对同步条件…") if preview else tr("正在检测环境…"))
         self.metadata.clear()
+        self.status_hint.hide()
         self.diagnostic_toggle.setChecked(False)
         self.diagnostic_toggle.hide()
         self.label.clear()
@@ -423,8 +445,14 @@ class ModeReportDialog(QDialog):
                 self._controller.detect_path()
             self._add_action(tr("重新检测路径"), detect, close=True)
             self.settings_button.hide()
+        if (not self._preview and self._sync_action_provider is not None
+                and report.can_offer_sync_enable):
+            action = self._sync_action_provider(report)
+            if action is not None:
+                self._add_action("开启自动同步", action)
 
     def set_error(self, detail):
+        self.status_hint.hide()
         self.progress.hide()
         self._clear_actions()
         self._set_primary_action(tr("前往环境设置"), self._open_environment_settings)
@@ -464,6 +492,7 @@ class ModeReportDialog(QDialog):
             self.settings_button.hide()
 
     def set_activation_result(self, ready, detail):
+        self.status_hint.hide()
         self.progress.hide()
         self._clear_actions()
         self.retry_button.setEnabled(True)
@@ -575,9 +604,9 @@ def build_work_mode_card(window):
     combo.setCurrentIndex(combo.findData(service.settings.mode.value))
     combo.setFixedWidth(150)
     controls.addWidget(combo)
-    check = QPushButton(tr("检测详情"))
-    check.setMinimumWidth(96)
-    check.clicked.connect(lambda: controller.check(show=True))
+    check = QPushButton("检测并处理")
+    check.setFixedWidth(96)
+    check.clicked.connect(lambda: controller.check(show=True, retry_deployment=True))
     controls.addWidget(check)
     controls.addStretch()
     card.layout().addLayout(controls)
@@ -601,7 +630,7 @@ def build_work_mode_card(window):
     card.layout().addLayout(descriptions)
 
     def refresh_mode_emphasis(_index=None):
-        selected = service.settings.mode.value
+        selected = service.settings.mode.value if combo.currentIndex() >= 0 else None
         for key, label in mode_labels.items():
             label.setProperty("confirmedMode", key == selected)
             color = theme_color("#58a6ff" if key == selected else "#f0f6fc")

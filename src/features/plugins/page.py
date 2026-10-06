@@ -33,9 +33,9 @@ class _ToggleSwitch(QCheckBox):
 
 
 class PluginsPage(QWidget):
-    def __init__(self, *, service, request_apply, open_settings, parent=None):
+    def __init__(self, *, service, request_apply, show_detection, parent=None):
         super().__init__(parent)
-        self.service, self.request_apply, self.open_settings = service, request_apply, open_settings
+        self.service, self.request_apply, self.show_detection = service, request_apply, show_detection
         self.cards = {}
         self.option_boxes = {}
         self._refresh_pending = False
@@ -66,8 +66,8 @@ class PluginsPage(QWidget):
         actions = QHBoxLayout()
         self.refresh_button = QPushButton(tr("刷新状态"))
         self.refresh_button.clicked.connect(self._request_refresh)
-        self.environment_button = QPushButton(tr("检测与部署"))
-        self.environment_button.clicked.connect(self._open_environment)
+        self.environment_button = QPushButton("检测详情")
+        self.environment_button.clicked.connect(self.show_detection)
         actions.addWidget(self.refresh_button)
         actions.addWidget(self.environment_button)
         actions.addStretch()
@@ -184,8 +184,6 @@ class PluginsPage(QWidget):
             or (tr("退出 Calc 后停止显示；下次启动时恢复已保存设置。") if allowed else
                 tr("当前模式不支持插件；请切换到中风险或开发模式。"))
         )
-        self.environment_button.setText(
-            tr("检测与部署") if allowed else tr("工作模式设置"))
         if result is not None and self._refresh_pending:
             self._refresh_pending = False
             self.refresh_button.setText(tr("刷新状态"))
@@ -198,10 +196,6 @@ class PluginsPage(QWidget):
         self.refresh_button.setText(tr("正在刷新…"))
         self.refresh_button.setEnabled(False)
         self.request_apply()
-
-    def _open_environment(self) -> None:
-        target = "deployment" if self.service.policy.allowed("native_load") else "mode"
-        self.open_settings(target)
 
     def _update(self, **changes):
         projected_hp = changes.get("hp", self.service.settings.hp)
