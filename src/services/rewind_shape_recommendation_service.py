@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 from src.domain.rewind_shape_recommendation import (
     RewindPlan,
     RewindPricingRule,
@@ -83,28 +83,28 @@ class RewindShapeRecommendationService:
     def save_preferences(self, value: dict[str, object], *,
                          expected_slots: tuple[RewindSlotReference, ...] = (), static_identity=None) -> None:
         if expected_slots and static_identity != self.static_identity():
-            raise ValueError("计算使用的静态资料已变化，请关闭并重新打开倒带推荐后生成。")
+            raise ValueError(tr("计算使用的静态资料已变化，请关闭并重新打开倒带推荐后生成。"))
         with self._user_dao_factory(self._user_database_path) as user_dao:
             if "slot_selection_version" in value:
                 version = value["slot_selection_version"]
                 if type(version) is not int or version not in {1, 2}:
-                    raise ValueError("槽位偏好版本或格式无效")
+                    raise ValueError(tr("槽位偏好版本或格式无效"))
                 if version == 1:
                     maps = {"legacy": value.get("selected_slots")}
                 else:
                     maps = value.get("selected_slots_by_strategy")
                     if not isinstance(maps, dict) or set(maps) != {"balanced", "focused"}:
-                        raise ValueError("槽位偏好版本或格式无效")
+                        raise ValueError(tr("槽位偏好版本或格式无效"))
                 for selected in maps.values():
                     if not isinstance(selected, dict):
-                        raise ValueError("槽位偏好版本或格式无效")
+                        raise ValueError(tr("槽位偏好版本或格式无效"))
                     for key, slot_id in selected.items():
                         identifier = positive_id(key)
                         if identifier is None or (slot_id is not None and (type(slot_id) is not int or slot_id <= 0)):
-                            raise ValueError("槽位偏好身份无效")
+                            raise ValueError(tr("槽位偏好身份无效"))
                         slot = user_dao.get_loadout_slot(slot_id) if slot_id is not None else None
                         if slot is not None and slot["character_id"] != identifier:
-                            raise ValueError("槽位不属于所选角色")
+                            raise ValueError(tr("槽位不属于所选角色"))
             if expected_slots:
                 user_dao.replace_application_setting_copy("rewind_recommendation", value,
                     expected_loadout_plans=tuple({"character_id": ref.character_id, "slot_id": ref.slot_id,
@@ -179,7 +179,7 @@ class RewindShapeRecommendationService:
         ]
         checkpoint()
         if identity != self.static_identity():
-            raise ValueError("静态资料已变化，请关闭并重新打开倒带推荐。")
+            raise ValueError(tr("静态资料已变化，请关闭并重新打开倒带推荐。"))
         return tuple(sorted(
             roles, key=lambda role: (role_name_sort_key(role.name), role.character_id),
         ))
@@ -216,12 +216,12 @@ class RewindShapeRecommendationService:
         if strategy == "focused" and primary_character_id is not None:
             selected_ids.add(primary_character_id)
         if not selected_ids:
-            raise ValueError("请先选择参与本次策略的角色，再生成推荐。")
+            raise ValueError(tr("请先选择参与本次策略的角色，再生成推荐。"))
         if any(type(value) is not int or value <= 0 for value in selected_ids):
-            raise ValueError("角色选择资料无效，请重新选择。")
+            raise ValueError(tr("角色选择资料无效，请重新选择。"))
         target_label = _target_label(target_grade, target_custom_percent)
         if not self._user_database_path.is_file():
-            raise ValueError("尚无保存方案，请先计算并保存。")
+            raise ValueError(tr("尚无保存方案，请先计算并保存。"))
         checkpoint()
         identity = self.static_identity()
         with self._static_dao_factory(self._static_database_path) as static_dao, self._user_dao_factory(self._user_database_path) as dao:
@@ -236,7 +236,7 @@ class RewindShapeRecommendationService:
                 snapshot_id = dao.current_inventory_snapshot_id()
                 summary = dao.inventory_snapshot_summary(snapshot_id) if snapshot_id is not None else None
                 if not snapshot_complete(summary):
-                    raise ValueError("当前库存资料不完整，请先同步背包再生成推荐。")
+                    raise ValueError(tr("当前库存资料不完整，请先同步背包再生成推荐。"))
                 snapshot_source = str(summary.get("source") or "")
                 owned_shape_counts = Counter()
                 for item in dao.list_inventory_items(snapshot_id, kind="module"):
@@ -246,26 +246,26 @@ class RewindShapeRecommendationService:
                 references = {}
                 for ref in selected_slots:
                     if not isinstance(ref, RewindSlotReference) or positive_id(ref.character_id) is None:
-                        raise ValueError("槽位选择资料无效，请重新选择。")
+                        raise ValueError(tr("槽位选择资料无效，请重新选择。"))
                     if ref.character_id in references:
-                        raise ValueError("同一角色只可选择一个配装槽位。")
+                        raise ValueError(tr("同一角色只可选择一个配装槽位。"))
                     references[ref.character_id] = ref
                 reader, validated, problems = RewindLoadoutReader(dao, shape_rows), [], []
                 for identifier in sorted(selected_ids):
                     checkpoint()
                     name, ref = role_names.get(identifier, str(identifier)), references.get(identifier)
                     if ref is None:
-                        problems.append(f"{name} 尚未选择配装槽位，请先选择。")
+                        problems.append(tr("{name} 尚未选择配装槽位，请先选择。", name=display_term(name)))
                         continue
                     slot = dao.get_loadout_slot(ref.slot_id) if positive_id(ref.slot_id) else None
                     plan = (slot or {}).get("current_plan") or {}
                     if (slot is None or slot.get("is_archived") or int(slot["character_id"]) != identifier
                             or plan.get("plan_id") != ref.plan_id):
-                        problems.append(f"{name} 的所选配装已变化，请关闭并重新打开倒带推荐后选择。")
+                        problems.append(tr("{name} 的所选配装已变化，请关闭并重新打开倒带推荐后选择。", name=display_term(name)))
                         continue
                     row = reader.inspect(slot)
                     if row.state != "ready":
-                        problems.append(f"{name} 的“{row.slot_name}”槽位{row.reason}")
+                        problems.append(tr("{name} 的“{slot}”槽位{reason}", name=display_term(name), slot=row.slot_name, reason=tr(row.reason)))
                     else:
                         validated.append(row)
                 if problems:
@@ -335,13 +335,13 @@ class RewindShapeRecommendationService:
 
     def validate_selection(self, references, static_identity):
         if static_identity != self.static_identity():
-            raise ValueError("计算使用的静态资料已变化，请关闭并重新打开倒带推荐后生成。")
+            raise ValueError(tr("计算使用的静态资料已变化，请关闭并重新打开倒带推荐后生成。"))
         with self._user_dao_factory(self._user_database_path) as dao, dao.read_consistent_state():
             for ref in references:
                 slot = dao.get_loadout_slot(ref.slot_id)
                 if (slot is None or slot.get("is_archived") or slot["character_id"] != ref.character_id
                         or ((slot.get("current_plan") or {}).get("plan_id")) != ref.plan_id):
-                    raise ValueError("所选配装已变化，请关闭并重新打开倒带推荐后生成。")
+                    raise ValueError(tr("所选配装已变化，请关闭并重新打开倒带推荐后生成。"))
 
 
 def _target_label(target_grade: str, target_custom_percent: float | None) -> str:

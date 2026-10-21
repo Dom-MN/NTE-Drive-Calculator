@@ -4528,5 +4528,21 @@
   "角色存档": "Character archive",
   "已知 {known} · 未完整": "Known {known} · incomplete",
   "记录摘要异常，仍可勾选删除": "Record summary is invalid; it can still be ticked and deleted",
-  "请查看详情或删除": "See the details or delete it"
+  "请查看详情或删除": "See the details or delete it",
+  "计算使用的静态资料已变化，请关闭并重新打开倒带推荐后生成。": "The static data used for the calculation changed; close and reopen the rewind recommendation, then generate again.",
+  "槽位偏好版本或格式无效": "The slot preference version or format is invalid",
+  "槽位偏好身份无效": "The slot preference identity is invalid",
+  "槽位不属于所选角色": "The slot does not belong to the selected character",
+  "静态资料已变化，请关闭并重新打开倒带推荐。": "The static data changed; close and reopen the rewind recommendation.",
+  "请先选择参与本次策略的角色，再生成推荐。": "Choose the characters for this strategy first, then generate the recommendation.",
+  "角色选择资料无效，请重新选择。": "The character selection is invalid; choose again.",
+  "尚无保存方案，请先计算并保存。": "No saved plan yet; calculate and save one first.",
+  "当前库存资料不完整，请先同步背包再生成推荐。": "The current inventory data is incomplete; sync the inventory before generating a recommendation.",
+  "槽位选择资料无效，请重新选择。": "The slot selection is invalid; choose again.",
+  "同一角色只可选择一个配装槽位。": "Only one loadout slot can be chosen per character.",
+  "所选配装已变化，请关闭并重新打开倒带推荐后生成。": "The selected loadout changed; close and reopen the rewind recommendation, then generate again.",
+  "{name} 尚未选择配装槽位，请先选择。": "{name} has no loadout slot chosen; choose one first.",
+  "{name} 的所选配装已变化，请关闭并重新打开倒带推荐后选择。": "{name}'s selected loadout changed; close and reopen the rewind recommendation, then choose again.",
+  "{name} 的“{slot}”槽位{reason}": "{name}'s \"{slot}\" slot: {reason}",
+  "配装资料不足，请重新计算并保存。": "Not enough loadout data; recalculate and save."
 }

@@ -41,7 +41,7 @@ class RewindExecutionUiMixin:
             try:
                 self._service.validate_selection(analysis.selected_slots, analysis.static_identity)
             except Exception as error:
-                QMessageBox.warning(self, tr("推荐已失效"), str(error))
+                QMessageBox.warning(self, tr("推荐已失效"), tr(str(error)))
                 self._save_plan_button.setEnabled(False)
                 return
         if not self._slots_complete():
@@ -58,7 +58,7 @@ class RewindExecutionUiMixin:
                 else:
                     saver(preferences)
             except Exception as error:
-                QMessageBox.warning(self, tr("方案未保存"), tr("原保存方案保持不变，请处理后重试。\n{error}", error=error))
+                QMessageBox.warning(self, tr("方案未保存"), tr("原保存方案保持不变，请处理后重试。\n{error}", error=tr(str(error))))
                 return
         self._saved_rewind_shape_ids = tuple(shape_ids)
         self._saved_rewind_slots = tuple(self._serialize_rewind_slots())

@@ -1,7 +1,7 @@
 # 编排倒带角色槽位草稿、账号偏好与可失效的只读任务。
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, tr
 
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
@@ -92,7 +92,7 @@ class RewindSelectionUiMixin:
         counts = self._service.load_owned_shape_counts()
         checkpoint()
         if identity != self._service.static_identity():
-            raise ValueError("静态资料已变化，请关闭并重新打开倒带推荐。")
+            raise ValueError(tr("静态资料已变化，请关闭并重新打开倒带推荐。"))
         return RewindUiCatalog(roles, counts)
 
     def _on_roles_loaded(self, result):
@@ -195,7 +195,7 @@ class RewindSelectionUiMixin:
             self._saved_slot_ids_by_strategy = saved_ids
             return True
         except Exception as error:
-            QMessageBox.warning(self, tr("偏好未保存"), tr("本次选择仅在当前窗口生效，请稍后重试保存。\n{error}", error=error))
+            QMessageBox.warning(self, tr("偏好未保存"), tr("本次选择仅在当前窗口生效，请稍后重试保存。\n{error}", error=tr(str(error))))
             return False
 
     def _slot_preferences(self, strategy):
@@ -233,12 +233,12 @@ class RewindSelectionUiMixin:
     def _role_summary(self, character_ids, empty_text, *, full=False):
         names = []
         for identifier in sorted(character_ids):
-            names.append(self._role_names.get(identifier, str(identifier)))
+            names.append(display_term(self._role_names.get(identifier, str(identifier))))
         if not names:
             return empty_text
         if full or len(names) <= 3:
-            return "、".join(names)
-        return "、".join(names[:3]) + f" 等 {len(names)} 名"
+            return tr("、").join(names)
+        return tr("{shown} 等 {count} 名", shown=tr("、").join(names[:3]), count=len(names))
 
     def _refresh_analysis(self):
         try:
@@ -309,5 +309,5 @@ class RewindSelectionUiMixin:
         self._generate_button.setEnabled(True)
         self._generate_button.setText(tr("重新生成"))
         self._save_plan_button.setEnabled(False)
-        QMessageBox.warning(self, tr("生成推荐"), message)
+        QMessageBox.warning(self, tr("生成推荐"), tr(message))
         self._render_message(tr("未生成推荐"), message)
