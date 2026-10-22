@@ -340,4 +340,4 @@ def cleanup_manual_native_plugin(
         raise EquipmentPluginDeploymentError(tr('无法清理游戏目录原生组件，请保持游戏关闭并重试。')) from error
     if probe():
         return NativePluginCleanupResult('waiting_game_exit', tr('组件文件已清理，游戏仍需退出以结束已加载会话。'))
-    return NativePluginCleanupResult('cleaned', '已按固定文件名清理游戏目录原生组件。')
+    return NativePluginCleanupResult('cleaned', tr('已按固定文件名清理游戏目录原生组件。'))

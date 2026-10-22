@@ -391,6 +391,9 @@ class RoleSelector(RoleSelectorPreferencesMixin, QWidget):
         layout.addWidget(self._role_avatar(name, 36))
 
         name_label = QLabel(display_term(name))
+        # English names run longer than the Chinese the card was sized for: wrap rather than clip.
+        name_label.setWordWrap(True)
+        name_label.setToolTip(display_term(name))
         name_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         name_label.setStyleSheet(
             themed_style(

@@ -1,4 +1,5 @@
 # 为优先级头像和角色名提供点击移除与长按拖拽的统一入口。
+from src.i18n import display_term
 from PySide6.QtCore import QMimeData, QTimer, Qt
 from PySide6.QtGui import QDrag, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton
@@ -10,7 +11,7 @@ class PriorityRoleButton(QPushButton):
         self.selector, self.role, self.index = selector, role, index
         self._drag_start_pos = None
         self._dragging = False
-        self.setAccessibleName(role)
+        self.setAccessibleName(display_term(role))
         self.setAcceptDrops(True)
         self.setCursor(Qt.OpenHandCursor)
         body = QHBoxLayout(self)
@@ -18,7 +19,7 @@ class PriorityRoleButton(QPushButton):
         body.setSpacing(5)
         avatar.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         body.addWidget(avatar)
-        name = QLabel(role, self)
+        name = QLabel(display_term(role), self)
         name.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         name.setStyleSheet("background:transparent;border:none;padding:0;font-weight:700;font-size:13px")
         body.addWidget(name, 1)

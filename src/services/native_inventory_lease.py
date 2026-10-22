@@ -44,8 +44,10 @@ class NativeInventoryLease:
     @property
     def maintenance_description(self):
         if self._write_outcome_unknown:
-            return f'{self._write_operation}的执行结果未确认，请先核对游戏中的实际状态；本次不更新插件，也不重发操作。'
-        return f'{self._write_operation}正在执行或等待结果确认，请等待该功能结束，再更新插件。'
+            return tr('{operation}的执行结果未确认，请先核对游戏中的实际状态；本次不更新插件，也不重发操作。',
+                      operation=tr(self._write_operation))
+        return tr('{operation}正在执行或等待结果确认，请等待该功能结束，再更新插件。',
+                  operation=tr(self._write_operation))
 
     @property
     def snapshot_ready(self):

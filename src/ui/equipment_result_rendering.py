@@ -94,7 +94,7 @@ def _render_results(self, plan):
         it = self.result_content_layout.takeAt(0)
         if it.widget():
             it.widget().deleteLater()
-    mode_labels = {"role_priority": tr("角色优先"), "update_mode": "锁定更新"}
+    mode_labels = {"role_priority": tr("角色优先"), "update_mode": tr("锁定更新")}
     mode_name = mode_labels.get(getattr(self, "_pending_strat", ""), "")
     plan_diffs = getattr(self, "allocation_plan_diff", {}) or {}
     if locked_roles:

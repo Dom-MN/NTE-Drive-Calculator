@@ -134,7 +134,7 @@ def postcheck_and_repair(
             if any(row.get("full_snapshot_verification_error") for row in pending):
                 output["snapshot_wait_failure"] = {
                     "attempt": attempt, "kind": "snapshot_error",
-                    "error": "完整背包复核字段不完整，已停止后续装配请求。",
+                    "error": tr("完整背包复核字段不完整，已停止后续装配请求。"),
                 }
                 return output
             if not pending:
@@ -475,7 +475,7 @@ def dispatch_retry_attempt(
                 if check_cancelled is not None:
                     check_cancelled()
                 user_dao.mark_equipment_apply_job_item(row["job_item_id"], status="failed", verified=False,
-                    error=f"第 {attempt} 次装配请求失败：{exc}")
+                    error=tr("第 {attempt} 次装配请求失败：{error}", attempt=attempt, error=exc))
             logger.error("第 {} 次装配 [{}] 请求失败：{}", attempt, row["role_name"], exc)
             # No later role may dispatch after a repair request failed; it may
             # already have changed game state, even when no response arrived.

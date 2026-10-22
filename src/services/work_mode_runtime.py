@@ -103,11 +103,11 @@ class WorkModeRuntime:
             self._last_discovery = float("-inf")
 
     def _block_automatic_deployment(self, detail: str) -> None:
-        self._auto_error = detail + "；已停止自动重试，请核查原因后点击“检测并处理”重试。"
+        self._auto_error = detail + tr("；已停止自动重试，请核查原因后点击“检测并处理”重试。")
         try:
             self._deployment_failure.save(self._auto_error)
         except OSError:
-            self._auto_error += " 故障状态未能保存，请勿在原因处理前重启自动部署。"
+            self._auto_error += tr(" 故障状态未能保存，请勿在原因处理前重启自动部署。")
         self.cleanup_detail = self._auto_error
 
     @staticmethod
@@ -406,7 +406,7 @@ class WorkModeRuntime:
         if running is not False:
             self.cleanup_detail = (
                 tr("游戏运行中，原生组件更新等待游戏退出。") if running
-                else "未能确认游戏已退出，自动部署等待核实；请重新检测。"
+                else tr("未能确认游戏已退出，自动部署等待核实；请重新检测。")
             )
             return
         executable = self.policy.settings.game_executable
@@ -695,7 +695,7 @@ class WorkModeRuntime:
                 update_state, update_detail = CheckState.FAULT, self._auto_error
             elif not self._bundle or not self._bundle.ready:
                 update_state = CheckState.MISSING
-                update_detail = ("；".join(self._bundle.issues) if self._bundle else "") or "配套组件包尚未通过核对。"
+                update_detail = ("；".join(self._bundle.issues) if self._bundle else "") or tr("配套组件包尚未通过核对。")
             elif settings.pending_cleanup:
                 update_state = CheckState.CLEANUP_PENDING
                 update_detail = self.cleanup_detail or tr("旧组件清理尚未完成，请先完成清理。")

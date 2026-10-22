@@ -67,7 +67,7 @@ def _snapshot_waiting_message(summary, has_character_list):
         previous = tr("上次库存来源尚不支持原生角色身份")
     else:
         previous = tr("上次保存的背包仍可用于计算")
-    return f"监听已就绪，等待本次背包数据；{previous}。"
+    return tr("监听已就绪，等待本次背包数据；{previous}。", previous=previous)
 
 
 def run_inventory_sync(service: Any) -> None:

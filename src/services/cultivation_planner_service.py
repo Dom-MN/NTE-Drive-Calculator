@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
+from src.i18n import display_term, display_text, tr
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
@@ -171,7 +171,7 @@ class CultivationPlannerService:
                 dao.close()
             missing = item_ids - present
             if missing:
-                issues.append("当前资料缺少材料 ID：" + "、".join(sorted(missing)))
+                issues.append(tr("当前资料缺少材料 ID：{ids}", ids="、".join(sorted(missing))))
         if issues:
             raise ValueError("历史配置未加载；原草稿保持不变。\n" + "\n".join(issues))
 
@@ -286,9 +286,9 @@ class CultivationPlannerService:
             ] = []
             level_requirements = (*level_projection.experience_books, *level_projection.additional_costs)
             if level_requirements:
-                sections.append(("角色升级", level_requirements, None))
+                sections.append((tr("角色升级"), level_requirements, None))
             if breakthrough_requirements:
-                sections.append(("角色突破", breakthrough_requirements, None))
+                sections.append((tr("角色突破"), breakthrough_requirements, None))
             gaps = list(level_projection.gaps)
             by_skill = {skill.skill_id: skill for skill in detail.skills}
             for target in (request.skills if request.include_skills else ()):
@@ -540,11 +540,12 @@ class CultivationPlannerService:
         )
         if projection.required_experience:
             sections.append((
-                f"弧盘 · {detail.summary.name_zh} · 升级",
+                tr("弧盘 · {name} · 升级", name=_fork_display_name(detail)),
                 upgrade_requirements,
-                (
-                    f"升级经验 {projection.required_experience:,}；"
-                    f"材料溢出经验 {projection.experience_overflow:,}。"
+                tr(
+                    "升级经验 {required}；材料溢出经验 {overflow}。",
+                    required=f"{projection.required_experience:,}",
+                    overflow=f"{projection.experience_overflow:,}",
                 ),
             ))
         breakthrough_requirements = (
@@ -553,7 +554,7 @@ class CultivationPlannerService:
         )
         if breakthrough_requirements:
             sections.append((
-                f"弧盘 · {detail.summary.name_zh} · 突破",
+                tr("弧盘 · {name} · 突破", name=_fork_display_name(detail)),
                 breakthrough_requirements,
                 None,
             ))
@@ -705,6 +706,12 @@ def _integer_in_range(value: object, minimum: int, maximum: int, fallback: int) 
 
 def _skill_maximum_level(skill: CharacterSkill) -> int:
     return min(10, max(level.level for level in skill.levels) + 1)
+
+
+def _fork_display_name(detail) -> str:
+    """The Arc's official name: its ST_Fork key first, the glossary for older data."""
+    summary = detail.summary
+    return display_text("ST_Fork", f"{summary.fork_id}_name", display_term(summary.name_zh))
 
 
 def _skill_category(skill: CharacterSkill) -> str:
