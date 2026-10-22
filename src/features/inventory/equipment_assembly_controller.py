@@ -65,7 +65,7 @@ def _equipment_failure_details(
     if failure_kind == "cancelled":
         return tr("已停止后续装配，已经下发的操作不会回滚；请核对游戏内实际装备。")
     if failure_kind == "plugin_unavailable":
-        return f"原生装备通道不可用：{message}。请在工作模式检测详情中核对当前原生组件连接与装备能力。"
+        return tr("原生装备通道不可用：{message}。请在工作模式检测详情中核对当前原生组件连接与装备能力。", message=message)
     if failure_kind == "plugin_busy":
         return tr("装备执行仍繁忙或正在等待同步就绪，本次请求尚未派发；已完成的步骤不会回滚。")
     if failure_kind == "outcome_unknown":
@@ -132,10 +132,10 @@ def _show_fast_apply_identity_gaps(
         lines.append(tr("已先完成 {count} 个可获取角色实例的极速装配。", count=len(applied)))
     if missing_instances:
         lines.append(tr("以下角色尚未获取到可用的角色实例 UID，未执行极速装配："))
-        lines.extend(f"• {request['role_name']}" for request in missing_instances)
+        lines.extend(f"• {display_term(request['role_name'])}" for request in missing_instances)
     if ambiguous_instances:
         lines.append(tr("以下角色存在无法安全确定的角色实例 UID，未执行极速装配："))
-        lines.extend(f"• {request['role_name']}" for request in ambiguous_instances)
+        lines.extend(f"• {display_term(request['role_name'])}" for request in ambiguous_instances)
     lines.extend(
         (
             "",
@@ -171,7 +171,7 @@ def _start_nte_core_equipment_apply(
         return
     configuration = getattr(hotkey_manager, "configuration", None)
     stop_hotkey = str(getattr(configuration, "stop", "F12"))
-    stop_hint = f"关闭此窗口或按 {stop_hotkey} 停止后续装配。"
+    stop_hint = tr("关闭此窗口或按 {key} 停止后续装配。", key=stop_hotkey)
 
     # Freeze all account dependencies on the controller thread, before work starts.
     app_context = getattr(self, "app_context", None)
@@ -302,7 +302,7 @@ def _start_nte_core_equipment_apply(
         requests = report.get("identity_requests") or []
         summary, role_details = build_fast_apply_completion_summary(applied)
         confirmed_count = sum(bool(row.get("verified")) and not row.get("scoped_verified") for row in applied)
-        partial_summary = f"此前已下发 {len(applied)} 个角色，其中 {confirmed_count} 个已确认"
+        partial_summary = tr("此前已下发 {count} 个角色，其中 {confirmed} 个已确认", count=len(applied), confirmed=confirmed_count)
         if report.get("failed_role"):
             error_message = str(report.get("error") or tr("未知错误"))
             failure_kind = str(report.get("failure_kind") or "apply_error")
@@ -356,7 +356,7 @@ def _start_nte_core_equipment_apply(
             return
         snapshot_failure = report.get("snapshot_wait_failure")
         if report.get("repair_errors") and not isinstance(snapshot_failure, dict):
-            details = "\n".join(f"• [{row.get('role_name', '未知角色')}]：{row.get('error', '复核不一致')}"
+            details = "\n".join(f"• [{display_term(row.get('role_name') or tr('未知角色'))}]：{tr(str(row.get('error') or '复核不一致'))}"
                                 for row in report["repair_errors"])
             QMessageBox.warning(self, tr("装配复核未通过"), tr("{summary}。\n\n{details}\n\n请同步后检查实际装备。", summary=summary, details=details))
             return

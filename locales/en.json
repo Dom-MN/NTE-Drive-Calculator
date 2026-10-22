@@ -4590,5 +4590,9 @@
   "弧盘 · {name} · 突破": "Arc · {name} · ascension",
   "升级经验 {required}；材料溢出经验 {overflow}。": "Level-up EXP {required}; material overflow EXP {overflow}.",
   "锁定更新": "Locked update",
-  "锁定更新 — 锁定所有计算配装，只用其他装备分配": "Locked update — lock every calculated loadout and allocate only the remaining equipment"
+  "锁定更新 — 锁定所有计算配装，只用其他装备分配": "Locked update — lock every calculated loadout and allocate only the remaining equipment",
+  "原生装备通道不可用：{message}。请在工作模式检测详情中核对当前原生组件连接与装备能力。": "The native equipment channel is unavailable: {message}. Check the current native component connection and equipment capability in the work-mode check detail.",
+  "关闭此窗口或按 {key} 停止后续装配。": "Close this window or press {key} to stop further assembly.",
+  "此前已下发 {count} 个角色，其中 {confirmed} 个已确认": "{count} characters were sent earlier, {confirmed} of them confirmed",
+  "复核不一致": "Verification mismatch"
 }
