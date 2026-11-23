@@ -1,0 +1,6 @@
+{
+  "name": "cipher",
+  "version": "0.4.4",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/RustCrypto/traits"
+}

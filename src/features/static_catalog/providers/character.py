@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.domain.localization.catalog import localized_text
+from src.ui.common.text_catalog import resolve_text_catalog
 from pathlib import Path
 
 from src.features.static_catalog.contracts import (
@@ -22,9 +24,9 @@ from src.features.static_catalog.providers._shared import (
     lines,
     official,
 )
-from src.services.static_catalog_character_models import CharacterDetail, CharacterSummary
-from src.services.static_catalog_character_service import StaticCatalogCharacterService
-from src.storage.sqlite.static_catalog_character_queries import (
+from src.services.static_catalog.characters.models import CharacterDetail, CharacterSummary
+from src.services.static_catalog.characters.service import StaticCatalogCharacterService
+from src.storage.sqlite.catalog.static_catalog_character_queries import (
     StaticCatalogCharacterQueries,
 )
 
@@ -40,7 +42,8 @@ CHARACTER_DOMAIN = CatalogDomain(
 class CharacterCatalogProvider:
     """Own one read-only character DAO and expose only common catalog DTOs."""
 
-    def __init__(self, database_path: str | Path) -> None:
+    def __init__(self, database_path: str | Path, *, text_catalog=None) -> None:
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self._database_path = Path(database_path).resolve()
         self._queries = StaticCatalogCharacterQueries(self._database_path)
         self._service = StaticCatalogCharacterService(self._queries)
@@ -67,7 +70,7 @@ class CharacterCatalogProvider:
         page = self._service.list_characters(query=query, offset=offset, limit=limit)
         self._ensure_dataset(release, page.dataset)
         return CatalogPage(
-            items=tuple(self._item(item) for item in page.items),
+            items=tuple(self._item(item, text_catalog=getattr(self, 'text_catalog', None)) for item in page.items),
             total=page.total,
             offset=page.offset,
             limit=page.limit,
@@ -88,14 +91,14 @@ class CharacterCatalogProvider:
         growth = self._service.list_growth(character_id, limit=200)
         combat = self._service.list_combat_links(character_id, limit=500)
         sections = [
-            self._identity(detail),
-            self._availability(detail),
+            self._identity(detail, text_catalog=getattr(self, 'text_catalog', None)),
+            self._availability(detail, text_catalog=getattr(self, 'text_catalog', None)),
             CatalogSection(
-                title="1–80 级面板（含临界等级突破前后）",
+                title=resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.detail.caption'),
                 fields=tuple(
                     official(
-                        f"Lv.{point.level} · 阶段 {point.breakthrough_stage} · {point.state}",
-                        f"生命 {point.hp_base:g} / 攻击 {point.atk_base:g} / 防御 {point.def_base:g}",
+                        localized_text(getattr(self, 'text_catalog', None), 'auto.features.static_catalog.providers.character.detail.f5a48096e', 'Lv.{level} · 阶段 {breakthrough_stage} · {state}', level=f'{point.level}', breakthrough_stage=f'{point.breakthrough_stage}', state=f'{point.state}'),
+                        localized_text(getattr(self, 'text_catalog', None), 'auto.features.static_catalog.providers.character.detail.f9a27ce1e', '生命 {hp_base} / 攻击 {atk_base} / 防御 {def_base}', hp_base=f'{point.hp_base:g}', atk_base=f'{point.atk_base:g}', def_base=f'{point.def_base:g}'),
                     )
                     for point in growth.items
                 ) or (derived("面板状态", "unavailable：该角色没有成长行"),),
@@ -104,7 +107,7 @@ class CharacterCatalogProvider:
         sections.extend(self._detail_sections(detail))
         if combat.items:
             sections.append(CatalogSection(
-                title="GA、GE 与 Buff 正式关系",
+                title=resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.detail.caption_2'),
                 fields=tuple(
                     official(
                         f"{link.relationship_kind} · {link.binding_kind}",
@@ -130,11 +133,11 @@ class CharacterCatalogProvider:
         )
 
     @staticmethod
-    def _item(summary: CharacterSummary) -> CatalogItem:
-        subtitle = (
-            f"{summary.element_label} · 技能 {summary.skill_count} · "
-            f"觉醒 {summary.awakening_count} · 成长状态 {summary.growth_count}"
-        )
+    def _item(summary: CharacterSummary, *, text_catalog=None) -> CatalogItem:
+        subtitle = localized_text(
+            text_catalog, "static_catalog.character.item.subtitle", "{element} · 技能 {skills} · 觉醒 {awakenings} · 成长状态 {growth}",
+            element=f"{summary.element_label}", skills=f"{summary.skill_count}",
+            awakenings=f"{summary.awakening_count}", growth=f"{summary.growth_count}")
         return CatalogItem(
             domain_key=CHARACTER_DOMAIN.key,
             record_id=str(summary.character_id),
@@ -153,10 +156,10 @@ class CharacterCatalogProvider:
         )
 
     @staticmethod
-    def _identity(detail: CharacterDetail) -> CatalogSection:
+    def _identity(detail: CharacterDetail, *, text_catalog=None) -> CatalogSection:
         item = detail.character
         return CatalogSection(
-            title="角色身份与目录",
+            title=resolve_text_catalog(text_catalog).render('ui.static_catalog.identity.caption'),
             fields=(
                 official("character_id", item.character_id, copyable=True),
                 official("中文名", item.name_zh),
@@ -172,9 +175,9 @@ class CharacterCatalogProvider:
         )
 
     @staticmethod
-    def _availability(detail: CharacterDetail) -> CatalogSection:
+    def _availability(detail: CharacterDetail, *, text_catalog=None) -> CatalogSection:
         return CatalogSection(
-            title="数据可用性",
+            title=resolve_text_catalog(text_catalog).render('ui.static_catalog.availability.caption'),
             fields=(
                 derived("成长状态数", detail.growth_count),
                 derived("战斗关系数", detail.combat_link_count),
@@ -187,7 +190,7 @@ class CharacterCatalogProvider:
         if detail.likeability is not None:
             likeability = detail.likeability
             sections.append(CatalogSection(
-                title=f"好感度 {likeability.required_level} 级加成",
+                title=resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.detail_sections.caption', required_level=f'{likeability.required_level}'),
                 fields=(
                     official("modify_data_id", likeability.modify_data_id, copyable=True),
                     *(official(
@@ -198,7 +201,7 @@ class CharacterCatalogProvider:
             ))
         for awakening in detail.awakenings:
             sections.append(CatalogSection(
-                title=f"觉醒 {awakening.ordinal} · {awakening.title_zh or awakening.effect_id}",
+                title=resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.detail_sections.caption_2', ordinal=f'{awakening.ordinal}', value=f'{awakening.title_zh or awakening.effect_id}'),
                 fields=(
                     official("effect_id", awakening.effect_id, copyable=True),
                     official("类型", awakening.awaken_type),
@@ -216,7 +219,7 @@ class CharacterCatalogProvider:
             ))
         for skill in detail.skills:
             sections.append(CatalogSection(
-                title=f"技能 · {skill.name_zh or skill.skill_id}",
+                title=resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.detail_sections.caption_3', value=f'{skill.name_zh or skill.skill_id}'),
                 fields=(
                     official("skill_id", skill.skill_id, copyable=True),
                     official("类型 / 序号", f"{skill.ability_type} / {skill.ability_index}"),
@@ -226,8 +229,7 @@ class CharacterCatalogProvider:
                     official(
                         "等级、解锁与消耗",
                         lines([
-                            f"Lv.{level.level} · 突破 {level.required_breakthrough_stage} · "
-                            f"觉醒 {level.required_awaken_level} · "
+                            localized_text(getattr(self, 'text_catalog', None), 'auto.features.static_catalog.providers.character.detail_sections.fd3c5cba2', 'Lv.{level} · 突破 {required_breakthrough_stage} · 觉醒 {required_awaken_level} · ', level=f'{level.level}', required_breakthrough_stage=f'{level.required_breakthrough_stage}', required_awaken_level=f'{level.required_awaken_level}')
                             + (", ".join(
                                 f"{cost.item_id} × {cost.quantity:g}" for cost in level.costs
                             ) or "无材料")
@@ -258,7 +260,7 @@ class CharacterCatalogProvider:
                 for fork_id, _name, _description in guide.fork_recommendations
             )
             sections.append(CatalogSection(
-                title="养成指南",
+                title=resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.detail_sections.caption_4'),
                 fields=(
                     official("评分阈值", f"S {guide.s_score:g} / A {guide.a_score:g}"),
                     official("推荐属性", lines([f"{name} ({property_id})" for property_id, name in guide.attribute_recommendations])),
@@ -266,8 +268,7 @@ class CharacterCatalogProvider:
                     official(
                         "阶段路线",
                         lines([
-                            f"阶段 {row.ordinal}：角色 {row.character_level} / 弧盘 {row.fork_level} / "
-                            f"空幕 {row.core_item_id} Lv.{row.core_level} / 驱动 Lv.{row.equipment_level} / "
+                            localized_text(getattr(self, 'text_catalog', None), 'auto.features.static_catalog.providers.character.detail_sections.fa5232090', '阶段 {ordinal}：角色 {character_level} / 弧盘 {fork_level} / 空幕 {core_item_id} Lv.{core_level} / 驱动 Lv.{equipment_level} / ', ordinal=f'{row.ordinal}', character_level=f'{row.character_level}', fork_level=f'{row.fork_level}', core_item_id=f'{row.core_item_id}', core_level=f'{row.core_level}', equipment_level=f'{row.equipment_level}')
                             + "技能："
                             + (
                                 ", ".join(
@@ -290,7 +291,7 @@ class CharacterCatalogProvider:
                 if graduation.fork_id else ()
             )
             sections.append(CatalogSection(
-                title="毕业模板（项目派生）",
+                title=resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.detail_sections.caption_5'),
                 fields=(
                     annotation("来源类型", graduation.source_kind),
                     annotation("弧盘", f"{graduation.fork_name_zh or '未保留'} ({graduation.fork_id or '无'})"),

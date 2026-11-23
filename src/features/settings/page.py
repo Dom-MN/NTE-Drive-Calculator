@@ -1,29 +1,20 @@
 # 构建设置页的日志、热键、更新和文件管理区域。
-"""Settings page builder.
-
-The settings page shows hotkeys, updates, screenshot management, and quick-access
-folders. MainWindow still owns all callbacks.
-"""
+"""构造设置控件并接入窗口及注入 Controller 的显式动作；业务由对应 owner 执行。"""
 
 from __future__ import annotations
+from html import escape
 
-from src.i18n import (
-    DEFAULT_LANGUAGE,
-    LANGUAGE_LABELS,
-    available_languages,
-    tr,
-)
-
+from src.ui.common.enum_text import ui_enum_text
+from src.ui.common.text_catalog import rich_label, plain_label, plain_tooltip, resolve_text_catalog
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSignalBlocker
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QPushButton,
     QRadioButton,
@@ -35,23 +26,25 @@ from PySide6.QtWidgets import (
 )
 
 from src.features.settings.work_mode_card import build_work_mode_card
-from src.features.settings.performance_card import PerformanceCard
+from src.features.settings.language.widget import LanguageSettingsWidget
+from src.services.preferences.language_settings_service import LanguageSettingsService
+from src.features.settings.performance.card import PerformanceCard
 from src.app.constants import NETDISK_DOWNLOAD_LINKS
 from src.app.context import AppContext
 from src.app.theme import THEME_LABELS, themed_style
-from src.ui.widgets import NoWheelComboBox
+from src.ui.common.widgets import NoWheelComboBox
 
 
 def _normalize_netdisk_links(netdisk_links=None):
     if netdisk_links is None:
         return tuple(NETDISK_DOWNLOAD_LINKS)
     if isinstance(netdisk_links, str):
-        return ((tr("夸克网盘"), netdisk_links),) if netdisk_links else tuple()
+        return (("夸克网盘", netdisk_links),) if netdisk_links else tuple()
     return tuple((str(name), str(url)) for name, url in netdisk_links if name and url)
 
 
 def refresh_account_scoped_settings(window) -> None:
-    """Refresh already-built settings controls after an account switch."""
+    """账号切换后只刷新既有控件，屏蔽回填信号以免触发再次保存。"""
 
     preferences = getattr(window, "_ui_preferences", {}) or {}
     for editor_name, value_name in (
@@ -117,8 +110,9 @@ def _settings_paths(context: AppContext) -> SettingsPaths:
 
 
 def _build_capture_diagnostics_card(window):
-    card = window._card(tr("采集排错"))
-    description = QLabel(tr("仅用于采集排错；设置将在下次连接或同步时生效。"))
+    _ui_text = resolve_text_catalog(getattr(window, 'text_catalog', None)).render
+    card = window._card(_ui_text('settings.page.build_capture_diagnostics_card.card'))
+    description = plain_label(_ui_text('settings.page.build_capture_diagnostics_card.description'))
     description.setWordWrap(True)
     description.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
     card.layout().addWidget(description)
@@ -128,9 +122,9 @@ def _build_capture_diagnostics_card(window):
     settings_reader = getattr(window, "_get_sync_settings", None)
     settings = settings_reader() if callable(settings_reader) else {}
     if not settings:
-        raise RuntimeError(tr("无法读取静态数据库中的设置默认值。"))
+        raise RuntimeError("无法读取静态数据库中的设置默认值。")
     window._sync_capture_device_edit = QLineEdit()
-    window._sync_capture_device_edit.setPlaceholderText(tr("仅在自动选择网卡失败时填写"))
+    window._sync_capture_device_edit.setPlaceholderText(_ui_text('settings.page.build_capture_diagnostics_card.sync_capture_device_edit.placeholder'))
     window._sync_capture_device_edit.setText(settings.get("capture_device_id") or "")
 
     def resize_capture_device_edit(text: str) -> None:
@@ -142,7 +136,7 @@ def _build_capture_diagnostics_card(window):
 
     resize_capture_device_edit(window._sync_capture_device_edit.text())
     window._sync_capture_device_edit.textChanged.connect(resize_capture_device_edit)
-    form.addRow(tr("抓取网卡:"), window._sync_capture_device_edit)
+    form.addRow(_ui_text('settings.page.build_capture_diagnostics_card.form'), window._sync_capture_device_edit)
     save_handler = getattr(window, "_save_capture_diagnostics", None)
 
     def save_capture_diagnostics() -> None:
@@ -154,16 +148,16 @@ def _build_capture_diagnostics_card(window):
 
     window._sync_capture_device_edit.editingFinished.connect(save_capture_diagnostics)
 
-    window._sync_raw_capture_toggle = QCheckBox(tr("保存原始采集数据（排错）"))
+    window._sync_raw_capture_toggle = QCheckBox(_ui_text('settings.page.build_capture_diagnostics_card.sync_raw_capture_toggle'))
     window._sync_raw_capture_toggle.setChecked(
         bool(settings["raw_capture_enabled"])
     )
     window._sync_raw_capture_toggle.setToolTip(
-        tr("排错时开启；数据保存在当前账号日志目录并自动轮换，可能占用较多磁盘空间。")
+        plain_tooltip(_ui_text('settings.page.build_capture_diagnostics_card.sync_raw_capture_toggle.hint'))
     )
     raw_capture_row = QHBoxLayout()
     raw_capture_row.addWidget(window._sync_raw_capture_toggle)
-    raw_capture_open_button = QPushButton(tr("打开原始数据目录"))
+    raw_capture_open_button = QPushButton(_ui_text('settings.page.build_capture_diagnostics_card.raw_capture_open_button'))
     window._sync_raw_capture_open_button = raw_capture_open_button
     raw_capture_open_handler = getattr(window, "_open_raw_capture_directory", None)
     if callable(raw_capture_open_handler):
@@ -178,45 +172,46 @@ def _build_capture_diagnostics_card(window):
             save_capture_diagnostics()
 
     window._sync_raw_capture_toggle.clicked.connect(save_raw_capture_diagnostics)
-    form.addRow(tr("采集排错:"), raw_capture_row)
-    performance_link = QCheckBox(tr("同时记录性能"))
-    performance_link.setToolTip(tr("排错开启时保存服务耗时到账号日志目录；不额外启动同步、战报或 HUD。"))
+    form.addRow(_ui_text('settings.page.build_capture_diagnostics_card.form_2'), raw_capture_row)
+    performance_link = QCheckBox(_ui_text('settings.page.build_capture_diagnostics_card.performance_link'))
+    performance_link.setToolTip(plain_tooltip(_ui_text('settings.page.build_capture_diagnostics_card.performance_link.hint')))
     performance_link.clicked.connect(window.performance_controller.set_linked)
     def refresh_performance_link():
         performance_link.setChecked(window.performance_controller.snapshot()["linked"])
     window.performance_controller.changed.connect(refresh_performance_link)
     refresh_performance_link()
-    form.addRow(tr("性能日志:"), performance_link)
+    form.addRow(_ui_text('settings.page.build_capture_diagnostics_card.form_3'), performance_link)
     card.layout().addLayout(form)
     return card
 
 
 def _build_environment_card(window):
-    card = window._card(tr("环境配置"))
+    _ui_text = resolve_text_catalog(getattr(window, 'text_catalog', None)).render
+    card = window._card(_ui_text('settings.page.build_environment_card.card'))
     window._environment_configuration_card = card
-    npcap_title = QLabel(tr("Npcap · 背包同步、基础战报"))
+    npcap_title = plain_label(_ui_text('settings.page.build_environment_card.npcap_title'))
     npcap_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(npcap_title)
     npcap_row = QHBoxLayout()
-    npcap_install_button = QPushButton(tr("下载 Npcap 1.88"))
+    npcap_install_button = QPushButton(_ui_text('settings.page.build_environment_card.npcap_install_button'))
     window._npcap_install_button = npcap_install_button
     npcap_install_button.clicked.connect(window._open_npcap_download)
     npcap_row.addWidget(npcap_install_button)
-    npcap_status_button = QPushButton(tr("检测 Npcap 状态"))
+    npcap_status_button = QPushButton(_ui_text('settings.page.build_environment_card.npcap_status_button'))
     npcap_status_button.clicked.connect(window._show_npcap_status)
     npcap_row.addWidget(npcap_status_button)
-    window._nte_core_diagnostic_button = QPushButton(tr("诊断 nte-core"))
+    window._nte_core_diagnostic_button = QPushButton(_ui_text('settings.page.build_environment_card.nte_core_diagnostic_button'))
     window._nte_core_diagnostic_button.clicked.connect(window._diagnose_nte_core)
     npcap_row.addWidget(window._nte_core_diagnostic_button)
     npcap_row.addStretch()
     card.layout().addLayout(npcap_row)
 
-    equipment_title = QLabel(tr("游戏内组件 · 极速装配、弃置锁定、插件、功能强化"))
+    equipment_title = plain_label(_ui_text('settings.page.build_environment_card.equipment_title'))
     equipment_title.setStyleSheet(themed_style("font-weight:700;font-size:14px"))
     card.layout().addWidget(equipment_title)
-    equipment_description = QLabel(
-        tr("<span style='color:#d29922'><b>风险提示：</b>组件会加载到游戏中，"
-        "可能触发游戏保护或兼容问题。</span>")
+    equipment_description = rich_label(
+        f"<span style='color:#d29922'><b>{escape(_ui_text('ui.settings.component_risk_prefix'))}</b>"
+        f"{escape(_ui_text('ui.settings.component_risk_body'))}</span>"
     )
     equipment_description.setTextFormat(Qt.RichText)
     equipment_description.setWordWrap(True)
@@ -227,10 +222,10 @@ def _build_environment_card(window):
     form = QFormLayout()
     window._equipment_plugin_loading_method_combo = NoWheelComboBox()
     window._equipment_plugin_loading_method_combo.addItem(
-        tr("D3D 采集代理"), "native-capture"
+        resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.settings.build_environment_card.equipment_plugin_loading_method_combo'), "native-capture"
     )
     window._equipment_plugin_loading_method_combo.addItem(
-        tr("原生 Loader（备用）"), "loader"
+        resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.settings.build_environment_card.equipment_plugin_loading_method_combo_2'), "loader"
     )
     loading_method = str(
         window.work_mode_service.deployment_record.get("loading_method")
@@ -248,36 +243,39 @@ def _build_environment_card(window):
     )
     loading_row = QHBoxLayout()
     loading_row.addWidget(window._equipment_plugin_loading_method_combo)
-    loading_hint = QLabel(tr("若不可用，请选择备用加载方式"))
+    loading_hint = plain_label(_ui_text('settings.page.build_environment_card.loading_hint'))
     loading_hint.setWordWrap(True)
     loading_hint.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
     loading_row.addWidget(loading_hint, 1)
-    form.addRow(tr("加载方式:"), loading_row)
+    form.addRow(_ui_text('settings.page.build_environment_card.form'), loading_row)
     window._equipment_plugin_game_executable_edit = QLineEdit()
     window._equipment_plugin_game_executable_edit.setPlaceholderText(
-        tr("可手动粘贴 HTGame.exe 的完整文件地址")
+        _ui_text('settings.page.build_environment_card.equipment_plugin_game_executable_edit.placeholder')
     )
     window._equipment_plugin_game_executable_edit.setText(window.work_mode_service.settings.game_executable)
-    window._equipment_plugin_game_executable_edit.editingFinished.connect(
-        lambda: window.work_mode_service.set_game_executable(window._equipment_plugin_game_executable_edit.text().strip())
-    )
-    window._equipment_plugin_game_executable_edit.textChanged.connect(
-        lambda _text: window._refresh_equipment_plugin_status()
-    )
-    game_picker = QPushButton(tr("选择 HTGame.exe"))
+    def commit_game_path():
+        # 输入完成后先保存规范化身份，再回填并检测；逐字检测会读到上一次保存的路径。
+        edit = window._equipment_plugin_game_executable_edit
+        window.work_mode_service.set_game_executable(edit.text())
+        with QSignalBlocker(edit):
+            edit.setText(window.work_mode_service.settings.game_executable)
+        window._refresh_equipment_plugin_status()
+
+    window._equipment_plugin_game_executable_edit.editingFinished.connect(commit_game_path)
+    game_picker = QPushButton(_ui_text('settings.page.build_environment_card.game_picker'))
     game_picker.clicked.connect(window._select_equipment_plugin_game_executable)
     game_row = QHBoxLayout()
     game_row.addWidget(window._equipment_plugin_game_executable_edit, 1)
     game_row.addWidget(game_picker)
-    window._equipment_plugin_detect_button = QPushButton(tr("自动检测"))
+    window._equipment_plugin_detect_button = QPushButton(_ui_text('settings.page.build_environment_card.equipment_plugin_detect_button'))
     window._equipment_plugin_detect_button.clicked.connect(
         window._detect_equipment_plugin_game_executable
     )
     game_row.addWidget(window._equipment_plugin_detect_button)
-    form.addRow(tr("游戏主程序:"), game_row)
+    form.addRow(_ui_text('settings.page.build_environment_card.form_2'), game_row)
     card.layout().addLayout(form)
 
-    window._equipment_plugin_status_label = QLabel()
+    window._equipment_plugin_status_label = plain_label()
     window._equipment_plugin_status_label.setMinimumWidth(0)
     window._equipment_plugin_status_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
     window._equipment_plugin_status_label.setTextFormat(Qt.PlainText)
@@ -288,13 +286,13 @@ def _build_environment_card(window):
     card.layout().addWidget(window._equipment_plugin_status_label)
 
     actions = QHBoxLayout()
-    window._equipment_plugin_primary_button = QPushButton(tr("部署代理 DLL"))
+    window._equipment_plugin_primary_button = QPushButton(_ui_text('settings.page.build_environment_card.equipment_plugin_primary_button'))
     window._equipment_plugin_primary_button.setObjectName("btnPrimary")
     window._equipment_plugin_primary_button.clicked.connect(
         window._activate_equipment_plugin_loading_method
     )
     actions.addWidget(window._equipment_plugin_primary_button)
-    window._equipment_plugin_stop_button = QPushButton(tr("清理游戏目录"))
+    window._equipment_plugin_stop_button = QPushButton(_ui_text('settings.page.build_environment_card.equipment_plugin_stop_button'))
     window._equipment_plugin_stop_button.setObjectName("btnDanger")
     window._equipment_plugin_stop_button.clicked.connect(
         window._deactivate_equipment_plugin_loading_method
@@ -308,42 +306,18 @@ def _build_environment_card(window):
     return card
 
 
-def build_settings_page(
-    window,
-    app_version,
-    app_context: AppContext,
-    iter_image_files,
-    netdisk_links=None,
-):
-    page = QWidget()
-    page.setObjectName("settingsPage")
-    scroll = QScrollArea()
-    scroll.setObjectName("settingsScroll")
-    scroll.setWidgetResizable(True)
-    scroll.setWidget(page)
-    window._settings_scroll = scroll
-    scroll.setStyleSheet(
-        themed_style(
-            "QScrollArea#settingsScroll{background:#0d1117;border:none}"
-            "QWidget#settingsPage{background:#0d1117}"
-        )
-    )
-    layout = QVBoxLayout(page)
-    layout.setContentsMargins(20, 16, 20, 16)
-    layout.setSpacing(16)
-
-    mode_card = build_work_mode_card(window)
-    layout.addWidget(mode_card)
-
-    log_card = window._card(tr("工具设置"))
+def build_tool_settings_card(window, language_settings: LanguageSettingsService | None = None):
+    """共用工具选项容器，语言控件与日志、主题处于同一设置卡片。"""
+    _ui_text = resolve_text_catalog(getattr(window, 'text_catalog', None)).render
+    log_card = window._card(_ui_text('settings.page.build_tool_settings_card.log_card'))
     log_row = QHBoxLayout()
-    log_row.addWidget(QLabel(tr("实时日志输出:")))
-    log_toggle = QCheckBox(tr("启用运行日志"))
+    log_row.addWidget(plain_label(_ui_text('settings.page.build_tool_settings_card.label')))
+    log_toggle = QCheckBox(_ui_text('settings.page.build_tool_settings_card.log_toggle'))
     log_toggle.setChecked(window._log_enabled)
     log_toggle.toggled.connect(window._toggle_log)
     window._log_toggle = log_toggle
     log_row.addWidget(log_toggle)
-    window._log_session_status_label = QLabel()
+    window._log_session_status_label = plain_label()
     window._log_session_status_label.setStyleSheet(
         themed_style("color:#8b949e;font-size:12px")
     )
@@ -353,9 +327,9 @@ def build_settings_page(
     window._refresh_log_session_status()
 
     protagonist_row = QHBoxLayout()
-    protagonist_row.addWidget(QLabel(tr("主角游戏名:")))
+    protagonist_row.addWidget(plain_label(_ui_text('settings.page.build_tool_settings_card.label_2')))
     window._protagonist_game_name_edit = QLineEdit()
-    window._protagonist_game_name_edit.setPlaceholderText(tr("仅自动装配需要"))
+    window._protagonist_game_name_edit.setPlaceholderText(_ui_text('settings.page.build_tool_settings_card.protagonist_game_name_edit.placeholder'))
     protagonist_name_width = (
         window._protagonist_game_name_edit.fontMetrics().horizontalAdvance("零" * 8) + 36
     )
@@ -369,8 +343,7 @@ def build_settings_page(
         if not isinstance(preferences, dict):
             return
         preferences["protagonist_game_name"] = window._protagonist_game_name_edit.text().strip()
-        # A deliberate edit is an explicit answer, so later automatic
-        # assembly should use it without asking again.
+        # 用户显式填写后，后续界面装配复用该回答；不从角色展示名猜游戏名。
         preferences["skip_protagonist_name_prompt"] = bool(
             preferences["protagonist_game_name"]
         )
@@ -382,11 +355,11 @@ def build_settings_page(
     log_card.layout().addLayout(protagonist_row)
 
     theme_row = QHBoxLayout()
-    theme_row.addWidget(QLabel(tr("主题颜色:")))
+    theme_row.addWidget(plain_label(_ui_text('settings.page.build_tool_settings_card.label_3')))
     current_theme = getattr(window, "_theme_preference", "black")
-    dark_radio = QRadioButton(tr(THEME_LABELS["dark"]))
-    black_radio = QRadioButton(tr(THEME_LABELS["black"]))
-    light_radio = QRadioButton(tr(THEME_LABELS["light"]))
+    dark_radio = QRadioButton(ui_enum_text(getattr(window, 'text_catalog', None), THEME_LABELS)["dark"])
+    black_radio = QRadioButton(ui_enum_text(getattr(window, 'text_catalog', None), THEME_LABELS)["black"])
+    light_radio = QRadioButton(ui_enum_text(getattr(window, 'text_catalog', None), THEME_LABELS)["light"])
     theme_radios = {"dark": dark_radio, "black": black_radio, "light": light_radio}
     current_radio = theme_radios.get(current_theme, theme_radios["black"])
     current_radio.setChecked(True)
@@ -408,37 +381,46 @@ def build_settings_page(
     theme_row.addWidget(light_radio)
     theme_row.addStretch()
     log_card.layout().addLayout(theme_row)
+    if language_settings is not None:
+        log_card.layout().addWidget(LanguageSettingsWidget(language_settings, log_card))
+    return log_card
 
-    language_row = QHBoxLayout()
-    language_row.addWidget(QLabel(tr("界面语言:")))
-    window._language_combo = NoWheelComboBox()
-    for code in available_languages():
-        window._language_combo.addItem(LANGUAGE_LABELS.get(code, code), code)
-    active_language = getattr(window, "_language_preference", DEFAULT_LANGUAGE)
-    window._language_combo.setCurrentIndex(
-        max(0, window._language_combo.findData(active_language))
-    )
 
-    def select_language(index: int):
-        chosen = window._language_combo.itemData(index)
-        if window._set_language_preference(chosen):
-            return
-        applied = getattr(window, "_language_preference", DEFAULT_LANGUAGE)
-        window._language_combo.blockSignals(True)
-        window._language_combo.setCurrentIndex(
-            max(0, window._language_combo.findData(applied))
+def build_settings_page(
+    window,
+    app_version,
+    app_context: AppContext,
+    iter_image_files,
+    netdisk_links=None,
+    *,
+    language_settings: LanguageSettingsService | None = None,
+):
+    _ui_text = resolve_text_catalog(getattr(window, 'text_catalog', None)).render
+    page = QWidget()
+    page.setObjectName("settingsPage")
+    scroll = QScrollArea()
+    scroll.setObjectName("settingsScroll")
+    scroll.setWidgetResizable(True)
+    scroll.setWidget(page)
+    window._settings_scroll = scroll
+    scroll.setStyleSheet(
+        themed_style(
+            "QScrollArea#settingsScroll{background:#0d1117;border:none}"
+            "QWidget#settingsPage{background:#0d1117}"
         )
-        window._language_combo.blockSignals(False)
+    )
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(20, 16, 20, 16)
+    layout.setSpacing(16)
 
-    window._language_combo.currentIndexChanged.connect(select_language)
-    language_row.addWidget(window._language_combo)
-    language_row.addStretch()
-    log_card.layout().addLayout(language_row)
-    layout.addWidget(log_card)
+    mode_card = build_work_mode_card(window)
+    layout.addWidget(mode_card)
+
+    layout.addWidget(build_tool_settings_card(window, language_settings))
 
     sync_card = _build_capture_diagnostics_card(window)
     plugin_card = _build_environment_card(window)
-    hotkey_card = window._card(tr("快捷键绑定"))
+    hotkey_card = window._card(_ui_text('settings.page.build_settings_page.hotkey_card'))
 
     form = QFormLayout()
     form.setSpacing(10)
@@ -447,7 +429,7 @@ def build_settings_page(
     cap_row.setSpacing(8)
     window._hk_capture_edit = QKeySequenceEdit(QKeySequence(window._hk_capture))
     window._hk_capture_edit.setMaximumWidth(160)
-    cap_row.addWidget(QLabel(tr("全局截图按键:")))
+    cap_row.addWidget(plain_label(_ui_text('settings.page.build_settings_page.label')))
     cap_row.addWidget(window._hk_capture_edit)
     cap_row.addStretch()
     form.addRow(cap_row)
@@ -456,7 +438,7 @@ def build_settings_page(
     finish_row.setSpacing(8)
     window._hk_finish_edit = QKeySequenceEdit(QKeySequence(window._hk_finish))
     window._hk_finish_edit.setMaximumWidth(160)
-    finish_row.addWidget(QLabel(tr("截图完成按键:")))
+    finish_row.addWidget(plain_label(_ui_text('settings.page.build_settings_page.label_2')))
     finish_row.addWidget(window._hk_finish_edit)
     finish_row.addStretch()
     form.addRow(finish_row)
@@ -465,7 +447,7 @@ def build_settings_page(
     stop_row.setSpacing(8)
     window._hk_stop_edit = QKeySequenceEdit(QKeySequence(window._hk_stop))
     window._hk_stop_edit.setMaximumWidth(160)
-    stop_row.addWidget(QLabel(tr("紧急停止按键:")))
+    stop_row.addWidget(plain_label(_ui_text('settings.page.build_settings_page.label_3')))
     stop_row.addWidget(window._hk_stop_edit)
     stop_row.addStretch()
     form.addRow(stop_row)
@@ -477,16 +459,15 @@ def build_settings_page(
     )
     window._hk_battle_rerecord_edit.setMaximumWidth(160)
     window._hk_battle_rerecord_edit.setToolTip(
-        tr("战报采集中需在 1.5 秒内连续按两次才会放弃当前战报并重录。")
+        plain_tooltip(_ui_text('settings.page.build_settings_page.hk_battle_rerecord_edit.hint'))
     )
-    rerecord_row.addWidget(QLabel(tr("战报重录按键:")))
+    rerecord_row.addWidget(plain_label(_ui_text('settings.page.build_settings_page.label_4')))
     rerecord_row.addWidget(window._hk_battle_rerecord_edit)
     rerecord_row.addStretch()
     form.addRow(rerecord_row)
 
     def save_hotkeys_when_complete(_sequence) -> None:
-        # QKeySequenceEdit temporarily clears its value before it accepts a
-        # replacement shortcut.  Do not persist that transient blank state.
+        # 编辑快捷键时会暂时清空；仅全部字段有效才保存，不覆盖为中间空值。
         editors = (
             window._hk_capture_edit,
             window._hk_finish_edit,
@@ -496,8 +477,7 @@ def build_settings_page(
         if all(editor.keySequence().toString().strip() for editor in editors):
             window._save_hotkeys()
 
-    # Every completed edit is persisted immediately, removing a separate save
-    # step without treating the editor's intermediate blank state as a value.
+    # 完整编辑即时保存；中间空值仍由上方统一入口拦截。
     for editor in (
         window._hk_capture_edit,
         window._hk_finish_edit,
@@ -509,26 +489,28 @@ def build_settings_page(
     hotkey_card.layout().addLayout(form)
     layout.addWidget(hotkey_card)
 
-    update_card = window._card(tr("软件更新"))
-    window._update_status = QLabel(tr("当前版本: {version}", version=app_version))
+    update_card = window._card(_ui_text('settings.page.build_settings_page.update_card'))
+    window._update_status = plain_label(_ui_text('settings.page.build_settings_page.update_status.state', app_version=f'{app_version}'))
+    window._update_status.setWordWrap(True)
     update_card.layout().addWidget(window._update_status)
     update_row = QHBoxLayout()
     update_row.setSpacing(10)
-    window._check_update_btn = QPushButton(tr("检查更新"))
+    window._check_update_btn = QPushButton(_ui_text('settings.page.build_settings_page.check_update_btn'))
     window._check_update_btn.setObjectName("btnPrimary")
-    window._check_update_btn.clicked.connect(lambda: window._check_updates(manual=True))
-    window._mirror_download_btn = QPushButton(tr("Mirror 下载"))
+    window._check_update_btn.clicked.connect(lambda: window.calc_update_controller.check(manual=True))
+    window._mirror_download_btn = QPushButton(_ui_text('settings.page.build_settings_page.mirror_download_btn'))
     window._mirror_download_btn.setObjectName("btnPrimary")
-    window._mirror_download_btn.clicked.connect(window._start_mirror_download)
-    home_btn = QPushButton(tr("GitHub 下载"))
+    window._mirror_download_btn.clicked.connect(window.calc_update_controller.start_download)
+    home_btn = QPushButton(_ui_text('settings.page.build_settings_page.home_btn'))
     home_btn.clicked.connect(window._open_update_homepage)
-    netdisk_btn = QPushButton(tr("网盘下载"))
+    netdisk_btn = QPushButton(_ui_text('settings.page.build_settings_page.netdisk_btn'))
     netdisk_options = _normalize_netdisk_links(netdisk_links)
     netdisk_btn.clicked.connect(
         lambda: window._show_netdisk_download_dialog(netdisk_options)
         if hasattr(window, "_show_netdisk_download_dialog") and netdisk_options
         else None
     )
+    window.calc_update_controller.configure_distribution_links(homepage_button=home_btn, netdisk_button=netdisk_btn)
     update_row.addWidget(window._check_update_btn)
     update_row.addWidget(window._mirror_download_btn)
     update_row.addWidget(netdisk_btn)
@@ -537,29 +519,32 @@ def build_settings_page(
     update_card.layout().addLayout(update_row)
     mirror_cdk_row = QHBoxLayout()
     mirror_cdk_row.setSpacing(10)
-    mirror_cdk_label = QLabel("Mirror CDK")
+    mirror_cdk_label = plain_label("Mirror CDK")
     window._mirror_cdk_edit = QLineEdit()
-    window._mirror_cdk_edit.setPlaceholderText(tr("填写 Mirror CDK（仅用于请求下载地址）"))
+    window._mirror_cdk_edit.setPlaceholderText(_ui_text('settings.page.build_settings_page.mirror_cdk_edit.placeholder'))
     window._mirror_cdk_edit.setEchoMode(QLineEdit.Password)
     window._mirror_cdk_edit.setFixedWidth(360)
-    window._mirror_cdk_edit.setText(str(window._update_config.get("mirror_cdk") or ""))
-    window._mirror_cdk_edit.editingFinished.connect(window._save_mirror_cdk)
+    window._mirror_cdk_edit.editingFinished.connect(window.calc_update_controller.save_cdk)
+    window.calc_update_controller.bind_view(
+        status=window._update_status, check_button=window._check_update_btn,
+        download_button=window._mirror_download_btn, cdk_editor=window._mirror_cdk_edit,
+    )
     mirror_cdk_row.addWidget(mirror_cdk_label)
     mirror_cdk_row.addWidget(window._mirror_cdk_edit)
     mirror_cdk_row.addStretch()
     update_card.layout().addLayout(mirror_cdk_row)
     layout.addWidget(update_card)
 
-    about_card = window._card(tr("关于我们"))
+    about_card = window._card(_ui_text('settings.page.build_settings_page.about_card'))
     about_row = QHBoxLayout()
     about_row.setSpacing(10)
-    author_bilibili_btn = QPushButton(tr("作者B站"))
+    author_bilibili_btn = QPushButton(_ui_text('settings.page.build_settings_page.author_bilibili_btn'))
     author_bilibili_btn.clicked.connect(window._open_bilibili_homepage)
-    project_btn = QPushButton(tr("项目页面"))
+    project_btn = QPushButton(_ui_text('settings.page.build_settings_page.project_btn'))
     project_btn.clicked.connect(window._open_project_homepage)
-    support_btn = QPushButton(tr("支持我们"))
+    support_btn = QPushButton(_ui_text('settings.page.build_settings_page.support_btn'))
     support_btn.clicked.connect(window._open_support_homepage)
-    group_chat_btn = QPushButton(tr("加入群聊"))
+    group_chat_btn = QPushButton(_ui_text('settings.page.build_settings_page.group_chat_btn'))
     group_chat_btn.clicked.connect(window._show_group_chat_notice)
     about_row.addWidget(author_bilibili_btn)
     about_row.addWidget(project_btn)
@@ -570,8 +555,8 @@ def build_settings_page(
     layout.addWidget(about_card)
 
     layout.addWidget(plugin_card)
-    performance_card = window._card(tr("性能监控"))
-    performance_card.layout().addWidget(PerformanceCard(window.performance_controller))
+    performance_card = window._card(_ui_text('settings.page.build_settings_page.performance_card'))
+    performance_card.layout().addWidget(PerformanceCard(window.performance_controller, text_catalog=getattr(window, 'text_catalog', None)))
     layout.addWidget(performance_card)
     layout.addWidget(sync_card)
 
@@ -581,28 +566,23 @@ def build_settings_page(
     count = len(screenshot_files)
     size_mb = sum(f.stat().st_size for f in screenshot_files) / (1024 * 1024) if screenshot_files else 0
 
-    screenshot_card = window._card(tr("截图文件管理"))
-    window._ss_info = QLabel(
-        tr("当前截图: {count} 个 · {size} MB", count=count, size=f"{size_mb:.1f}")
-    )
+    screenshot_card = window._card(_ui_text('settings.page.build_settings_page.screenshot_card'))
+    window._ss_info = plain_label(_ui_text('settings.page.build_settings_page.ss_info.state', count=f'{count}', size_mb=f'{size_mb:.1f}'))
     screenshot_card.layout().addWidget(window._ss_info)
     screenshot_row = QHBoxLayout()
     screenshot_row.setSpacing(10)
-    # The danger flag is explicit: the label is translated, so it cannot be
-    # matched on text any more.
     actions = [
-        (tr("清理所有截图"), window._clear_ss, True),
+        ("清理所有截图", window._clear_ss),
         (
-            tr("打开文件夹"),
+            "打开文件夹",
             lambda: os.startfile(str(_settings_paths(app_context).screenshot_dir))
             if _settings_paths(app_context).screenshot_dir.exists()
             else None,
-            False,
         ),
     ]
-    for text, slot, is_danger in actions:
+    for text, slot in actions:
         button = QPushButton(text)
-        if is_danger:
+        if "清理" in text:
             button.setObjectName("btnDanger")
         button.clicked.connect(slot)
         screenshot_row.addWidget(button)
@@ -610,7 +590,7 @@ def build_settings_page(
     screenshot_card.layout().addLayout(screenshot_row)
     layout.addWidget(screenshot_card)
 
-    quick_card = window._card(tr("快捷访问"))
+    quick_card = window._card(_ui_text('settings.page.build_settings_page.quick_card'))
     quick_row = QHBoxLayout()
     quick_row.setSpacing(10)
     quick_paths = [
@@ -626,18 +606,18 @@ def build_settings_page(
     quick_card.layout().addLayout(quick_row)
     layout.addWidget(quick_card)
 
-    thanks_card = window._card(tr("致谢"))
+    thanks_card = window._card(_ui_text('settings.page.build_settings_page.thanks_card'))
     thanks_card.layout().setSpacing(12)
     thanks_row = QHBoxLayout()
     thanks_row.setSpacing(8)
-    thanks_name = QLabel(tr("异环工坊"))
+    thanks_name = plain_label(_ui_text('settings.page.build_settings_page.thanks_name'))
     thanks_name.setStyleSheet(
         themed_style(
             "color:#58a6ff;font-weight:700;background:#0d1f35;"
             "border:1px solid #1f6feb;border-radius:6px;padding:5px 10px"
         )
     )
-    thanks_desc = QLabel(tr("提供角色评分标准与词条权重参考"))
+    thanks_desc = plain_label(_ui_text('settings.page.build_settings_page.thanks_desc'))
     thanks_desc.setStyleSheet(
         themed_style(
             "color:#c9d1d9;background:#161b22;"
@@ -650,7 +630,7 @@ def build_settings_page(
     thanks_card.layout().addLayout(thanks_row)
     toolkit_row = QHBoxLayout()
     toolkit_row.setSpacing(8)
-    toolkit_name = QLabel(
+    toolkit_name = rich_label(
         '<a href="https://github.com/kongbaiz/nte-dps-toolkit" '
         'style="color:#58a6ff;text-decoration:none;">nte-dps-toolkit</a>'
     )
@@ -663,7 +643,7 @@ def build_settings_page(
             "border-radius:6px;padding:5px 10px"
         )
     )
-    toolkit_desc = QLabel(tr("提供协议解析核心程序以及装配插件支持"))
+    toolkit_desc = plain_label(_ui_text('settings.page.build_settings_page.toolkit_desc'))
     toolkit_desc.setStyleSheet(
         themed_style(
             "color:#c9d1d9;background:#161b22;"
@@ -674,6 +654,22 @@ def build_settings_page(
     toolkit_row.addWidget(toolkit_desc)
     toolkit_row.addStretch()
     thanks_card.layout().addLayout(toolkit_row)
+    nteuid_row = QHBoxLayout()
+    nteuid_row.setSpacing(8)
+    nteuid_name = rich_label(
+        '<a href="https://github.com/tyql688/NTEUID" '
+        'style="color:#58a6ff;text-decoration:none;">NTEUID</a>'
+    )
+    nteuid_name.setTextFormat(Qt.RichText)
+    nteuid_name.setTextInteractionFlags(Qt.TextBrowserInteraction)
+    nteuid_name.setOpenExternalLinks(True)
+    nteuid_name.setStyleSheet(toolkit_name.styleSheet())
+    nteuid_desc = plain_label(_ui_text('settings.page.build_settings_page.nteuid_desc'))
+    nteuid_desc.setStyleSheet(toolkit_desc.styleSheet())
+    nteuid_row.addWidget(nteuid_name)
+    nteuid_row.addWidget(nteuid_desc)
+    nteuid_row.addStretch()
+    thanks_card.layout().addLayout(nteuid_row)
     layout.addWidget(thanks_card)
 
     layout.addStretch()

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.domain.localization.catalog import localized_text
+import hashlib
 import json
 import sqlite3
 from collections.abc import Mapping, Sequence
@@ -10,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
 from typing import Any
+
+from .transaction_script import execute_transaction_script
 
 
 SCHEMA_VERSION = 2
@@ -42,13 +46,12 @@ class SharedDataDao:
         except sqlite3.Error as exc:
             raise SharedDataError(
                 f"无法打开公共覆盖数据库：{self.database_path}"
-            ) from exc
+            ) from exc  # ui-text: internal
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._connection.execute("PRAGMA busy_timeout = 10000")
         try:
             self._initialize_or_migrate()
-            self._validate_schema()
         except BaseException:
             self.close()
             raise
@@ -84,56 +87,57 @@ class SharedDataDao:
 
     def _initialize_or_migrate(self) -> None:
         connection = self._db()
-        if not self._table_exists("schema_migration"):
-            try:
-                connection.execute("BEGIN IMMEDIATE")
+        # 稳定版本的普通读取不争写锁；只有可能修改结构时才进入下面的写事务。
+        if self._table_exists("schema_migration"):
+            row = connection.execute("SELECT MAX(version) AS version FROM schema_migration").fetchone()
+            if int(row["version"] or 0) == SCHEMA_VERSION:
+                self._validate_schema()
+                return
+        stage = "初始化"
+        try:
+            # 先拿写锁再判断结构/版本：等锁期间其他打开者可能已经完成建库或升级。
+            connection.execute("BEGIN IMMEDIATE")
+            if not self._table_exists("schema_migration"):
                 connection.execute(
                     """CREATE TABLE schema_migration (
                            version INTEGER PRIMARY KEY,
                            applied_at_utc TEXT NOT NULL
                        )"""
                 )
-                connection.executescript(
-                    MIGRATIONS[1].read_text(encoding="utf-8")
+            row = connection.execute(
+                "SELECT MAX(version) AS version FROM schema_migration"
+            ).fetchone()
+            version = int(row["version"] or 0)
+            if version > SCHEMA_VERSION:
+                raise SharedDataError(
+                    f"公共覆盖数据库版本 {version} 高于程序支持版本 {SCHEMA_VERSION}"
+                )  # ui-text: internal
+            for target_version in range(version + 1, SCHEMA_VERSION + 1):
+                stage = localized_text(None, 'auto.storage.sqlite.shared_data_dao.initialize_or_migrate.f45d0060b', '迁移 v{target_version}', target_version=f'{target_version}')
+                migration = MIGRATIONS.get(target_version)
+                if migration is None:
+                    raise SharedDataError(f"缺少公共覆盖数据库迁移 v{target_version}")  # ui-text: internal
+                execute_transaction_script(
+                    connection, migration.read_text(encoding="utf-8"),
+                    incomplete_error=SharedDataError("公共覆盖数据库迁移脚本包含未结束的 SQL 语句"),
                 )
-                connection.execute(
-                    "INSERT INTO database_profile VALUES (1, 'app_shared', ?, ?)",
-                    (_utc_now(), _utc_now()),
-                )
-                connection.execute(
-                    "INSERT INTO schema_migration(version, applied_at_utc) VALUES (1, ?)",
-                    (_utc_now(),),
-                )
-                connection.commit()
-            except (OSError, sqlite3.Error) as exc:
-                connection.rollback()
-                raise SharedDataError("无法初始化公共覆盖数据库") from exc
-
-        row = connection.execute(
-            "SELECT MAX(version) AS version FROM schema_migration"
-        ).fetchone()
-        version = int(row["version"] or 0)
-        if version > SCHEMA_VERSION:
-            raise SharedDataError(
-                f"公共覆盖数据库版本 {version} 高于程序支持版本 {SCHEMA_VERSION}"
-            )
-        for target_version in range(version + 1, SCHEMA_VERSION + 1):
-            migration = MIGRATIONS.get(target_version)
-            if migration is None:
-                raise SharedDataError(f"缺少公共覆盖数据库迁移 v{target_version}")
-            try:
-                connection.execute("BEGIN IMMEDIATE")
-                connection.executescript(migration.read_text(encoding="utf-8"))
+                if target_version == 1:
+                    connection.execute(
+                        "INSERT INTO database_profile VALUES (1, 'app_shared', ?, ?)",
+                        (_utc_now(), _utc_now()),
+                    )
                 connection.execute(
                     "INSERT INTO schema_migration(version, applied_at_utc) VALUES (?, ?)",
                     (target_version, _utc_now()),
                 )
-                connection.commit()
-            except (OSError, sqlite3.Error) as exc:
-                connection.rollback()
-                raise SharedDataError(
-                    f"公共覆盖数据库迁移 v{target_version} 失败"
-                ) from exc
+            # DDL、资料和版本标记必须同进退；末端校验也在提交前，失败仍保留原库。
+            self._validate_schema()
+            connection.commit()
+        except BaseException as exc:
+            connection.rollback()
+            if isinstance(exc, (OSError, sqlite3.Error)):
+                raise SharedDataError(f"公共覆盖数据库{stage}失败") from exc  # ui-text: internal
+            raise
 
     def _validate_schema(self) -> None:
         connection = self._db()
@@ -189,9 +193,9 @@ class SharedDataDao:
     ) -> dict[str, Any]:
         key = str(logical_character_key or "").strip()
         if not key:
-            raise ValueError("logical_character_key 不能为空")
+            raise ValueError("logical_character_key 不能为空")  # ui-text: internal
         if int(representative_character_id) <= 0:
-            raise ValueError("representative_character_id 必须为正整数")
+            raise ValueError("representative_character_id 必须为正整数")  # ui-text: internal
         if not str(shape_label or "").strip() or int(shape_grid_count) <= 0:
             raise ValueError("额外形状标签和格数无效")
 
@@ -203,7 +207,7 @@ class SharedDataDao:
             if not property_id or display_value < 0:
                 raise ValueError("额外形状覆盖包含无效属性或数值")
             if property_id in seen_properties:
-                raise ValueError(f"额外形状覆盖包含重复属性：{property_id}")
+                raise ValueError(f"额外形状覆盖包含重复属性：{property_id}")  # ui-text: internal
             seen_properties.add(property_id)
             normalized.append((property_id, display_value, ordinal))
 
@@ -333,14 +337,14 @@ class SharedDataDao:
             shape_label = str(raw.get("shape_label") or "").strip()
             grid_count = int(raw.get("shape_grid_count") or 0)
             if not key or representative_id <= 0 or not shape_label or grid_count <= 0:
-                raise ValueError(f"旧版额外形状记录无效：{key or '<empty>'}")
+                raise ValueError(f"旧版额外形状记录无效：{key or '<empty>'}")  # ui-text: internal
             properties: list[tuple[str, float, int]] = []
             seen: set[str] = set()
             for ordinal, property_row in enumerate(raw.get("properties") or ()):
                 property_id = str(property_row.get("property_id") or "").strip()
                 value = float(property_row.get("display_value", 0.0))
                 if not property_id or value < 0 or property_id in seen:
-                    raise ValueError(f"旧版额外形状属性无效：{key}")
+                    raise ValueError(f"旧版额外形状属性无效：{key}")  # ui-text: internal
                 seen.add(property_id)
                 properties.append((property_id, value, ordinal))
             normalized_records.append(
@@ -432,3 +436,61 @@ class SharedDataDao:
             connection.rollback()
             raise SharedDataError("旧版公共覆盖差异迁移失败") from exc
         return inserted
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().upper()
+
+
+def read_legacy_shape_bonus_catalog(database_path: str | Path) -> dict[str, Any]:
+    """只读取旧库中历史允许用户修改的两个逻辑形状表。"""
+
+    path = Path(database_path).expanduser().resolve()
+    uri = f"{path.as_uri()}?mode=ro"
+    try:
+        connection = sqlite3.connect(uri, uri=True)
+        connection.row_factory = sqlite3.Row
+        dataset = connection.execute(
+            "SELECT dataset_id FROM dataset"
+        ).fetchone()
+        schema = connection.execute(
+            "SELECT MAX(version) AS version FROM schema_migration"
+        ).fetchone()
+        rows = connection.execute(
+            """SELECT logical_character_key, representative_character_id,
+                      shape_label, shape_grid_count
+               FROM logical_character_shape_bonus
+               ORDER BY logical_character_key"""
+        ).fetchall()
+        records: list[dict[str, Any]] = []
+        for row in rows:
+            record = dict(row)
+            record["properties"] = [
+                dict(property_row)
+                for property_row in connection.execute(
+                    """SELECT property_id, display_value, ordinal
+                       FROM logical_character_shape_bonus_property
+                       WHERE logical_character_key = ?
+                       ORDER BY ordinal""",
+                    (record["logical_character_key"],),
+                )
+            ]
+            records.append(record)
+    except sqlite3.Error as exc:
+        raise RuntimeError(f"旧版静态数据库无法读取：{path}") from exc  # ui-text: internal
+    finally:
+        if "connection" in locals():
+            connection.close()
+    if dataset is None or schema is None:
+        raise RuntimeError(f"旧版静态数据库缺少数据集信息：{path}")  # ui-text: internal
+    return {
+        "database_path": str(path),
+        "database_sha256": _sha256(path),
+        "dataset_id": str(dataset["dataset_id"]),
+        "schema_version": int(schema["version"]),
+        "records": records,
+    }

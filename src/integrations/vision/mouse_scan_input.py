@@ -8,7 +8,7 @@ import random
 import time
 from dataclasses import dataclass
 from typing import Callable, Protocol
-from src.integrations.operation_guard import GuardedGuiInput, OperationGuard, require_operation
+from src.integrations.runtime.operation_guard import GuardedGuiInput, OperationGuard, require_operation
 
 
 def _round_half_up(value: float) -> int:
@@ -198,8 +198,7 @@ class PyAutoGuiMouseScanInput:
                 **self._pause_kwargs(),
             )
             self._last_scroll_position = position
-        # Preserve the reference implementation's Windows wheel delta while
-        # moving to the scroll anchor only once for the nine-command sequence.
+        # 保持既有 Windows 滚轮增量；九次滚动序列共用锚点，避免每次重复移动。
         require_operation(self.operation_guard, "interface_input")
         ctypes.windll.user32.mouse_event(0x0800, 0, 0, int(amount), 0)
         self._sleep(self._randomization.after_scroll_seconds(self._rng))

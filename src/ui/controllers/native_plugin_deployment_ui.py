@@ -1,27 +1,28 @@
 # 在现有设置部署入口展示原生插件配套状态并提交游戏退出后的整套部署。
-from src.i18n import tr
+from src.ui.common.enum_text import ui_enum_text
+from src.ui.common.text_catalog import TextActionButton, plain_label, plain_tooltip, resolve_text_catalog
 from PySide6.QtCore import QEventLoop, QSize, Qt, QThread, QTimer
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMessageBox, QProgressBar, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QMessageBox, QProgressBar, QVBoxLayout
 
 from src.app.theme import theme_color
 from src.app.window_geometry import fit_dialog_to_available_screen
-from src.integrations.game_component_bundle import inspect_game_component_bundle
-from src.services.deployed_plugin_inspection import inspect_deployed_native_plugin
-from src.services.equipment_plugin_deployment import EquipmentPluginDeploymentError
-from src.services.native_plugin_deployment import PluginDeploymentPendingCleanup
-from src.services.native_plugin_deployment import deploy_native_plugin
-from src.services.mod_plugin_loading_service import ModPluginLoadingError, ModPluginLoadingWaiting
+from src.integrations.components.game_component_bundle import inspect_game_component_bundle
+from src.integrations.components.inspection import inspect_deployed_native_plugin
+from src.integrations.components.environment import EquipmentPluginDeploymentError
+from src.integrations.components.native_files import PluginDeploymentPendingCleanup
+from src.integrations.components.native_files import deploy_native_plugin
+from src.services.components.loader_service import ModPluginLoadingError, ModPluginLoadingWaiting
 from src.utils.logger import logger
 
 
 def _deployment_error_hint(error: Exception) -> str:
-    """Keep implementation errors out of the short user-facing dialog."""
+    """短提示区分权限、超时与未完成；具体定位保留在检测和日志。"""
     logger.warning(f"组件部署未完成 kind={type(error).__name__}")
     if isinstance(error, PermissionError):
-        return tr("组件处理未完成；请核对工作模式、游戏目录权限，并确认游戏已退出。")
+        return "组件处理未完成；请核对工作模式、游戏目录权限，并确认游戏已退出。"
     if isinstance(error, TimeoutError):
-        return tr("等待组件或同步任务结束超时；请退出游戏后重新检测再试。")
-    return tr("组件处理未完成；请确认游戏和启动器已退出，再到环境设置查看检测详情。")
+        return "等待组件或同步任务结束超时；请退出游戏后重新检测再试。"
+    return "组件处理未完成；请确认游戏和启动器已退出，再到环境设置查看检测详情。"
 
 
 class _DeploymentWorker(QThread):
@@ -55,14 +56,14 @@ class _DeploymentProgress(QDialog):
 
 
 def _run_deployment_worker(window, target):
-    """Keep disk hashing and replacement off the GUI thread without losing typed errors."""
+    """后台执行文件核对与替换，终态后返回原类型错误；期间不取消已派发部署。"""
 
     dialog = _DeploymentProgress(window)
-    dialog.setWindowTitle(tr("正在部署原生组件"))
+    dialog.setWindowTitle(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.run_deployment_worker.dialog'))
     dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
     dialog.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
     layout = QVBoxLayout(dialog)
-    label = QLabel(tr("正在核对并写入游戏组件，请保持游戏关闭…"), dialog)
+    label = plain_label(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.run_deployment_worker.label'), dialog)
     label.setWordWrap(True)
     layout.addWidget(label)
     progress = QProgressBar(dialog)
@@ -93,15 +94,15 @@ def _refresh_work_mode_detection(window) -> None:
         controller.component_state_changed()
 
 
-def _set_component_status(label, *, issues=(), ready=False, pending=False):
+def _set_component_status(label, *, issues=(), ready=False, pending=False, text_catalog=None):
     if pending:
-        label.setText(tr("Loader 工作区核对未完成；请查看检测详情。"))
+        label.setText(resolve_text_catalog(text_catalog).render('ui.controllers.set_component_status.label'))
         label.setToolTip("")
     elif ready:
-        label.setText(tr("组件已准备好，启动游戏后会自动检查连接和可用功能。"))
+        label.setText(resolve_text_catalog(text_catalog).render('ui.controllers.set_component_status.label_2'))
         label.setToolTip("")
     else:
-        label.setText(tr("组件未准备好（{issues_len} 项）；请查看检测详情。", issues_len=len(issues)))
+        label.setText(resolve_text_catalog(text_catalog).render('ui.controllers.set_component_status.label_3', value=f'{len(issues)}'))
         label.setToolTip("\n".join(str(issue) for issue in issues))
 
 
@@ -114,10 +115,10 @@ def refresh_native_plugin_status(window) -> None:
         if index < 0:
             index = combo.findData("proxy")
             if index >= 0:
-                combo.setItemText(index, tr("D3D 采集代理"))
+                combo.setItemText(index, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.settings.build_environment_card.equipment_plugin_loading_method_combo'))
                 combo.setItemData(index, "native-capture")
             else:
-                combo.addItem(tr("D3D 采集代理"), "native-capture")
+                combo.addItem(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.settings.build_environment_card.equipment_plugin_loading_method_combo'), "native-capture")
                 index = combo.findData("native-capture")
         if combo.currentData() not in {"loader", "native-capture"}:
             combo.setCurrentIndex(index)
@@ -125,50 +126,47 @@ def refresh_native_plugin_status(window) -> None:
         combo.blockSignals(False)
     primary = getattr(window, "_equipment_plugin_primary_button", None)
     if primary is not None:
-        primary.setText(
-            tr("启动原生 Loader")
-            if combo is not None and combo.currentData() == "loader"
-            else tr("部署原生组件"))
+        primary.setText(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.refresh_native_plugin_status.primary') if combo is not None and combo.currentData() == "loader" else resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.refresh_native_plugin_status.primary_2'))
     label = getattr(window, "_equipment_plugin_status_label", None)
     if label is not None:
         if not bundle.ready:
-            _set_component_status(label, issues=bundle.issues)
+            _set_component_status(label, issues=bundle.issues, text_catalog=getattr(window, 'text_catalog', None))
         elif combo is not None and combo.currentData() == "loader":
             try:
                 service = window._mod_plugin_loading_service
                 workspace = service.inspect_native_workspace()
-                _set_component_status(label, ready=workspace.files_compatible, issues=workspace.issues)
+                _set_component_status(label, ready=workspace.files_compatible, issues=workspace.issues, text_catalog=getattr(window, 'text_catalog', None))
             except (EquipmentPluginDeploymentError, ModPluginLoadingError):
-                _set_component_status(label, pending=True)
+                _set_component_status(label, pending=True, text_catalog=getattr(window, 'text_catalog', None))
         else:
             result = inspect_deployed_native_plugin(
                 application_root=window.app_context.paths.root,
                 game_executable_path=window.work_mode_service.settings.game_executable,
                 recorded_files=window.work_mode_service.deployment_record.get("managed_files", {}),
                 bundle_inspection=bundle,
+                text_catalog=getattr(window, 'text_catalog', None),
             )
-            _set_component_status(label, ready=result.files_compatible, issues=result.issues)
+            _set_component_status(label, ready=result.files_compatible, issues=result.issues, text_catalog=getattr(window, 'text_catalog', None))
 
 
 def _confirm_d3d_deployment(window) -> bool:
     dialog = QDialog(window)
     dialog.setObjectName("d3dDeploymentConfirmation")
-    dialog.setWindowTitle(tr("部署 D3D 原生组件"))
+    dialog.setWindowTitle(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.confirm_d3d_deployment.dialog'))
     dialog.setWindowModality(Qt.WindowModal)
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(22, 20, 22, 18)
     layout.setSpacing(14)
 
-    warning = QLabel(tr("部署前，请完全退出游戏"), dialog)
+    warning = plain_label(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.confirm_d3d_deployment.warning'), dialog)
     warning.setObjectName("d3dDeploymentExitWarning")
     warning.setStyleSheet(f"color:{theme_color('#f85149')};font-size:17px;font-weight:700")
     layout.addWidget(warning)
-    guidance = QLabel(tr("确认游戏窗口和游戏进程均已关闭，再继续部署。"), dialog)
+    guidance = plain_label(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.confirm_d3d_deployment.guidance'), dialog)
     guidance.setWordWrap(True)
     layout.addWidget(guidance)
-    detail = QLabel(
-        tr("本次将替换 d3d12.dll、NTE_Capture.dll，并清理旧 dwmapi.dll。\n"
-        "已有组件直接替换，不保留备份。"),
+    detail = plain_label(
+        resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.confirm_d3d_deployment.detail'),
         dialog,
     )
     detail.setObjectName("d3dDeploymentChanges")
@@ -178,12 +176,12 @@ def _confirm_d3d_deployment(window) -> bool:
 
     actions = QHBoxLayout()
     actions.addStretch()
-    cancel = QPushButton(tr("取消"), dialog)
+    cancel = TextActionButton(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('common.cancel'), dialog)
     cancel.setDefault(True)
     cancel.setFocus()
     cancel.clicked.connect(dialog.reject)
     actions.addWidget(cancel)
-    proceed = QPushButton(tr("已退出游戏，继续部署"), dialog)
+    proceed = TextActionButton(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.confirm_d3d_deployment.proceed'), dialog)
     proceed.setObjectName("d3dDeploymentProceed")
     proceed.setAutoDefault(False)
     proceed.clicked.connect(dialog.accept)
@@ -196,17 +194,17 @@ def _confirm_d3d_deployment(window) -> bool:
 def deploy_native_plugin_from_settings(window) -> None:
     bundle = inspect_game_component_bundle(window.app_context.paths.root)
     if not bundle.ready:
-        window.operation_unavailable(tr("部署原生组件"), "；".join(bundle.issues), target="deployment")
+        window.operation_unavailable("部署原生组件", "；".join(bundle.issues), target="deployment")
         return
     if window.native_game_session.battle_active:
-        QMessageBox.information(window, tr("部署原生组件"), tr("请先结束当前战报采集，再部署组件。"))
+        QMessageBox.information(window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.refresh_native_plugin_status.primary_2'), plain_tooltip(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.deploy_native_plugin_from_settings.qmessagebox')))
         return
     try:
         if window._mod_plugin_loading_service.snapshot().phase == "running":
-            QMessageBox.information(window, tr("部署原生组件"), tr("请先停止 Loader，再部署 D3D 原生组件。"))
+            QMessageBox.information(window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.refresh_native_plugin_status.primary_2'), plain_tooltip(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.deploy_native_plugin_from_settings.qmessagebox_4')))
             return
     except (EquipmentPluginDeploymentError, ModPluginLoadingError) as error:
-        window.operation_unavailable(tr("部署原生组件"), _deployment_error_hint(error), target="deployment")
+        window.operation_unavailable("部署原生组件", _deployment_error_hint(error), target="deployment")
         return
     executable = window.work_mode_service.settings.game_executable
     generation = window.operation_generation()
@@ -224,7 +222,7 @@ def deploy_native_plugin_from_settings(window) -> None:
         if ((policy.operation_revision, context.generation) != generation
                 or policy.settings.game_executable != executable
                 or session.battle_active):
-            raise PermissionError(tr("原生组件部署上下文已改变，已停止操作。"))
+            raise PermissionError("原生组件部署上下文已改变，已停止操作。")
 
     try:
         guard("native_load")
@@ -259,19 +257,17 @@ def deploy_native_plugin_from_settings(window) -> None:
         runtime.save_deployment(deployed)
         window._refresh_equipment_plugin_status()
         _refresh_work_mode_detection(window)
-        QMessageBox.information(window, tr("原生组件已部署"), tr("请启动游戏，然后重新检测连接和各项业务能力。"))
+        QMessageBox.information(window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.deploy_native_plugin_from_settings.qmessagebox_2'), plain_tooltip(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.deploy_native_plugin_from_settings.qmessagebox_3')))
     except PluginDeploymentPendingCleanup as error:
         runtime.save_pending_deployment(error)
         _refresh_work_mode_detection(window)
         QMessageBox.warning(
-            window, tr("组件部署待清理"),
-            tr("状态：部署尚未完成。\n"
-            "原因：旧组件清理未通过核对。\n"
-            "下一步：在环境设置查看清理结果，处理后重新部署。"),
+            window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.deploy_native_plugin_from_settings.qmessagebox_5'),
+            plain_tooltip(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.deploy_native_plugin_from_settings.qmessagebox_6')),
         )
     except (EquipmentPluginDeploymentError, PermissionError, TimeoutError) as error:
         if window.work_mode_service.allowed("native_load"):
-            window.operation_unavailable(tr("部署原生组件"), _deployment_error_hint(error), target="deployment")
+            window.operation_unavailable("部署原生组件", _deployment_error_hint(error), target="deployment")
 
 
 def start_native_loader_from_settings(window) -> None:
@@ -281,15 +277,15 @@ def start_native_loader_from_settings(window) -> None:
         window.work_mode_runtime.start_native_loader()
         window._refresh_equipment_plugin_status()
         _refresh_work_mode_detection(window)
-        QMessageBox.information(window, tr("原生 Loader 已启动"),
-                                tr("请正常启动游戏，随后重新检测连接和各项能力。"))
+        QMessageBox.information(window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.start_native_loader_from_settings.qmessagebox'),
+                                plain_tooltip(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.start_native_loader_from_settings.qmessagebox_2')))
     except ModPluginLoadingWaiting as error:
         window._refresh_equipment_plugin_status()
         QMessageBox.warning(
-            window, tr("Loader 等待关闭程序"),
-            tr("状态：尚未启动 Loader\n原因：{error}\n"
-               "下一步：完全退出启动器和游戏，再点击“启动原生 Loader”。", error=error),
+            window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.start_native_loader_from_settings.qmessagebox_3'),
+            plain_tooltip(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.start_native_loader_from_settings.qmessagebox_4') + ui_enum_text(getattr(window, 'text_catalog', None), str(error)) +
+            resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.start_native_loader_from_settings.qmessagebox_5')),
         )
     except (EquipmentPluginDeploymentError, ModPluginLoadingError, PermissionError) as error:
         window._refresh_equipment_plugin_status()
-        window.operation_unavailable(tr("启动原生 Loader"), _deployment_error_hint(error), target="deployment")
+        window.operation_unavailable("启动原生 Loader", _deployment_error_hint(error), target="deployment")

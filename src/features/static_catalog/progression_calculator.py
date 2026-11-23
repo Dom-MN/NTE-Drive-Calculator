@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
-
+from src.domain.localization.catalog import localized_text
+from src.ui.common.text_catalog import TextActionButton, plain_label, resolve_text_catalog
 from collections.abc import Callable, Mapping
 
 from PySide6.QtCore import QCoreApplication, QSize, Qt
@@ -14,8 +14,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QFrame,
     QHBoxLayout,
-    QLabel,
-    QPushButton,
     QScrollArea,
     QSpinBox,
     QVBoxLayout,
@@ -25,8 +23,8 @@ from PySide6.QtWidgets import (
 from src.app.theme import themed_style
 from src.app.window_geometry import fit_dialog_to_available_screen
 from src.app.workers import WorkerThread
-from src.domain.progression_stamina import ProgressionStaminaResult, StaminaPlanStatus
-from src.integrations.bundled_resources import bundled_game_ui_asset_root
+from src.domain.progression.stamina import ProgressionStaminaResult, StaminaPlanStatus
+from src.integrations.runtime.bundled_resources import bundled_game_ui_asset_root
 from src.features.static_catalog.progression_calculator_models import (
     ProgressionCalculatorOrchestrator,
     ProgressionCalculatorOutcome,
@@ -34,13 +32,13 @@ from src.features.static_catalog.progression_calculator_models import (
     ProgressionMaterialInput,
     deliver_progression_outcome,
 )
-from src.services.progression_stamina_service import ProgressionStaminaService
-from src.services.game_ui_asset_catalog import GameUiAssetCatalog
-from src.services.static_catalog_fork_release_metadata import ForkProgressionRequest
-from src.services.static_catalog_terminology_service import (
+from src.services.progression.stamina_service import ProgressionStaminaService
+from src.integrations.game_assets.catalog import GameUiAssetCatalog
+from src.services.static_catalog.forks.release_metadata import ForkProgressionRequest
+from src.services.static_catalog.common.terminology import (
     StaticCatalogTerminologyService,
 )
-from src.ui.progression_material_card import ProgressionMaterialCard
+from src.ui.progression.progression_material_card import ProgressionMaterialCard
 
 
 ResultCallback = Callable[[ProgressionCalculatorOutcome], None]
@@ -54,13 +52,15 @@ class _Disclosure(QFrame):
         rows: tuple[tuple[str, str], ...],
         *,
         parent: QWidget | None = None,
+        text_catalog=None,
     ) -> None:
         super().__init__(parent)
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self.setObjectName("progressionDisclosure")
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(5)
-        toggle = QPushButton(tr("更多信息  ▾"), self)
+        toggle = TextActionButton(resolve_text_catalog(text_catalog).render('ui.static_catalog.init.toggle'), self)
         toggle.setObjectName("progressionDisclosureToggle")
         toggle.setCheckable(True)
         content = QFrame(self)
@@ -69,7 +69,7 @@ class _Disclosure(QFrame):
         content_layout.setContentsMargins(9, 7, 9, 7)
         content_layout.setSpacing(4)
         for title, value in rows:
-            label = QLabel(f"{title}  ·  {value}", content)
+            label = plain_label(f"{title}  ·  {value}", content)
             label.setWordWrap(True)
             label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
@@ -79,7 +79,7 @@ class _Disclosure(QFrame):
 
         def toggle_content(expanded: bool) -> None:
             content.setVisible(expanded)
-            toggle.setText(tr("更多信息  ▴") if expanded else tr("更多信息  ▾"))
+            toggle.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.toggle_content.toggle') if expanded else resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.init.toggle'))
 
         toggle.toggled.connect(toggle_content)
         root.addWidget(toggle, 0, Qt.AlignmentFlag.AlignLeft)
@@ -95,8 +95,10 @@ class _MaterialCard(QFrame):
         *,
         icon_path: str | None = None,
         parent: QWidget | None = None,
+        text_catalog=None,
     ) -> None:
         super().__init__(parent)
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self.material = material
         self.setObjectName("progressionMaterialCard")
         root = QVBoxLayout(self)
@@ -109,7 +111,7 @@ class _MaterialCard(QFrame):
             parent=self,
         ))
         owned_row = QHBoxLayout()
-        owned_label = QLabel(tr("当前持有"), self)
+        owned_label = plain_label(resolve_text_catalog(text_catalog).render('ui.static_catalog.init.owned_label'), self)
         self.owned = QSpinBox(self)
         self.owned.setObjectName("progressionOwnedQuantity")
         self.owned.setRange(0, 99_999_999)
@@ -119,7 +121,7 @@ class _MaterialCard(QFrame):
         owned_row.addWidget(self.owned)
         root.addLayout(owned_row)
         if material.more_info:
-            root.addWidget(_Disclosure(material.more_info, parent=self))
+            root.addWidget(_Disclosure(material.more_info, parent=self, text_catalog=text_catalog))
 
 
 class ProgressionCalculatorDialog(QDialog):
@@ -131,14 +133,17 @@ class ProgressionCalculatorDialog(QDialog):
         service: ProgressionStaminaService,
         terminology_service: StaticCatalogTerminologyService,
         parent: QWidget | None = None,
+        text_catalog=None,
     ) -> None:
         super().__init__(parent)
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self.setObjectName("progressionCalculatorDialog")
-        self.setWindowTitle(tr("养成材料与活力"))
+        self.setWindowTitle(resolve_text_catalog(text_catalog).render('ui.static_catalog.init.self'))
         self.setModal(False)
         self._orchestrator = ProgressionCalculatorOrchestrator(
             service=service,
             terminology_service=terminology_service,
+            text_catalog=text_catalog,
         )
         self._asset_catalog = GameUiAssetCatalog(bundled_game_ui_asset_root())
         self._session: ProgressionCalculatorSession | None = None
@@ -159,10 +164,10 @@ class ProgressionCalculatorDialog(QDialog):
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(15, 13, 15, 13)
         hero_layout.setSpacing(4)
-        self.title = QLabel(tr("养成材料与活力"), hero)
+        self.title = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.init.self'), hero)
         self.title.setObjectName("progressionTitle")
-        subtitle = QLabel(
-            tr("编辑猎人等级和现有材料，按正式副本产出计算最低活力。"),
+        subtitle = plain_label(
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.build.subtitle'),
             hero,
         )
         subtitle.setObjectName("progressionSubtitle")
@@ -176,12 +181,12 @@ class ProgressionCalculatorDialog(QDialog):
         level_layout = QHBoxLayout(level_card)
         level_layout.setContentsMargins(12, 10, 12, 10)
         level_layout.setSpacing(10)
-        hunter_label = QLabel(tr("猎人等级"), level_card)
+        hunter_label = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.build.hunter_label'), level_card)
         self.hunter_level = QSpinBox(level_card)
         self.hunter_level.setObjectName("progressionHunterLevel")
         self.hunter_level.setRange(1, 60)
         self.hunter_level.setValue(60)
-        identification_label = QLabel(tr("生效鉴别等级"), level_card)
+        identification_label = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.build.identification_label'), level_card)
         self.identification_level = QComboBox(level_card)
         self.identification_level.setObjectName("progressionIdentificationLevel")
         level_layout.addWidget(hunter_label)
@@ -198,7 +203,7 @@ class ProgressionCalculatorDialog(QDialog):
         self.body = QVBoxLayout(scroll_host)
         self.body.setContentsMargins(1, 1, 1, 1)
         self.body.setSpacing(9)
-        materials_heading = QLabel(tr("材料清单"), scroll_host)
+        materials_heading = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.build.materials_heading'), scroll_host)
         materials_heading.setObjectName("progressionSectionTitle")
         self.body.addWidget(materials_heading)
         self.materials_host = QFrame(scroll_host)
@@ -222,12 +227,12 @@ class ProgressionCalculatorDialog(QDialog):
         root.addWidget(scroll, 1)
 
         actions = QHBoxLayout()
-        self.validation = QLabel("", self)
+        self.validation = plain_label("", self)
         self.validation.setObjectName("progressionValidation")
         self.validation.setWordWrap(True)
-        self.calculate_button = QPushButton(tr("计算最低活力"), self)
+        self.calculate_button = TextActionButton(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.build.calculate_button'), self)
         self.calculate_button.setObjectName("btnPrimary")
-        close_button = QPushButton(tr("关闭"), self)
+        close_button = TextActionButton(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('common.close'), self)
         actions.addWidget(self.validation, 1)
         actions.addWidget(self.calculate_button)
         actions.addWidget(close_button)
@@ -250,11 +255,11 @@ class ProgressionCalculatorDialog(QDialog):
         session = self._orchestrator.prepare(request)
         self._session = session
         self._callback = on_result
-        self.title.setText(tr(session.title))
+        self.title.setText(session.title)
         self._render_materials(session)
         self._clear_layout(self.gaps_layout)
         if session.more_info:
-            self.gaps_layout.addWidget(_Disclosure(session.more_info, parent=self))
+            self.gaps_layout.addWidget(_Disclosure(session.more_info, parent=self, text_catalog=getattr(self, 'text_catalog', None)))
         self._clear_result()
         self.validation.setText("")
         self._set_calculation_busy(False)
@@ -285,12 +290,12 @@ class ProgressionCalculatorDialog(QDialog):
         self.identification_level.blockSignals(True)
         self.identification_level.clear()
         self.identification_level.addItem(
-            tr("鉴别 {level}（原生）", level=projection.native_level),
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.refresh_identification.identification_level', native_level=f'{projection.native_level}'),
             projection.native_level,
         )
         if projection.native_level >= 3:
             self.identification_level.addItem(
-                tr("鉴别 {level}（下调一级）", level=projection.native_level - 1),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.refresh_identification.identification_level_2', value=f'{projection.native_level - 1}'),
                 projection.native_level - 1,
             )
         selected = self.identification_level.findData(previous)
@@ -301,7 +306,7 @@ class ProgressionCalculatorDialog(QDialog):
         self._clear_layout(self.materials_layout)
         self._material_cards.clear()
         if not session.materials:
-            empty = QLabel(tr("当前正式数据未提供可计算的材料需求。"), self)
+            empty = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.render_materials.empty'), self)
             empty.setObjectName("progressionEmptyState")
             empty.setWordWrap(True)
             self.materials_layout.addWidget(empty)
@@ -314,6 +319,7 @@ class ProgressionCalculatorDialog(QDialog):
                 material,
                 icon_path=str(icon) if icon is not None else None,
                 parent=self.materials_host,
+                text_catalog=getattr(self, 'text_catalog', None),
             )
             self._material_cards[material.key] = card
             self.materials_layout.addWidget(card)
@@ -321,7 +327,7 @@ class ProgressionCalculatorDialog(QDialog):
     def _calculate(self) -> None:
         session = self._session
         if session is None:
-            self.validation.setText(tr("请先从角色或弧盘养成页打开计算器。"))
+            self.validation.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.calculate.validation_2'))
             return
         owned = {
             key: card.owned.value() for key, card in self._material_cards.items()
@@ -339,7 +345,7 @@ class ProgressionCalculatorDialog(QDialog):
         token = object()
         self._calculation_token = token
         self._set_calculation_busy(True)
-        self.validation.setText(tr("正在计算最低活力…"))
+        self.validation.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.calculate.validation'))
         run_calculation = self._orchestrator.run_calculation
         worker = WorkerThread(
             target=lambda frozen=calculation, run=run_calculation: run(frozen),
@@ -372,7 +378,8 @@ class ProgressionCalculatorDialog(QDialog):
         self._render_result(outcome.result)
         callback = self._callback
         if callback is not None:
-            callback_error = deliver_progression_outcome(callback, outcome)
+            callback_error = deliver_progression_outcome(callback, outcome,
+                                                     text_catalog=getattr(self, 'text_catalog', None))
             if callback_error is not None:
                 self.validation.setText(callback_error)
 
@@ -381,7 +388,7 @@ class ProgressionCalculatorDialog(QDialog):
             return
         self._calculation_token = None
         self._set_calculation_busy(False)
-        self.validation.setText(tr("养成计算失败，请稍后重试。"))
+        self.validation.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.calculation_failed.validation'))
 
     def _calculation_finished(
         self,
@@ -396,7 +403,7 @@ class ProgressionCalculatorDialog(QDialog):
 
     def _set_calculation_busy(self, busy: bool) -> None:
         self.calculate_button.setEnabled(not busy)
-        self.calculate_button.setText(tr("正在计算…") if busy else tr("计算最低活力"))
+        self.calculate_button.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.set_calculation_busy.calculate_button') if busy else resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.build.calculate_button'))
 
     def _render_result(self, result: ProgressionStaminaResult) -> None:
         self._clear_layout(self.result_layout)
@@ -405,18 +412,18 @@ class ProgressionCalculatorDialog(QDialog):
             StaminaPlanStatus.PARTIAL: "部分可计算",
             StaminaPlanStatus.UNAVAILABLE: "暂不可计算",
         }
-        status = QLabel(labels[result.status], self.result_host)
+        status = plain_label(labels[result.status], self.result_host)
         status.setObjectName("progressionResultStatus")
         self.result_layout.addWidget(status)
         if result.total_stamina is not None:
-            total = QLabel(tr("最低活力  {value}", value=result.total_stamina), self.result_host)
+            total = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.render_result.total', total_stamina=f'{result.total_stamina}'), self.result_host)
         elif result.known_stamina > 0:
-            total = QLabel(
-                tr("已知部分活力  {value} · 完整总量不可用", value=result.known_stamina),
+            total = plain_label(
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.render_result.total_2', known_stamina=f'{result.known_stamina}'),
                 self.result_host,
             )
         else:
-            total = QLabel(tr("完整活力暂不可用"), self.result_host)
+            total = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.render_result.total_3'), self.result_host)
         total.setObjectName("progressionResultTotal")
         self.result_layout.addWidget(total)
         session_materials = {
@@ -428,18 +435,16 @@ class ProgressionCalculatorDialog(QDialog):
             icon = self._asset_catalog.progression_item_icon(deficit.item_id)
             self.result_layout.addWidget(ProgressionMaterialCard(
                 name=(material.display_name if material is not None else deficit.item_id),
-                amount_text=f"缺口 × {deficit.deficit_quantity:,}",
+                amount_text=localized_text(getattr(self, 'text_catalog', None), 'auto.features.static_catalog.progression_calculator.render_result.f6253f4de', '缺口 × {deficit_quantity}', deficit_quantity=f'{deficit.deficit_quantity:,}'),
                 icon_path=icon,
                 detail_text=(
-                    f"需要 {deficit.required_quantity:,} · "
-                    f"持有 {deficit.owned_quantity:,}"
+                    localized_text(getattr(self, 'text_catalog', None), 'auto.features.static_catalog.progression_calculator.render_result.fa88a4ec5', '需要 {required_quantity} · 持有 {owned_quantity}', required_quantity=f'{deficit.required_quantity:,}', owned_quantity=f'{deficit.owned_quantity:,}')
                 ),
                 parent=self.result_host,
             ))
         for run in result.runs:
-            row = QLabel(
-                tr("{label}  × {runs} 次  ·  {stamina} 活力",
-                   label=run.label, runs=run.runs, stamina=run.total_stamina),
+            row = plain_label(
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.render_result.row', label=f'{run.label}', runs=f'{run.runs}', total_stamina=f'{run.total_stamina}'),
                 self.result_host,
             )
             row.setObjectName("progressionRunCard")
@@ -447,10 +452,10 @@ class ProgressionCalculatorDialog(QDialog):
             self.result_layout.addWidget(row)
         if result.gaps:
             rows = tuple(
-                (f"计算未完整项 {index}", gap)
+                (localized_text(getattr(self, 'text_catalog', None), 'auto.features.static_catalog.progression_calculator.render_result.f555e0508', '计算未完整项 {index}', index=f'{index}'), gap)
                 for index, gap in enumerate(result.gaps, start=1)
             )
-            self.result_layout.addWidget(_Disclosure(rows, parent=self.result_host))
+            self.result_layout.addWidget(_Disclosure(rows, parent=self.result_host, text_catalog=getattr(self, 'text_catalog', None)))
         self.result_host.setVisible(True)
 
     def _clear_result(self) -> None:
@@ -501,6 +506,7 @@ def build_progression_calculator_dialog(
     service: ProgressionStaminaService,
     terminology_service: StaticCatalogTerminologyService,
     parent: QWidget | None = None,
+    text_catalog=None,
 ) -> ProgressionCalculatorDialog:
     """Public factory for the shared static-catalog composition root."""
 
@@ -508,6 +514,7 @@ def build_progression_calculator_dialog(
         service=service,
         terminology_service=terminology_service,
         parent=parent,
+        text_catalog=text_catalog,
     )
 
 

@@ -2,38 +2,50 @@
 """Scanning workflow implementation used by ScanningController."""
 
 from __future__ import annotations
+from src.domain.localization.catalog import localized_text
+from src.ui.common.enum_text import ui_enum_text
+from src.ui.common.text_catalog import plain_tooltip, resolve_text_catalog
+from dataclasses import replace
 
 from src.features.input_operation_entry import request_input_entry, show_input_unavailable
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
-from src.i18n import tr
 from src.app.constants import DRONE_HELP, OFFLINE_HELP, SCAN_HELP
 from src.app.dialogs import show_help
 from src.app.theme import current_style_sheet
-from src.app.workers import FullVisualScanParseWorkerThread, ScanWorkerThread
+from src.app.workers import FullVisualScanParseWorkerThread
+from src.features.scanning.vision.incremental_workflow import start_incremental_capture, finish_incremental_capture, fail_incremental_capture
 from src.features.allocation.execute_page import build_execute_page
-from src.features.allocation.preference_modes import role_preference_mode_error
-from src.features.allocation.role_selector import RoleSelector
+from src.features.allocation.selection.preference_modes import allocation_strategy_for_button, role_preference_mode_error
+from src.services.allocation.direct.direct_postprocess import direct_strategy_selection_error
+from src.features.allocation.selection.role_selector import RoleSelector
 from src.features.scanning.dependencies import (
     current_scanning_dependencies as _current_scanning_dependencies,
     scanning_dependencies_are_current as _scanning_dependencies_are_current,
     task_scanning_dependencies as _task_scanning_dependencies,
 )
-from src.features.scanning.manual_recovery import complete_pending_manual_items
+from src.features.scanning.vision.manual_recovery import complete_pending_manual_items
+from src.features.scanning.files.file_workflow import (
+    clear_capture_recovery,
+    remember_capture_recovery,
+    update_capture_actions,
+    connect_full_capture,
+)
 from src.features.scanning.operation_logging import (
     begin_scan_operation as _begin_scan_operation,
     scan_event as _scan_event,
 )
-from src.features.scanning.post_action_dialog import load_scan_post_action_config
+from src.services.scanning.management_settings import load_scan_post_action_config
 from src.features.scanning.scan_contracts import (
     offline_scope_replaces_inventory,
     vision_cancel_message,
 )
-from src.features.scanning.scan_source_warning import confirm_scan_mode_entry, restore_scan_mode_selection
-from src.features.scanning.post_action_summary import append_scan_post_action_summary, show_scan_completion
-from src.domain.post_actions import post_actions_enabled, validate_post_action_config
-from src.features.scanning.vision_worker import VisionWorkerThread
-from src.services.full_visual_snapshot_commit import IncompleteVisionScanError, append_tape_main_warning, commit_completed_vision_inventory
+from src.features.scanning.post_actions.scan_source_warning import confirm_scan_mode_entry, restore_scan_mode_selection
+from src.features.scanning.post_actions.post_action_summary import append_scan_post_action_summary, show_scan_completion
+from src.domain.inventory.post_actions import post_actions_enabled, validate_post_action_config
+from src.features.scanning.vision.vision_worker import VisionWorkerThread
+from src.services.inventory.scanning.visual_scan_commit import append_tape_main_warning
+from src.services.inventory.scanning.vision_commit import VisionCommitRequest
 from src.utils.logger import logger
 
 def _page_execute(self):
@@ -45,6 +57,7 @@ def _page_execute(self):
             ),
             style_sheet=current_style_sheet(),
             help_callback=show_help,
+            text_catalog=getattr(self, 'text_catalog', None),
         ),
         SCAN_HELP,
         DRONE_HELP,
@@ -80,15 +93,28 @@ def _on_priority_changed(self):
     pass
 
 
-def _do_exec(self):
-    sm = str(self.scan_group.checkedId())
-    if sm in {"1", "2"} and not request_input_entry(self, "interface_input", "游戏界面扫描"):
+def _do_exec(self, *, axis_initial_request=None):
+    sm = "4" if axis_initial_request is not None else str(self.scan_group.checkedId())
+    if sm in {"1", "2"} and not request_input_entry(self, "interface_input", ui_enum_text(getattr(self, 'text_catalog', None), "游戏界面扫描")):
         return
     dependencies = _current_scanning_dependencies(self)
     sel = self.role_selector.get_selected()
+    from src.features.allocation.team_axis.team_axis_controls import configure_team_axes
+    if axis_initial_request is not None and configure_team_axes(self, initial_request=axis_initial_request) is None:
+        return
+    team_axis = (getattr(self, "team_axis_selection", None)
+                 if getattr(self, "team_axis_check", None) is not None and self.team_axis_check.isChecked() else None)
+    if team_axis is not None:
+        # 发起时冻结档位；后续用户切换控件不影响正在运行的作业。
+        team_axis = replace(team_axis, search_mode=self.team_axis_search.currentData())
+        if any(binding.axis.account_id != dependencies.account_id or binding.axis.generation != dependencies.generation
+               for binding in team_axis.teams):
+            QMessageBox.warning(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('teams.axis.label'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_6')))
+            return
+        sel = list(team_axis.roles) + [role for role in sel if role not in team_axis.roles]
     parse_only = not sel and sm in ("1", "2", "3")
     if not sel and not parse_only:
-        QMessageBox.warning(self.dialog_parent, tr("提示"), tr("请先选择目标角色！"))
+        QMessageBox.warning(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.configuration.add_weight.qmessagebox'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox')))
         return
     total_drives = None
     capture_driver = "mouse"
@@ -104,23 +130,23 @@ def _do_exec(self):
         if not raw_count:
             QMessageBox.warning(
                 self.dialog_parent,
-                tr("提示"),
-                tr("全量扫描前请先填写库存数量。"),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.configuration.add_weight.qmessagebox'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_7')),
             )
             return
         total_drives = int(raw_count)
         if not 0 < total_drives <= 2000:
             QMessageBox.warning(
                 self.dialog_parent,
-                tr("提示"),
-                tr("库存数量必须在 1-2000 之间。"),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.configuration.add_weight.qmessagebox'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_8')),
             )
             return
     if parse_only:
         QMessageBox.information(
             self.dialog_parent,
-            tr("仅生成库存数据"),
-            tr("当前未选择任何角色，本次扫描只会生成背包记录，不会进行配装计算。"),
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_2'),
+            plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_3')),
         )
     offline_scope = None
     if sm == "3":
@@ -129,8 +155,8 @@ def _do_exec(self):
         if offline_scope == "all":
             ret = QMessageBox.warning(
                 self.dialog_parent,
-                tr("全部截图解析"),
-                tr("全部截图解析会读取文件夹根目录下所有截图，可能导致旧截图重复写入库存。\n\n如若产生库存异常，请重新全量扫描。\n\n确定继续吗？"),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.ret'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.ret_2')),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
@@ -142,24 +168,33 @@ def _do_exec(self):
         if pending_drone_mode == "auto" and not (dependencies.screenshot_dir / "raw_drive_0001.png").exists():
             QMessageBox.warning(
                 self.dialog_parent,
-                tr("需要重新全量扫描"),
-                tr("由于版本更新解析逻辑变动，需要重新进行全量扫描"),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_9'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_10')),
             )
             return
-    strat = ["role_priority", "update_mode"][max(0, min(1, self.strategy_group.checkedId()))]
-    cs = self.role_selector.get_custom_sets()
-    cw = self.role_selector.get_custom_weapons() if hasattr(self.role_selector, "get_custom_weapons") else {}
-    tmf = self.role_selector.get_tape_main_filters()
-    cpm = self.role_selector.get_crit_priority_modes()
-    crc = self.role_selector.get_crit_rate_caps()
-    crb = self.role_selector.get_crit_rate_baselines()
-    sem = self.role_selector.get_set_effect_modes()
+    strat = allocation_strategy_for_button(self.strategy_group.checkedId())
+    selection_error = None if parse_only else direct_strategy_selection_error(strat, sel)
+    if selection_error:
+        QMessageBox.warning(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_4'), selection_error)
+        return
+    axis_selection = team_axis
+    if team_axis is not None and not parse_only:
+        if sm != "4":
+            QMessageBox.warning(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_11'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_12')))
+            return
+    cs = self.role_selector.get_custom_sets(**({"roles": sel} if team_axis is not None else {}))
+    cw = self.role_selector.get_custom_weapons(**({"roles": sel} if team_axis is not None else {})) if hasattr(self.role_selector, "get_custom_weapons") else {}
+    tmf = self.role_selector.get_tape_main_filters(**({"roles": sel} if team_axis is not None else {}))
+    cpm = self.role_selector.get_crit_priority_modes(**({"roles": sel} if team_axis is not None else {}))
+    crc = self.role_selector.get_crit_rate_caps(**({"roles": sel} if team_axis is not None else {}))
+    crb = self.role_selector.get_crit_rate_baselines(**({"roles": sel} if team_axis is not None else {}))
+    sem = self.role_selector.get_set_effect_modes(**({"roles": sel} if team_axis is not None else {}))
     pg = self.role_selector.get_priority_groups() if hasattr(self.role_selector, "get_priority_groups") else None
     preference_error = role_preference_mode_error(strat, tmf, cpm, crc)
     if preference_error:
         QMessageBox.warning(
             self.dialog_parent,
-            tr("词条自选不可用"),
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_5'),
             preference_error,
         )
         return
@@ -177,12 +212,12 @@ def _do_exec(self):
         if post_action_error:
             QMessageBox.warning(
                 self.dialog_parent,
-                tr("扫描后管理配置无效"),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.qmessagebox_13'),
                 post_action_error,
             )
             return
     self.btn_run.setEnabled(False)
-    self.btn_run.setText(tr("⏳ 计算中..."))
+    self.btn_run.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.do_exec.btn_run'))
     self.result_card.setVisible(False)
     self._pending_strat = strat
     self._pending_sel = sel
@@ -235,11 +270,21 @@ def _do_exec(self):
             custom_weapons=cw,
             filter_settings=self._allocation_filter_settings,
             blueprint_combo_limit=self._allocation_filter_settings.blueprint_combo_limit,
+            axis_selection=axis_selection,
         )
 
 
-def _start_vision_processing(self, replace_output=False, parse_scope="all"):
-    dependencies = _current_scanning_dependencies(self)
+def _start_vision_processing(self, replace_output=False, parse_scope="all", *, capture_template=None,
+                             capture_dependencies=None, capture_cancel_token=None,
+                             capture_stage=None, recognition_resources=None, capture_driver=None):
+    dependencies = capture_dependencies or _current_scanning_dependencies(self)
+    session = self._manual_recovery
+    revision = session.revision
+    if (session.is_closed or not _scanning_dependencies_are_current(self, dependencies)
+            or capture_cancel_token is not None and capture_cancel_token.is_set()):
+        return
+    if capture_template is not None:
+        capture_template.verify()
     self._scan_dependencies = dependencies
     if not getattr(self, "_scan_operation_active", False):
         _begin_scan_operation(
@@ -251,36 +296,8 @@ def _start_vision_processing(self, replace_output=False, parse_scope="all"):
     input_dir = str(dependencies.screenshot_dir)
     self._pending_archive_paths = []
     self._pending_parse_scope = parse_scope
-    skip_names = self._prepare_incremental_parse(parse_scope)
-    if skip_names is None:
-        self.btn_run.setEnabled(True)
-        self.btn_run.setText(tr("⚡  开始计算"))
-        self._pending_parse_only = False
-        return
-    matching_files = self._matching_scope_files(parse_scope, skip_names)
-    if not matching_files:
-        deleted = self._delete_paths(getattr(self, "_pending_delete_after_parse", []) or [])
-        self._pending_delete_after_parse = []
-        self.btn_run.setEnabled(True)
-        self.btn_run.setText(tr("⚡  开始计算"))
-        self._pending_parse_only = False
-        self._update_inventory_status()
-        _scan_event(
-            self,
-            "INFO",
-            "scanning.succeeded",
-            "扫描解析完成",
-            success_count=0,
-            failed_count=0,
-            duplicate_count=deleted,
-            snapshot_written=False,
-        )
-        QMessageBox.information(
-            self.dialog_parent,
-            tr("解析完成"),
-            tr("解析成功 0 张，解析失败 0 张，过滤重复 {deleted} 张。", deleted=deleted),
-        )
-        return
+    # 首图比对也由解析 worker 拥有，界面只排队，不初始化第二个 OCR。
+    skip_names = set()
     self._vision_worker = VisionWorkerThread(
         input_dir,
         self,
@@ -288,60 +305,110 @@ def _start_vision_processing(self, replace_output=False, parse_scope="all"):
         parse_scope=parse_scope,
         skip_names=skip_names,
         config_dir=str(dependencies.config_dir),
+        static_database_path=dependencies.static_database_path,
+        capture_template=capture_template, capture_cancel_token=capture_cancel_token,
+        capture_stage=capture_stage, recognition_resources=recognition_resources, capture_driver=capture_driver,
     )
     self._progress_dlg = QProgressDialog(
-        tr("正在解析截图..."),
-        tr("取消"),
+        localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.progress.parsing", "正在解析截图..."),
+        ui_enum_text(getattr(self, 'text_catalog', None), "取消"),
         0,
         100,
         self.dialog_parent,
     )
-    self._progress_dlg.setWindowTitle(tr("截图解析进度"))
+    self._progress_dlg.setWindowTitle(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.start_vision_processing.progress_dlg'))
     self._progress_dlg.setMinimumWidth(400)
     self._progress_dlg.setAutoClose(False)
     self._progress_dlg.setAutoReset(False)
-    self._progress_dlg.canceled.connect(self._on_vision_cancel)
+    self._progress_dlg.canceled.connect(lambda: self._on_vision_cancel() if is_current() else None)
     self._progress_dlg.show()
-    self._vision_worker.progress.connect(self._on_vision_progress)
-    self._vision_worker.processing_done.connect(self._on_vision_done)
-    self._vision_worker.canceled.connect(self._on_vision_canceled)
-    self._vision_worker.error.connect(self._on_vision_error)
+    worker = self._vision_worker
+    def owns_current():
+        return (self._vision_worker is worker and self._manual_recovery is session
+                and not session.is_closed and _scanning_dependencies_are_current(self, dependencies))
+
+    def is_current(*, cancelled=False):
+        # 硬停止/切账号/退场撤销代次；用户进度取消只允许同 owner 的取消收尾。
+        return (owns_current() and session.revision == revision
+                and not (capture_cancel_token is not None and capture_cancel_token.is_set())
+                and (cancelled or not worker.is_cancelled()))
+
+    def finished():
+        if not owns_current():
+            return
+        if worker.is_cancelled() or session.revision != revision:
+            if self._progress_dlg:
+                self._progress_dlg.close()
+            _restore_vision_controls(self)  # 真正撤销只恢复当前控件，不开提示或提交。
+        update_capture_actions(self)
+
+    worker.progress.connect(lambda *args: self._on_vision_progress(*args) if is_current() else None)
+    worker.processing_done.connect(lambda stats: self._on_vision_done(stats) if is_current() else None)
+    worker.canceled.connect(lambda count: self._on_vision_canceled(count) if is_current(cancelled=True) else None)
+    worker.error.connect(lambda error: self._on_vision_error(error) if is_current() else None)
+    worker.finished.connect(finished)
     self._vision_worker.start()
 
 
 def _on_vision_progress(self, current, total, filename):
     self._progress_dlg.setMaximum(total)
     self._progress_dlg.setValue(current)
-    self._progress_dlg.setLabelText(
-        tr("正在解析 ({current}/{total}): {filename}", current=current, total=total, filename=filename)
-    )
+    self._progress_dlg.setLabelText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_progress.progress_dlg', current=f'{current}', total=f'{total}', filename=f'{filename}'))
+
+
+def _restore_vision_controls(self, *, label=None):
+    """所有终止分支恢复同一操作 owner 的控件；不修改库存或输入文件。"""
+    self.btn_run.setEnabled(True)
+    self.btn_run.setText(label if label is not None else localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.button.start_calculation", "⚡  开始计算"))
+    self._pending_parse_only = False
+    update_capture_actions(self)
 
 
 def _on_vision_done(self, stats):
     dependencies = _task_scanning_dependencies(self)
     stats = stats or {}
-    if not _scanning_dependencies_are_current(self, dependencies):
-        self.btn_run.setEnabled(True)
-        self.btn_run.setText(tr("⚡  开始计算"))
-        self._pending_parse_only = False
+    capture_token = stats.get("capture_cancel_token")
+    if (self._manual_recovery.is_closed or not _scanning_dependencies_are_current(self, dependencies)
+            or capture_token is not None and capture_token.is_set()):
         return
+    remember_capture_recovery(self, stats, dependencies)
     self._pending_archive_paths = []
     logger.info("视觉解析线程完成，准备启动分配计算...")
     if hasattr(self, "_progress_dlg") and self._progress_dlg:
         self._progress_dlg.close()
-    vision_worker = getattr(self, "_vision_worker", None)
-    if vision_worker is not None and vision_worker.isRunning():
-        vision_worker.wait(5000)
-    post = self._postprocess_vision_files(stats)
     manual_items = []
     pending_manual_count = int(stats.get("pending_manual_count", 0) or 0)
     if pending_manual_count:
+        session = self._manual_recovery
+        revision = session.revision
+        capture_token = stats.get("capture_cancel_token")
+        def recovery_is_current():
+            # 程序停止/退出/账号切换撤销代次；普通用户关窗不推进这份 owner 代次。
+            return (self._manual_recovery is session and not session.is_closed
+                    and session.revision == revision
+                    and _scanning_dependencies_are_current(self, dependencies)
+                    and not (capture_token is not None and capture_token.is_set()))
+        def finish_revoked_recovery():
+            # 同 owner 的停止只恢复可操作性；关闭/新账号/新 session 不投影旧状态。
+            if (self._manual_recovery is session and not session.is_closed
+                    and _scanning_dependencies_are_current(self, dependencies)):
+                _restore_vision_controls(self)
         try:
             manual_result = complete_pending_manual_items(
                 self.dialog_parent,
                 stats,
                 dependencies.config_dir,
+                session=session,
+                scope=(dependencies.account_id, dependencies.generation, dependencies.user_database_path,
+                       dependencies.screenshot_dir, dependencies.static_database_path,
+                       dependencies.config_dir, dependencies.template_dir, stats.get("parse_scope")),
+                is_current=recovery_is_current,
+                text_catalog=getattr(self, 'text_catalog', None),
             )
+            # 统一复核本次 owner/session/账号/取消；失效后不再弹框、造 token 或提交。
+            if not recovery_is_current():
+                finish_revoked_recovery()
+                return
             if manual_result is None:
                 _scan_event(
                     self,
@@ -352,12 +419,21 @@ def _on_vision_done(self, stats):
                 )
                 QMessageBox.information(
                     self.dialog_parent,
-                    tr("补录已取消"),
-                    tr("本次全量视觉扫描未生成背包记录。"),
+                    resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_done.qmessagebox_3'),
+                    plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_done.qmessagebox_6') + (
+                        resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_done.qmessagebox_7')
+                        if stats.get("capture_stage") is not None else
+                        resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_done.qmessagebox_8')
+                        if self._manual_recovery.has_draft else ""
+                    )),
                 )
+                _restore_vision_controls(self)
                 return
             manual_items = manual_result
         except Exception as exc:
+            if not recovery_is_current():
+                finish_revoked_recovery()
+                return
             logger.error(f"补录待识别装备失败: {exc}")
             _scan_event(
                 self,
@@ -369,66 +445,70 @@ def _on_vision_done(self, stats):
             )
             QMessageBox.warning(
                 self.dialog_parent,
-                tr("补录失败"),
-                tr("本次扫描未生成背包记录：{exc}", exc=exc),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_done.qmessagebox_4'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_done.qmessagebox_5', exc=f'{exc}')),
             )
+            _restore_vision_controls(self)
             return
+    stats = dict(stats, _completed_manual_items=manual_items)
+    request = VisionCommitRequest.freeze(dependencies.user_database_path, stats, manual_items)
+    if self._vision_commit.submit(dependencies, request):
+        self.btn_run.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_done.btn_run'))
+    else:
+        self.btn_run.setEnabled(True)
+        QMessageBox.information(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_done.qmessagebox'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_done.qmessagebox_2')))
+
+
+def _on_vision_commit_failed(self, dependencies, error):
+    _restore_vision_controls(self)
+    _scan_event(self, "ERROR", "scanning.failed", "视觉结果提交失败", stage="snapshot_commit", error=error)
+    QMessageBox.warning(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_commit_failed.qmessagebox'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_commit_failed.qmessagebox_2', error=f'{error}')))
+
+
+def _on_vision_application_failed(self, dependencies, error):
+    saved = self._vision_commit.last_result
+    _restore_vision_controls(self)
+    state = localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.state.snapshot_saved", "背包已保存 #{snapshot_id}", snapshot_id=saved.snapshot_id) if saved and saved.snapshot_id else localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.state.commit_returned", "提交结果已返回")
+    QMessageBox.warning(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_application_failed.qmessagebox'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_application_failed.qmessagebox_2', state=ui_enum_text(getattr(self, 'text_catalog', None), f'{state}'), error=ui_enum_text(getattr(self, 'text_catalog', None), f'{error}'))))
+
+
+def _on_vision_committed(self, dependencies, result):
+    if result.snapshot_id is not None:
+        clear_capture_recovery(self)  # 已保存事实之后只能整理文件，不能再解析入库。
+    self._manual_recovery.cancel()  # 提交事实已返回，不将旧填值再次套用到后续扫描。
+    try:
+        _finish_vision_commit(self, dependencies, result)
+    except Exception as error:
+        _on_vision_application_failed(self, dependencies, str(error))
+
+
+def _finish_vision_commit(self, dependencies, result):
+    stats = result.stats
+    vision_snapshot_id = result.snapshot_id
+    manual_items = list(stats.get("_completed_manual_items", []))
+    pending_manual_count = int(stats.get("pending_manual_count", 0) or 0)
+    publication = result.publication
+    files_ready = (publication is None or publication.status == "published") and not result.post_commit_error
+    if publication is not None and publication.cleanup_pending:
+        QMessageBox.warning(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.finish_vision_commit.qmessagebox'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.finish_vision_commit.qmessagebox_2')))
+    if not files_ready:
+        self._pending_archive_paths = []
+        reason = ui_enum_text(getattr(self, 'text_catalog', None), "截图恢复未完成" if publication and publication.status == "restore_incomplete" else "截图整理未完成")
+        QMessageBox.warning(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.finish_vision_commit.qmessagebox_3'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.finish_vision_commit.qmessagebox_4', reason=ui_enum_text(getattr(self, 'text_catalog', None), f'{reason}'))))
+    # 提交或失效判断之后才变更截图，拒绝/补录取消不先丢失原文件。
+    post = self._postprocess_vision_files(stats, before_files=lambda: self._vision_commit.may_continue(dependencies, result)) if files_ready else {}
     success_count = int(stats.get("success_count", 0) or 0)
     failed_count = int(stats.get("failed_count", 0) or 0)
     duplicate_count = int(stats.get("duplicate_count", 0) or 0) + int(post.get("probe_duplicates", 0) or 0)
-    summary = f"解析成功 {success_count} 张，解析失败 {failed_count} 张，过滤重复 {duplicate_count} 张。"
+    summary = resolve_text_catalog(getattr(self, 'text_catalog', None)).render('frontend.scanning.workflow.finish_vision_commit.text', success_count=f'{success_count}', failed_count=f'{failed_count}', duplicate_count=f'{duplicate_count}')
     summary = append_tape_main_warning(summary, [*list(stats.get("vision_items") or []), *manual_items])
-    vision_snapshot_id = None
-    try:
-        vision_snapshot_id = commit_completed_vision_inventory(
-            dependencies.user_database_path,
-            stats,
-            manual_items,
-        )
-    except IncompleteVisionScanError as exc:
-        _scan_event(
-            self,
-            "WARNING",
-            "scanning.incomplete",
-            "全量视觉扫描解析不完整",
-            expected_count=exc.expected_count,
-            parsed_count=exc.parsed_count,
-            failed_count=exc.failed_count,
-        )
-        self.btn_run.setEnabled(True)
-        self.btn_run.setText(tr("⚡  开始计算"))
-        self._pending_parse_only = False
-        QMessageBox.warning(
-            self.dialog_parent,
-            tr("扫描结果不完整"),
-            tr("{exc}\n本次结果未替换当前背包。", exc=exc),
-        )
-        return
-    except Exception as exc:
-        logger.error(f"视觉扫描 SQLite 快照写入失败: {exc}")
-        _scan_event(
-            self,
-            "ERROR",
-            "scanning.failed",
-            "视觉库存快照写入失败",
-            stage="snapshot_commit",
-            error=exc,
-        )
-        QMessageBox.warning(
-            self.dialog_parent,
-            tr("库存写入失败"),
-            tr("本次扫描未生成背包记录：{exc}", exc=exc),
-        )
-        return
     if isinstance(vision_snapshot_id, int) and vision_snapshot_id > 0:
-        summary += f"\n已写入视觉扫描库存快照 #{vision_snapshot_id}；没有抓包快照时可用于计算和自动装配。"
+        summary += localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.summary.vision_snapshot", "\n已写入视觉扫描库存快照 #{snapshot_id}；没有抓包快照时可用于计算和自动装配。", snapshot_id=vision_snapshot_id)
         refresh_home = getattr(self, "_refresh_home", None)
         if callable(refresh_home):
             refresh_home()
     if pending_manual_count:
-        summary += (
-            f"\n待补录 {pending_manual_count} 件，已补录 {len(manual_items)} 件并与本次识别结果共同保存。"
-        )
+        summary += localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.summary.manual_pending", "\n待补录 {pending_count} 件，已补录 {recovered_count} 件并与本次识别结果共同保存。", pending_count=pending_manual_count, recovered_count=len(manual_items))
     _scan_event(
         self,
         "INFO",
@@ -446,28 +526,29 @@ def _on_vision_done(self, stats):
     summary = append_scan_post_action_summary(summary, stats)
     details = []
     if post.get("moved_failed"):
-        details.append(f"失败截图已移动到 failed 文件夹 {post['moved_failed']} 张。")
+        details.append(localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.summary.failed_moved", "失败截图已移动到 failed 文件夹 {count} 张。", count=post['moved_failed']))
     if post.get("renamed"):
-        details.append(f"增量截图已改名接入全量序列 {post['renamed']} 张。")
+        details.append(localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.summary.incremental_renamed", "增量截图已改名接入全量序列 {count} 张。", count=post['renamed']))
     if details:
         summary += "\n" + "\n".join(details)
     if getattr(self, "_pending_parse_only", False):
         self._pending_archive_paths = []
         self.btn_run.setEnabled(True)
-        self.btn_run.setText(tr("⚡  开始计算"))
+        self.btn_run.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('allocation.page.build_run_button.btn_run'))
         self._update_inventory_status()
         show_scan_completion(
             self.dialog_parent,
-            tr("库存数据已生成"),
-            tr("{summary}\n\n本次未配置角色优先级，仅更新了背包记录，未进行配装计算。", summary=summary),
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.finish_vision_commit.caption_2') if vision_snapshot_id else resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.finish_vision_commit.caption'),
+            summary + (resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.finish_vision_commit.caption_3') if vision_snapshot_id else resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.finish_vision_commit.caption_4')),
             stats,
         )
         self._pending_parse_only = False
         return
     from PySide6.QtCore import QTimer
 
-    show_scan_completion(self.dialog_parent, tr("截图解析完成"), summary, stats)
-    QTimer.singleShot(100, self._start_allocation_worker)
+    show_scan_completion(self.dialog_parent, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.finish_vision_commit.caption'), summary, stats)
+    QTimer.singleShot(100, lambda: self._start_allocation_worker()
+                      if self._vision_commit.may_continue(dependencies, result) else None)
 
 
 def _on_vision_error(self, err):
@@ -480,25 +561,25 @@ def _on_vision_error(self, err):
         error=err,
     )
     self._progress_dlg.close()
-    self.btn_run.setEnabled(True)
-    self.btn_run.setText(tr("⚡  开始计算"))
-    self._pending_parse_only = False
+    _restore_vision_controls(self)
     QMessageBox.critical(
         self.dialog_parent,
-        tr("解析失败"),
-        tr("截图解析出错:\n{error}", error=err),
+        resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_error.qmessagebox'),
+        plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_error.qmessagebox_2', err=f'{err}')),
     )
 
 
 def _on_vision_cancel(self):
     vision_worker = getattr(self, "_vision_worker", None)
+    if vision_worker is not None:
+        vision_worker.request_cancel()  # 结束线程的完成信号也可能仍在排队。
+    clear_capture_recovery(self)
     if vision_worker is not None and vision_worker.isRunning():
-        vision_worker.request_cancel()
         self._progress_dlg.setCancelButton(None)
-        self._progress_dlg.setLabelText(tr("正在取消解析，等待当前截图处理完成..."))
+        self._progress_dlg.setLabelText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_cancel.progress_dlg'))
         return
     self.btn_run.setEnabled(True)
-    self.btn_run.setText(tr("⚡  开始计算"))
+    self.btn_run.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('allocation.page.build_run_button.btn_run'))
 
 
 def _on_vision_canceled(self, count):
@@ -511,43 +592,23 @@ def _on_vision_canceled(self, count):
     )
     if hasattr(self, "_progress_dlg") and self._progress_dlg:
         self._progress_dlg.close()
-    self.btn_run.setEnabled(True)
-    self.btn_run.setText(tr("开始计算"))
-    self._pending_parse_only = False
+    _restore_vision_controls(self, label=resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_canceled.caption'))
     QMessageBox.information(
         self.dialog_parent,
-        tr("解析已取消"),
-        vision_cancel_message(count),
+        resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_vision_canceled.qmessagebox'),
+        vision_cancel_message(count, text_catalog=getattr(self, 'text_catalog', None)),
     )
 
 
 def _start_scan(self, drone_mode):
-    if not request_input_entry(self, "interface_input", "增量截图扫描"):
-        return
-    dependencies = _current_scanning_dependencies(self)
-    self._scan_dependencies = dependencies
-    _begin_scan_operation(self, dependencies, route=str(drone_mode))
-    self._pending_scan_mode = drone_mode
-    self.showMinimized()
-    self._scan_worker = ScanWorkerThread(
-        output_dir=dependencies.screenshot_dir,
-        template_path=dependencies.template_dir / "new_tag.png",
-        mode=drone_mode,
-        operation_guard=dependencies.operation_guard,
-        parent=self,
-    )
-    self._scan_worker.scan_done.connect(self._on_scan_done)
-    self._scan_worker.error.connect(self._on_scan_error)
-    self._start_scan_hotkeys(drone_mode)
-    self.btn_run.setText(tr("⏳  扫描中... ({key} 停止)", key=self._hotkey_manager.configuration.stop))
-    self._scan_worker.start()
+    return start_incremental_capture(self, drone_mode, text_catalog=getattr(self, 'text_catalog', None))
 
 
 def _start_gamepad_scan(
     self, total_drives, post_actions_config=None, selected_roles=None, parse_during_scan=True,
     amd_compatibility=False, capture_driver="mouse",
 ):
-    if not request_input_entry(self, "interface_input", "手柄全量扫描" if capture_driver == "gamepad" else "鼠标全量扫描"):
+    if not request_input_entry(self, "interface_input", ui_enum_text(getattr(self, 'text_catalog', None), "手柄全量扫描" if capture_driver == "gamepad" else "鼠标全量扫描")):
         return
     dependencies = _current_scanning_dependencies(self)
     self._scan_dependencies = dependencies
@@ -563,28 +624,32 @@ def _start_gamepad_scan(
     self._gamepad_suppress_parse_ui = False
     action_hint = ""
     if self._gamepad_post_actions_enabled:
-        action_hint = tr("\n\n已启用扫描后管理：扫描解析后会继续计算并同步弃置/锁定状态。" "\n扫描开始后不要切换排序、筛选、滚动或手动操作背包。")
-    scroll_hint = (
-        tr("请把列表滚动到顶部；程序会在倒计时后按网格随机偏移点击并滚动遍历截图。")
-        if capture_driver == "mouse" else tr("请确保选中第一排第一个驱动；程序会在倒计时后接管虚拟手柄遍历截图。")
-    )
-    scan_prompt = tr("点击“确定”后程序会最小化并准备开始全量扫描。\n\n请切换至游戏的驱动仓库页面。\n")
-    scan_prompt += scroll_hint + action_hint
+        action_hint = localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.hint.post_actions",
+                                     "\n\n已启用扫描后管理：扫描解析后会继续计算并同步弃置/锁定状态。\n扫描开始后不要切换排序、筛选、滚动或手动操作背包。")
     ret = QMessageBox.question(
         self.dialog_parent,
-        tr("全量扫描准备"),
-        scan_prompt,
+        resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.start_gamepad_scan.ret'),
+        plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.start_gamepad_scan.ret_2')
+        + (
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.start_gamepad_scan.ret_3')
+            if capture_driver == "mouse"
+            else resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.start_gamepad_scan.ret_4')
+        )
+        + action_hint),
         QMessageBox.Ok | QMessageBox.Cancel,
         QMessageBox.Cancel,
     )
     if ret != QMessageBox.Ok:
         self.btn_run.setEnabled(True)
-        self.btn_run.setText(tr("⚡  开始计算"))
+        self.btn_run.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('allocation.page.build_run_button.btn_run'))
         self._replace_inventory_on_next_parse = False
         self._pending_scan_mode = None
         self._gamepad_post_actions_enabled = False
         self._gamepad_suppress_parse_ui = False
         return
+    self._manual_recovery.cancel()
+    self._vision_commit.cancel()
+    clear_capture_recovery(self)
     _begin_scan_operation(
         self,
         dependencies,
@@ -613,15 +678,10 @@ def _start_gamepad_scan(
             and self.app_context.account.user_database_path == dependencies.user_database_path
         ),
     )
-    self._gamepad_worker.scan_done.connect(self._on_gamepad_scan_done)
-    self._gamepad_worker.progress.connect(self._on_gamepad_parse_progress)
-    self._gamepad_worker.parse_done.connect(self._on_gamepad_parse_done)
-    self._gamepad_worker.post_actions_ready.connect(self._on_gamepad_post_actions_ready)
-    self._gamepad_worker.processing_done.connect(self._on_gamepad_pipeline_done)
-    self._gamepad_worker.error.connect(self._on_gamepad_error)
+    connect_full_capture(self, self._gamepad_worker, dependencies, text_catalog=getattr(self, 'text_catalog', None))
     self._start_scan_hotkeys(capture_driver)
     label = "鼠标" if capture_driver == "mouse" else "手柄"
-    self.btn_run.setText(tr("⏳  {label}扫描/解析中... ({key} 停止)", label=label, key=self._hotkey_manager.configuration.stop))
+    self.btn_run.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.start_gamepad_scan.btn_run', label=ui_enum_text(getattr(self, 'text_catalog', None), f'{label}'), stop=f'{self._hotkey_manager.configuration.stop}'))
     self._gamepad_worker.start()
 
 
@@ -639,13 +699,13 @@ def _on_gamepad_scan_done(self, captured, total):
         self._on_gamepad_parse_progress(current, progress_total, filename)
         return
     self._progress_dlg = QProgressDialog(
-        tr("扫描完成，正在解析截图..."),
+        localized_text(getattr(self, 'text_catalog', None), "scanning.workflow.progress.gamepad_parsing", "扫描完成，正在解析截图..."),
         "",
         0,
         progress_total,
         self.dialog_parent,
     )
-    self._progress_dlg.setWindowTitle(tr("全量解析进度"))
+    self._progress_dlg.setWindowTitle(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_gamepad_scan_done.progress_dlg'))
     self._progress_dlg.setMinimumWidth(420)
     self._progress_dlg.setAutoClose(False)
     self._progress_dlg.setAutoReset(False)
@@ -664,11 +724,9 @@ def _on_gamepad_parse_progress(self, current, total, filename):
     dlg.setMaximum(max(int(total or 0), 1))
     dlg.setValue(int(current or 0))
     if filename:
-        dlg.setLabelText(
-            tr("扫描完成，正在解析 ({current}/{total}): {filename}", current=current, total=total, filename=filename)
-        )
+        dlg.setLabelText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_gamepad_parse_progress.dlg', current=f'{current}', total=f'{total}', filename=f'{filename}'))
     else:
-        dlg.setLabelText(tr("扫描完成，正在等待解析进度... ({current}/{total})", current=current, total=total))
+        dlg.setLabelText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.scanning.on_gamepad_parse_progress.dlg_2', current=f'{current}', total=f'{total}'))
 
 
 def _on_gamepad_parse_done(self):
@@ -706,13 +764,16 @@ def _on_gamepad_error(self, err):
     self.activateWindow()
     if hasattr(self, "_progress_dlg") and self._progress_dlg:
         self._progress_dlg.close()
-    self.btn_run.setEnabled(True)
-    self.btn_run.setText(tr("⚡  开始计算"))
-    self._pending_parse_only = False
-    show_input_unavailable(self, "全量视觉扫描", str(err))
+    _restore_vision_controls(self)
+    show_input_unavailable(self, ui_enum_text(getattr(self, 'text_catalog', None), "全量视觉扫描"), str(err))
 
 
 def _on_gamepad_pipeline_done(self, stats):
+    # 直接调用与排队信号共用相同门禁：停后的结果不打开补录或创建新提交 token。
+    token = stats.get("capture_cancel_token")
+    if (self._manual_recovery.is_closed or token is not None and token.is_set()
+            or not _scanning_dependencies_are_current(self, _task_scanning_dependencies(self))):
+        return
     self._stop_scan_hotkeys()
     self._gamepad_pipeline_finished = True
     self._gamepad_suppress_parse_ui = False
@@ -722,62 +783,14 @@ def _on_gamepad_pipeline_done(self, stats):
     self._replace_inventory_on_next_parse = False
     self._pending_scan_mode = None
     if stats.get("discarded_stale"):
-        self.btn_run.setEnabled(True)
-        self.btn_run.setText(tr("⚡  开始计算"))
-        self._pending_parse_only = False
+        _restore_vision_controls(self)
         return
     self._on_vision_done(stats)
 
 
-def _on_scan_done(self, count):
-    self._stop_scan_hotkeys()
-    self.showNormal()
-    self.activateWindow()
-    if count > 0:
-        replace_output = getattr(self, "_replace_inventory_on_next_parse", False)
-        self._replace_inventory_on_next_parse = False
-        scan_mode = getattr(self, "_pending_scan_mode", None)
-        if replace_output or scan_mode == "gamepad":
-            self._start_vision_processing(replace_output=True, parse_scope="full")
-        elif scan_mode == "auto":
-            self._start_vision_processing(replace_output=False, parse_scope="incremental_auto")
-        elif scan_mode == "semi":
-            self._start_vision_processing(replace_output=False, parse_scope="incremental_semi")
-        else:
-            self._start_vision_processing(replace_output=False, parse_scope="incremental")
-    else:
-        self._replace_inventory_on_next_parse = False
-        self.btn_run.setEnabled(True)
-        self.btn_run.setText(tr("⚡  开始计算"))
-        self._pending_parse_only = False
-        _scan_event(
-            self,
-            "INFO",
-            "scanning.succeeded",
-            "扫描完成但没有捕获新装备",
-            captured_count=0,
-            snapshot_written=False,
-        )
-        QMessageBox.information(
-            self.dialog_parent,
-            tr("扫描完成"),
-            tr("未捕获到新装备，无需解析。"),
-        )
+def _on_scan_done(self, count, *, worker, dependencies):
+    return finish_incremental_capture(self, count, worker, dependencies, text_catalog=getattr(self, 'text_catalog', None))
 
 
 def _on_scan_error(self, err):
-    _scan_event(
-        self,
-        "ERROR",
-        "scanning.failed",
-        "扫描捕获失败",
-        stage="capture",
-        error=err,
-    )
-    self._stop_scan_hotkeys()
-    self.showNormal()
-    self.activateWindow()
-    self.btn_run.setEnabled(True)
-    self.btn_run.setText(tr("⚡  开始计算"))
-    self._pending_parse_only = False
-    show_input_unavailable(self, "截图扫描", str(err))
+    return fail_incremental_capture(self, err, text_catalog=getattr(self, 'text_catalog', None))

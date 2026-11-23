@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -16,7 +16,8 @@ from .user_data_support import (
     UserDataError,
     _utc_now,
 )
-from .user_data_migration_backup import backup_before_history_migration
+from .user_data_migration_backup import backup_before_user_migration
+from .transaction_script import execute_transaction_script
 
 class UserDataDaoCore:
     """单个应用账号所拥有数据的读写边界。
@@ -31,19 +32,21 @@ class UserDataDaoCore:
         account_id: str | None = None,
         account_name: str | None = None,
         schema_path: str | Path = DEFAULT_SCHEMA_PATH,
+        verified_recovery_schema: int | None = None,
     ) -> None:
         self.database_path = Path(database_path).expanduser().resolve()
         existed = self.database_path.is_file()
         if not existed and not account_id:
-            raise UserDataError("创建用户数据库时必须提供 account_id")
+            raise UserDataError("创建用户数据库时必须提供 account_id")  # ui-text: internal
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self._connection: sqlite3.Connection | None = sqlite3.connect(
                 self.database_path, timeout=10.0
             )
         except sqlite3.Error as exc:
-            raise UserDataError(f"无法打开用户数据库：{self.database_path}") from exc
+            raise UserDataError(f"无法打开用户数据库：{self.database_path}") from exc  # ui-text: internal
         self._connection.row_factory = sqlite3.Row
+        self._transaction_serial = 0
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._connection.execute("PRAGMA busy_timeout = 10000")
         try:
@@ -53,7 +56,7 @@ class UserDataDaoCore:
                     account_id=str(account_id),
                     account_name=str(account_name or account_id),
                 )
-            self._migrate_schema(backup_existing=existed)
+            self._migrate_schema(backup_existing=existed, verified_recovery_schema=verified_recovery_schema)
             self._validate_schema()
         except BaseException:
             self.close()
@@ -63,6 +66,49 @@ class UserDataDaoCore:
 
     def __enter__(self) -> Self:
         return self
+
+    @staticmethod
+    @contextmanager
+    def external_read_lease(database_path: str | Path):
+        """为独立只读进程保留 WAL 读者，不冻结业务事务或迁移账号。
+
+        Windows 下最后一个宿主连接退场后，独立只读 SQLite 可能在首次查询
+        时缺少已初始化的 WAL 共享内存。只读打开并完成页头读取后保持连接存活；
+        不持有读事务，故不阻挡写入/检查点，也不替代组件自己的冻结输入。
+        """
+        path = Path(database_path).expanduser().resolve(strict=True)
+        connection = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=10)
+        try:
+            cursor = connection.execute("PRAGMA schema_version")
+            try:
+                cursor.fetchone()
+            finally:
+                cursor.close()
+            yield
+        finally:
+            connection.close()
+
+    @classmethod
+    def read_only(cls, database_path: str | Path, *, cancel_check=None) -> Self:
+        """借用现有账号的只读连接；计算冻结不创建账号、不迁移或写入来源。"""
+        instance = cls.__new__(cls)
+        instance.database_path = Path(database_path).expanduser().resolve(strict=True)
+        instance._connection = None
+        instance._transaction_serial = 0
+        try:
+            connection = sqlite3.connect(instance.database_path.as_uri() + "?mode=ro", uri=True, timeout=10)
+            instance._connection = connection
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            if cancel_check is not None:
+                connection.set_progress_handler(lambda: int(cancel_check()), 1000)
+            # 从结构核验起固定同一读取版本，外层只借用；关闭该 DAO 才结束只读 owner。
+            connection.execute("BEGIN")
+            instance._validate_schema()
+        except BaseException:
+            instance.close()
+            raise
+        return instance
 
     def __exit__(
         self,
@@ -84,8 +130,36 @@ class UserDataDaoCore:
         return self._connection
 
     @contextmanager
+    def write_transaction(self) -> Iterator[sqlite3.Connection]:
+        """在唯一连接上原子提交一项业务；嵌套 DAO 操作只释放保存点，不提前提交外层。"""
+        connection = self._db()
+        owns_transaction = not connection.in_transaction
+        if owns_transaction:
+            connection.execute("BEGIN IMMEDIATE")
+            savepoint = None
+        else:
+            self._transaction_serial += 1
+            savepoint = f"nte_write_{self._transaction_serial}"
+            connection.execute(f"SAVEPOINT {savepoint}")
+        try:
+            yield connection
+            if owns_transaction:
+                connection.commit()
+            else:
+                connection.execute(f"RELEASE SAVEPOINT {savepoint}")
+        except BaseException:
+            # 验证异常、取消异常和提交失败都保持原事实；内层失败可被外层明确处理。
+            if connection.in_transaction:
+                if owns_transaction:
+                    connection.rollback()
+                else:
+                    connection.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                    connection.execute(f"RELEASE SAVEPOINT {savepoint}")
+            raise
+
+    @contextmanager
     def read_consistent_state(self):
-        """Read related account pointers and immutable facts in one SQLite snapshot."""
+        """同一 SQLite 读快照读取关联事实；本方法不提交调用方已有事务。"""
         connection = self._db()
         owns_transaction = not connection.in_transaction
         if owns_transaction:
@@ -98,7 +172,7 @@ class UserDataDaoCore:
 
     def _initialize(self, schema_path: Path, *, account_id: str, account_name: str) -> None:
         if not schema_path.is_file():
-            raise UserDataError(f"用户数据库结构文件不存在：{schema_path}")
+            raise UserDataError(f"用户数据库结构文件不存在：{schema_path}")  # ui-text: internal
         connection = self._db()
         try:
             connection.executescript(schema_path.read_text(encoding="utf-8"))
@@ -130,27 +204,37 @@ class UserDataDaoCore:
         except (OSError, sqlite3.Error) as exc:
             raise UserDataError("无法初始化用户数据库") from exc
 
-    def _migrate_schema(self, *, backup_existing: bool = True) -> None:
+    def _migrate_schema(self, *, backup_existing: bool, verified_recovery_schema: int | None) -> None:
         connection = self._db()
         try:
             row = connection.execute(
                 "SELECT MAX(version) AS version FROM schema_migration"
             ).fetchone()
         except sqlite3.Error as exc:
+            # 锁冲突只表示暂未读到结构，不证明文件类型无效；保留原异常供上层分类。
+            code = getattr(exc, "sqlite_errorcode", 0)
+            if isinstance(code, int) and (code & 0xFF) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                raise UserDataError("用户数据库正忙，读取结构受阻；请稍后重试") from exc
             raise UserDataError("文件不是 NTE 用户数据库") from exc
         version = int(row["version"] or 0) if row is not None else 0
+        if verified_recovery_schema is not None:
+            if not backup_existing or version != verified_recovery_schema:
+                raise UserDataError("账号结构在升级备份期间改变，请重新打开账号")
+            backup_existing = False
         if version > SCHEMA_VERSION:
             raise UserDataError(
                 f"用户数据库结构版本 {version} 高于当前程序支持的 {SCHEMA_VERSION}"
-            )
-        if backup_existing and version < 45 <= SCHEMA_VERSION:
-            backup_before_history_migration(self.database_path, version)
+            )  # ui-text: internal
         try:
             for target_version in range(version + 1, SCHEMA_VERSION + 1):
                 migration_path = USER_MIGRATIONS.get(target_version)
                 if migration_path is None or not migration_path.is_file():
-                    raise UserDataError(f"缺少用户数据库迁移脚本：v{target_version}")
+                    raise UserDataError(f"缺少用户数据库迁移脚本：v{target_version}")  # ui-text: internal
                 migration_sql = migration_path.read_text(encoding="utf-8")
+                if backup_existing and target_version in {45, 47, 48, 49, 50, 51, 52, 53}:
+                    # 独立入口只备份一次；更早的旧值修复仍允许先于完整性检查执行。
+                    backup_before_user_migration(self.database_path, target_version - 1)
+                    backup_existing = False
                 rebuilds_foreign_key_parent = migration_sql.startswith(
                     "-- requires-foreign-keys-off"
                 )
@@ -158,7 +242,7 @@ class UserDataDaoCore:
                     connection.execute("PRAGMA foreign_keys = OFF")
                 try:
                     connection.execute("BEGIN IMMEDIATE")
-                    # Another account owner may have completed the same migration while we waited.
+                    # 等待锁期间另一 owner 可能已完成本次迁移，事务内再次核对后再执行。
                     actual_version = connection.execute(
                         "SELECT MAX(version) FROM schema_migration"
                     ).fetchone()[0]
@@ -171,6 +255,14 @@ class UserDataDaoCore:
                         "INSERT INTO schema_migration(version, applied_at_utc) VALUES (?, ?)",
                         (target_version, _utc_now()),
                     )
+                    if rebuilds_foreign_key_parent:
+                        # 重建父表时暂时关闭外键；提交前检查，拒绝时连同 DDL 和版本标记回滚。
+                        # 保留旧版本后，未修复输入再次打开仍须经过同一迁移门禁。
+                        violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+                        if violations:
+                            raise UserDataError(
+                                f"用户数据库迁移 v{target_version} 产生外键错误"
+                            )  # ui-text: internal
                     connection.commit()
                 except BaseException:
                     connection.rollback()
@@ -178,12 +270,6 @@ class UserDataDaoCore:
                 finally:
                     if rebuilds_foreign_key_parent:
                         connection.execute("PRAGMA foreign_keys = ON")
-                if rebuilds_foreign_key_parent:
-                    violations = connection.execute("PRAGMA foreign_key_check").fetchall()
-                    if violations:
-                        raise UserDataError(
-                            f"用户数据库迁移 v{target_version} 产生外键错误"
-                        )
         except (OSError, sqlite3.Error) as exc:
             connection.rollback()
             raise UserDataError("无法升级用户数据库结构") from exc
@@ -195,6 +281,12 @@ class UserDataDaoCore:
     ) -> None:
         """在同一迁移事务内修复会阻断后续 DDL 的历史存储形态。"""
 
+        if target_version == 52:
+            from .accounts.management_migration import migrate_management_copies
+            migrate_management_copies(connection, _utc_now())
+        if target_version == 53:
+            from .accounts.rewind_migration import migrate_rewind_copies
+            migrate_rewind_copies(connection, _utc_now())
         if target_version != 35:
             return
         # v32 通过 ADD COLUMN 引入普通抗性；旧行只在读取时获得 0.2 默认值，
@@ -210,16 +302,11 @@ class UserDataDaoCore:
     @staticmethod
     def _execute_migration_script(connection: sqlite3.Connection, script: str) -> None:
         """在调用方已经开启的事务中逐条执行迁移 SQL，避免 executescript 隐式提交。"""
-
-        statement = ""
-        for line in script.splitlines(keepends=True):
-            statement += line
-            if sqlite3.complete_statement(statement):
-                if statement.strip():
-                    connection.execute(statement)
-                statement = ""
-        if statement.strip():
-            raise UserDataError("用户数据库迁移脚本包含未结束的 SQL 语句")
+        # 保留账号 DAO 的错误类型与原异常链；公共执行器不反向依赖账号领域。
+        execute_transaction_script(
+            connection, script,
+            incomplete_error=UserDataError("用户数据库迁移脚本包含未结束的 SQL 语句"),
+        )
 
     def _validate_schema(self) -> None:
         try:
@@ -227,12 +314,16 @@ class UserDataDaoCore:
                 "SELECT MAX(version) AS version FROM schema_migration"
             ).fetchone()
         except sqlite3.Error as exc:
+            # 锁冲突只表示暂未读到结构，不证明文件类型无效；保留原异常供上层分类。
+            code = getattr(exc, "sqlite_errorcode", 0)
+            if isinstance(code, int) and (code & 0xFF) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                raise UserDataError("用户数据库正忙，读取结构受阻；请稍后重试") from exc
             raise UserDataError("文件不是 NTE 用户数据库") from exc
         version = row["version"] if row is not None else None
         if version != SCHEMA_VERSION:
             raise UserDataError(
                 f"不支持的用户数据库结构版本：{version!r}；需要 {SCHEMA_VERSION}"
-            )
+            )  # ui-text: internal
 
     def _rows(self, sql: str, parameters: Iterable[Any] = ()) -> list[dict[str, Any]]:
         return [dict(row) for row in self._db().execute(sql, tuple(parameters))]

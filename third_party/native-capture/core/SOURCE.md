@@ -1,7 +1,9 @@
-# Native Core component source
+# Native Core source
 
-Base commit: b58a86589563fa06e91be3b8807e5b13704a206c. Modified working-tree input SHA-256: 9003aba7a9135fb9cbe4dac6f57b9c5af5552084ebb4e736cdfecdd854765ffe. The base alone does not reproduce this build.
+Base commit: cc0604c94dab31c0730092b1f7208cbe764e5c73. Core build input digest: 60c0d9117d6dc3b378f4c3d424b8393b28fe90ca8dbb24c8fd41fe8d33d648c3.
 
-Locked Release CLI build with embedded resources and remapped private build paths. Native battle capture consumes character, team and environment observations. The character business page includes native_battle_equipped_v1: a validated equipped-only subset from the same pinned character observation, with exact item identity, owner, active-slot coverage, stat and placement checks. It never establishes a complete inventory collection. The companion Calc battle path does not refresh or paginate full inventory; normal inventory synchronization remains available.
+Merged Release x64 Core 0.4.8 with cli features and embedded core data resources; desktop and private MCP features are disabled. Source paths are remapped. Root Cargo, build.rs, src and res inputs are hashed as sorted relative-path/content-SHA256 pairs.
 
-Focused Rust mapping checks passed. Offline re-projection of one archived real first-hit character observation resolved four team members and 32 equipped items, with original first-hit identity validation passing. Historical account records were not changed. Live capture acceptance remains pending. Existing signed DLLs, Loader and protocol remain the same component inputs.
+Current role/equipment projections and typed pause evidence are retained. Menu-only transitions do not extend battle end; overlapping skill transitions still do. Seven menu regressions, thirteen native clock tests (with overlap) and the embedded-resource test passed. Version and offline packet hello/shutdown were verified. Independent analysis Core is unchanged.
+
+Existing protected DLLs, signatures, loader and licenses are retained byte-for-byte. No game deployment or current-build live acceptance was performed.

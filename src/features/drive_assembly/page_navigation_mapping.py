@@ -46,6 +46,7 @@ def map_blocks_to_page(
 ) -> list[dict[str, Any]]:
     """Return copies of assembly blocks with centroid and pixel coordinates."""
 
+    # 坐标落在本次捕获的游戏内容区；窗口偏移与缩放同源，不当作屏幕装饰像素。
     page = calibration.scaled(screen_size, content_rect)
     return [_map_block_to_page(block, page) for block in blocks]
 
@@ -248,7 +249,7 @@ def map_tape_set_selection(
     normalized_name = _normalize_tape_set_name(set_name)
     if normalized_name not in DEFAULT_TAPE_SET_OPTIONS:
         available = "、".join(DEFAULT_TAPE_SET_OPTIONS)
-        raise ValueError(f"未知套装: {set_name}。可用套装: {available}")
+        raise ValueError(f"未知套装: {set_name}。可用套装: {available}")  # ui-text: internal
     set_option = _scale_controls({normalized_name: DEFAULT_TAPE_SET_OPTIONS[normalized_name]}, screen_size, content_rect)[
         normalized_name
     ]

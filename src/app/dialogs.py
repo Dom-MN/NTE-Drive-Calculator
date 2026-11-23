@@ -1,28 +1,23 @@
 # 提供通用帮助弹窗工具。
-"""Shared dialog helpers."""
+"""通用帮助弹窗：只展示说明，不启动功能。"""
 
 from __future__ import annotations
 
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout, QWidget
 
 from src.app.theme import current_style_sheet
-from src.i18n import tr
 
 
 def show_help(parent: QWidget | None, title: str, text: str) -> None:
-    # Feature controllers are QObjects rather than widgets.  Keep this shared
-    # boundary defensive so an accidental controller caller cannot crash Qt's
-    # strict parent overload; page builders should still pass their button.
+    # Controller 是 QObject；只接收 QWidget 父级，页面仍应传入实际按钮。
     dialog_parent = parent if isinstance(parent, QWidget) else None
     dlg = QDialog(dialog_parent)
-    # Help copy is defined as module-level constants, which are imported before
-    # set_language() runs. Translate here, at call time, instead.
-    dlg.setWindowTitle(tr(title))
+    dlg.setWindowTitle(title)
     dlg.setMinimumSize(380, 220)
     dlg.setStyleSheet(current_style_sheet())
     layout = QVBoxLayout(dlg)
     layout.setSpacing(12)
-    label = QLabel(tr(text))
+    label = QLabel(text)
     label.setStyleSheet("font-size:13px;line-height:1.6;padding:8px")
     label.setWordWrap(True)
     layout.addWidget(label)

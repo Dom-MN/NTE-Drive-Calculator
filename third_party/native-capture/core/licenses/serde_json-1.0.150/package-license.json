@@ -1,0 +1,6 @@
+{
+  "name": "serde_json",
+  "version": "1.0.150",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/serde-rs/json"
+}

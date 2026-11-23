@@ -4,10 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
-import shutil
 import sqlite3
 import tempfile
 from contextlib import closing
@@ -16,9 +14,11 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 try:
+    from .static_release_installation import install_static_release_pair, sha256
     from .static_database_build_support import (
         IMPORTER_VERSION,
         SCHEMA_VERSION,
+        graduation_template_gaps,
         write_static_manifest,
     )
     from .upgrade_static_database import (
@@ -41,9 +41,11 @@ try:
         format_size, validate_database_size,
     )
 except ImportError:  # 支持直接运行
+    from static_release_installation import install_static_release_pair, sha256
     from static_database_build_support import (
         IMPORTER_VERSION,
         SCHEMA_VERSION,
+        graduation_template_gaps,
         write_static_manifest,
     )
     from upgrade_static_database import (
@@ -74,14 +76,6 @@ MANIFEST_FILENAME = "manifest.json"
 REPORT_RELATIVE_PATH = Path("report") / "static_database_report.json"
 GOLD_FIX_PROVENANCE_FILENAME = "gold_fix_provenance.json"
 SIZE_MANIFEST_REQUIRED_SCHEMA_VERSION = 30
-
-
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest().upper()
 
 
 def _read_json_object(path: Path, label: str) -> dict[str, Any]:
@@ -166,7 +160,15 @@ def _source_path(content_root: Path, relative_path: str) -> Path:
     prefix = "combat_blueprint/"
     if normalized.startswith(prefix):
         normalized = normalized[len(prefix) :]
-    return content_root.joinpath(*PurePosixPath(normalized).parts)
+    # 哈希匹配不赋予读取目录外文件的资格；先约束逻辑路径，再复核真实路径。
+    relative = PurePosixPath(normalized)
+    if not normalized or "\\" in normalized or ":" in normalized or relative.is_absolute() or any(part in {"", ".", ".."} for part in normalized.split("/")):
+        raise StaticReleasePromotionError("来源文件路径越过 Content 根目录")
+    root = content_root.resolve()
+    source = root.joinpath(*relative.parts).resolve()
+    if root not in source.parents:
+        raise StaticReleasePromotionError("来源文件真实路径越过 Content 根目录")
+    return source
 
 
 def validate_source_files(
@@ -190,7 +192,7 @@ def validate_source_files(
         )
 
 
-def _write_manifest_atomic(database_path: Path, manifest_path: Path) -> None:
+def _write_manifest_atomic(database_path: Path, manifest_path: Path, export_quality=None) -> None:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary_name = tempfile.mkstemp(
         prefix=f".{manifest_path.name}.", suffix=".tmp", dir=manifest_path.parent
@@ -198,7 +200,10 @@ def _write_manifest_atomic(database_path: Path, manifest_path: Path) -> None:
     os.close(handle)
     temporary = Path(temporary_name)
     try:
-        write_static_manifest(database_path, temporary)
+        manifest = write_static_manifest(database_path, temporary)
+        if export_quality is not None:
+            manifest["export_quality"] = export_quality
+            temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         os.replace(temporary, manifest_path)
     except BaseException:
         temporary.unlink(missing_ok=True)
@@ -250,6 +255,8 @@ def validate_manifest(
         )
     if int(build_tool.get("importer_version") or 0) != summary["importer_version"]:
         raise StaticReleasePromotionError("候选 manifest 的 importer_version 不一致")
+    if "export_quality" in summary and manifest.get("export_quality") != summary["export_quality"]:
+        raise StaticReleasePromotionError("候选 manifest 的解包缺口声明不一致")
     return manifest
 
 
@@ -293,6 +300,7 @@ def refresh_final_report(
 ) -> dict[str, Any]:
     with closing(_readonly_connection(database_path)) as connection:
         counts = _table_counts(connection)
+        gaps = graduation_template_gaps(connection)
     finalized_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     report = {
         "schema_version": summary["schema_version"],
@@ -314,8 +322,11 @@ def refresh_final_report(
         },
         "source_payloads_included": False,
         "database_counts": counts,
+        "graduation_template_gaps": gaps,
         "foreign_key_violations": [],
     }
+    if "export_quality" in summary:
+        report["export_quality"] = summary["export_quality"]
     _write_text_atomic(
         report_path,
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
@@ -336,6 +347,10 @@ def refresh_final_report(
         "",
     ]
     lines.extend(f"- `{table}`：{count}" for table, count in counts.items())
+    lines.extend(["", "## 毕业模板资料缺项", ""])
+    lines.extend(f"- 角色 `{row['character_id']}`：`{row['reason']}`，来源行 `{row['source_row_id']}`。" for row in gaps)
+    if not gaps:
+        lines.append("本用途无此类记录，不代表已具备毕业计算能力。")
     _write_text_atomic(markdown_path, "\n".join(lines) + "\n")
     return report
 
@@ -345,11 +360,12 @@ def validate_final_report(
     report_path: Path,
     summary: dict[str, Any],
 ) -> dict[str, Any]:
-    """Validate existing final evidence without rewriting candidate files."""
+    """只读核对既有最终报告，不重写候选证据以掩盖不一致。"""
 
     report = _read_json_object(report_path, "候选最终报告")
     with closing(_readonly_connection(database_path)) as connection:
         counts = _table_counts(connection)
+        gaps = graduation_template_gaps(connection)
     expected = {
         "schema_version": summary["schema_version"],
         "dataset_id": summary["dataset_id"],
@@ -360,8 +376,11 @@ def validate_final_report(
         "database_size_mib": round(database_path.stat().st_size / MIB_BYTES, 2),
         "source_payloads_included": False,
         "database_counts": counts,
+        "graduation_template_gaps": gaps,
         "foreign_key_violations": [],
     }
+    if "export_quality" in summary:
+        expected["export_quality"] = summary["export_quality"]
     actual = {key: report.get(key) for key in expected}
     if actual != expected:
         raise StaticReleasePromotionError(
@@ -421,6 +440,9 @@ def _validate_candidate_database(
         from tools.game_data.build_analysis_catalogs import validate_catalog_inputs
 
         validate_catalog_inputs(database_path)
+        from tools.game_data.static_database_suit_permanent import validate_suit_permanent
+        with closing(_readonly_connection(database_path)) as connection:
+            validate_suit_permanent(connection)
     provenance_path = candidate_dir / PROVENANCE_FILENAME
     repack_path = candidate_dir / STORAGE_REPACK_PROVENANCE_FILENAME
     gold_fix_path = candidate_dir / GOLD_FIX_PROVENANCE_FILENAME
@@ -496,6 +518,13 @@ def _validate_candidate_database(
             ) from exc
     else:
         validate_source_files(summary["source_files"], content_root)
+    from tools.game_data.static_export_quality import validate_export_quality
+    try:
+        quality = validate_export_quality(config, content_root, summary["source_files"], database_path)
+        if quality is not None:
+            summary["export_quality"] = quality
+    except (OSError, ValueError, TypeError) as exc:
+        raise StaticReleasePromotionError(f"解包来源质量校验失败：{exc}") from exc
     return {
         "candidate_dir": candidate_dir,
         "database_path": database_path,
@@ -525,7 +554,7 @@ def finalize_candidate(
     manifest_path = Path(candidate["manifest_path"])
     report_path = Path(candidate["report_path"])
     summary = dict(candidate["summary"])
-    _write_manifest_atomic(database_path, manifest_path)
+    _write_manifest_atomic(database_path, manifest_path, summary.get("export_quality"))
     manifest = validate_manifest(database_path, manifest_path, summary)
     refresh_final_report(database_path, report_path, summary)
     report = validate_final_report(database_path, report_path, summary)
@@ -546,7 +575,7 @@ def verify_candidate(
     *,
     allow_size_warning: bool = False,
 ) -> dict[str, Any]:
-    """Fully verify an already finalized candidate without filesystem writes."""
+    """只读预检已最终化候选；特殊来源仅在临时目录复算，不改写候选或正式目录。"""
 
     candidate = _validate_candidate_database(
         candidate_dir,
@@ -560,7 +589,7 @@ def verify_candidate(
     validate_manifest(database_path, manifest_path, summary)
     validate_final_report(database_path, report_path, summary)
     if summary.get("catalog_scope") in {"role_page", "reference"}:
-        from src.integrations.role_catalog_release import read_role_catalog
+        from src.integrations.static_catalog.role_catalog_release import read_role_catalog
         read_role_catalog(database_path.parent)
     return {
         "verified": True,
@@ -574,14 +603,6 @@ def verify_candidate(
         "candidate_manifest": str(manifest_path),
         "final_report": str(report_path),
     }
-
-
-def _temporary_path(directory: Path, filename: str, label: str) -> Path:
-    handle, temporary_name = tempfile.mkstemp(
-        prefix=f".{filename}.{label}.", suffix=".tmp", dir=directory
-    )
-    os.close(handle)
-    return Path(temporary_name)
 
 
 def promote_candidate(
@@ -638,53 +659,14 @@ def promote_candidate(
     if source_database == target_database or source_manifest == target_manifest:
         raise StaticReleasePromotionError("候选产物不得与正式发行产物相同")
 
-    pending_database = _temporary_path(target_dir, DATABASE_FILENAME, "pending")
-    pending_manifest = _temporary_path(target_dir, MANIFEST_FILENAME, "pending")
-    rollback_database = _temporary_path(target_dir, DATABASE_FILENAME, "rollback")
-    rollback_manifest = _temporary_path(target_dir, MANIFEST_FILENAME, "rollback")
-    database_existed = target_database.is_file()
-    manifest_existed = target_manifest.is_file()
-    database_replaced = False
-    manifest_replaced = False
     expected_hash = sha256(source_database)
-    try:
-        shutil.copy2(source_database, pending_database)
-        shutil.copy2(source_manifest, pending_manifest)
-        if sha256(pending_database) != expected_hash:
-            raise StaticReleasePromotionError("候选数据库复制到 pending 后 SHA-256 变化")
-        if database_existed:
-            shutil.copy2(target_database, rollback_database)
-        if manifest_existed:
-            shutil.copy2(target_manifest, rollback_manifest)
-
-        os.replace(pending_database, target_database)
-        database_replaced = True
-        os.replace(pending_manifest, target_manifest)
-        manifest_replaced = True
+    with install_static_release_pair(
+        source_database, source_manifest, target_database, target_manifest, expected_hash,
+    ):
         final_summary = _database_summary(target_database)
         validate_manifest(target_database, target_manifest, final_summary)
         if final_summary["dataset_id"] != finalized["summary"]["dataset_id"]:
             raise StaticReleasePromotionError("晋升后的 dataset 与候选不一致")
-    except BaseException:
-        if database_replaced:
-            if database_existed:
-                os.replace(rollback_database, target_database)
-            else:
-                target_database.unlink(missing_ok=True)
-        if manifest_replaced:
-            if manifest_existed:
-                os.replace(rollback_manifest, target_manifest)
-            else:
-                target_manifest.unlink(missing_ok=True)
-        raise
-    finally:
-        for path in (
-            pending_database,
-            pending_manifest,
-            rollback_database,
-            rollback_manifest,
-        ):
-            path.unlink(missing_ok=True)
 
     return {
         "dataset_id": finalized["summary"]["dataset_id"],
@@ -697,6 +679,18 @@ def promote_candidate(
         "target_manifest": str(target_manifest),
         "final_report": str(finalized["report_path"]),
     }
+
+
+def promote_character_release_metadata(candidate_dir: Path, target_dir: Path) -> dict:
+    """官方公告注解的窄维护入口；旧 schema 原样保持，不提升为当前完整导入器或战报能力。"""
+    from tools.game_data.refresh_character_release_metadata import validate_candidate
+    from tools.game_data.promote_role_catalog import promote_role_catalog
+    if target_dir.resolve() != (DEFAULT_TARGET_DIR / 'role_catalog').resolve():
+        raise StaticReleasePromotionError('角色上线注解只能晋升到独立图鉴目录')
+    verified = validate_candidate(candidate_dir, target_dir)
+    result = promote_role_catalog(verified, target_dir)
+    result['metadata_verification'] = {k: v for k, v in verified.items() if k != 'database_path'}
+    return result
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -780,6 +774,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
     except (OSError, sqlite3.Error, StaticReleasePromotionError) as exc:
         print(f"[失败] {exc}")
+        for note in getattr(exc, "__notes__", ()):
+            print(note)
         return 1
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

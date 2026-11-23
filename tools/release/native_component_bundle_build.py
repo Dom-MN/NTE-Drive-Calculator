@@ -4,14 +4,15 @@ from __future__ import annotations
 import json
 from pathlib import Path, PurePosixPath
 
-from src.integrations.game_component_bundle import inspect_game_component_bundle
-from src.integrations.native_plugin_bundle import (
-    native_upgrade_predecessors, native_deployment_paths, NATIVE_PLUGIN_LAYOUTS, HOT_PLUGIN_LAYOUTS, SPLIT_PLUGIN_LAYOUT,
+from src.integrations.components.game_component_bundle import inspect_game_component_bundle
+from src.integrations.components.native_plugin_bundle import (
+    native_upgrade_predecessors, native_deployment_paths, NATIVE_PLUGIN_LAYOUTS, SPLIT_PLUGIN_LAYOUT, TRAINING_DEPLOYMENT_PATHS,
 )
 
 
+NATIVE_PAYLOAD_DIRECTORY = "native-capture"
 NATIVE_ROLE_DESTINATIONS = {
-    "host": "d3d12.dll", "capture_plugin": "NTE_Capture.dll", "core": "nte-core.exe",
+    "host": "native-capture/d3d12.dll", "capture_plugin": "native-capture/NTE_Capture.dll", "core": "nte-core.exe",
     "capture_license": "licenses/native-capture/capture/LICENSE.txt",
     "capture_source": "licenses/native-capture/capture/SOURCE.md",
     "core_license": "licenses/native-capture/core/LICENSE",
@@ -22,19 +23,14 @@ OPTIONAL_LOADER_ROLES = {
     "loader_source": "licenses/mod-loader/SOURCE.md",
 }
 NATIVE_PROGRAMS = {
-    "third_party/native-capture/capture/d3d12.dll": "d3d12.dll",
-    "third_party/native-capture/capture/NTE_Capture.dll": "NTE_Capture.dll",
+    "third_party/native-capture/capture/d3d12.dll": "native-capture/d3d12.dll",
+    "third_party/native-capture/capture/NTE_Capture.dll": "native-capture/NTE_Capture.dll",
     "third_party/native-capture/core/nte-core.exe": "nte-core.exe",
 }
 HOT_NATIVE_PROGRAMS = {
-    "third_party/native-capture/capture/plugins/NTE_PluginHUD.dll": "plugins/NTE_PluginHUD.dll",
-    "third_party/native-capture/capture/plugins/NTE_PluginHUD.dll.sig": "plugins/NTE_PluginHUD.dll.sig",
-    'third_party/native-capture/capture/plugins/NTE_PluginPerformance.dll': 'plugins/NTE_PluginPerformance.dll',
-    'third_party/native-capture/capture/plugins/NTE_PluginPerformance.dll.sig': 'plugins/NTE_PluginPerformance.dll.sig',
-    "third_party/native-capture/capture/plugins/NTE_PluginUser.dll": "plugins/NTE_PluginUser.dll",
-    "third_party/native-capture/capture/plugins/NTE_PluginUser.dll.sig": "plugins/NTE_PluginUser.dll.sig",
-    "third_party/native-capture/capture/plugins/NTE_PluginCombat.dll": "plugins/NTE_PluginCombat.dll",
-    "third_party/native-capture/capture/plugins/NTE_PluginCombat.dll.sig": "plugins/NTE_PluginCombat.dll.sig",
+    "third_party/native-capture/capture/" + relative: NATIVE_PAYLOAD_DIRECTORY + "/" + relative
+    for relative in {**native_deployment_paths(SPLIT_PLUGIN_LAYOUT), **TRAINING_DEPLOYMENT_PATHS}.values()
+    if relative.startswith("plugins/")
 }
 NATIVE_NOTICES = frozenset({
     "capture/LICENSE.txt", "capture/SOURCE.md", "capture/Detours-LICENSE.md",
@@ -44,6 +40,7 @@ NATIVE_NOTICES = frozenset({
 DEPENDENCY_NOTICE_NAMES = frozenset({
     "LICENSE", "LICENSE.txt", "LICENSE-APACHE", "LICENSE-MIT", "LICENSE-THIRD-PARTY",
     "LICENSE-UNICODE", "COPYING", "PACKAGE_NOTICE.md", "license-apache-2.0", "license-mit",
+    "package-license.json",
 })
 
 
@@ -68,16 +65,26 @@ def native_distribution_path(source_path: str) -> str:
     return "licenses/native-capture/" + tail
 
 
+def _distribution_roles(layout: str, roles) -> dict[str, str]:
+    # 仅隔离发行包的来源路径；游戏与 Loader 的正式部署名称保持不变。
+    return {**NATIVE_ROLE_DESTINATIONS, **{
+        role: NATIVE_PAYLOAD_DIRECTORY + "/" + relative
+        for role, relative in native_deployment_paths(layout, roles).items()
+    }}
+
+
 def _validate_native_contract(payload: dict) -> None:
     if payload.get("layout") != SPLIT_PLUGIN_LAYOUT:
         raise ValueError("新交付必须使用全部 DLL 已保护并嵌入声明的 native-plugins-v3 布局。")
     native_upgrade_predecessors(payload)
     files, roles = payload["files"], payload["roles"]
+    if payload.get("development_profile") or any(role.startswith("mcp_") for role in roles):
+        raise ValueError("私人开发组件不能进入普通发行安装包；请使用私人开发源码工作区。")
     mandatory = {"third_party/native-capture/" + name for name in NATIVE_NOTICES}
     if not mandatory.issubset(files):
         raise ValueError("原生组件缺少完整许可、来源或配套声明。")
     mapped_roles = {role: native_distribution_path(path) for role, path in roles.items()}
-    destinations = {**NATIVE_ROLE_DESTINATIONS, **native_deployment_paths(payload['layout'], payload.get('roles', {}))}
+    destinations = _distribution_roles(payload['layout'], roles)
     if any(mapped_roles.get(role) != path for role, path in destinations.items()):
         raise ValueError("原生组件角色未映射到正式发行布局。")
     loader_files = any(path.startswith("third_party/mod-loader/") for path in files)
@@ -102,7 +109,7 @@ def native_component_build_inputs(application_root: Path):
     _validate_native_contract(payload)
     inputs = {key: ComponentBuildInput(application_root / key, native_distribution_path(key))
               for key in inspection.files}
-    # All dependency notices present in the delivered source must be explicit inputs.
+    # 来源包内每份依赖许可都必须显式列入组件输入，不静默遗漏。
     directory = application_root / "third_party/native-capture/core/licenses"
     for path in directory.rglob("*"):
         if path.is_file() and path.relative_to(application_root).as_posix() not in inputs:
@@ -123,13 +130,13 @@ def validate_native_packaged_bundle(resource_root: Path, inspection, source_mani
     from tools.release.game_component_bundle_build import _unique, _validate_managed_members
 
     bundled = json.loads(inspection.manifest_path.read_text(encoding="utf-8"), object_pairs_hook=_unique)
-    required = {**NATIVE_ROLE_DESTINATIONS, **native_deployment_paths(inspection.layout, inspection.roles)}
+    required = _distribution_roles(inspection.layout, inspection.roles)
     loader_present = bool(set(inspection.roles) & set(OPTIONAL_LOADER_ROLES))
     if loader_present:
         required.update(OPTIONAL_LOADER_ROLES)
     if any(inspection.roles.get(role) != destination for role, destination in required.items()):
         raise ValueError("发行原生组件不是当前资源目录布局。")
-    # Reverse the approved paths to validate the same license and source contract.
+    # 反向还原已批准路径，核对与来源相同的许可和组件身份，不接受新增旁路。
     reverse = {destination: source for source, destination in {**NATIVE_PROGRAMS, **HOT_NATIVE_PROGRAMS}.items()}
     reverse["nte-mod-loader.exe"] = "third_party/mod-loader/bin/nte-mod-loader.exe"
     source_files = {}
@@ -148,15 +155,12 @@ def validate_native_packaged_bundle(resource_root: Path, inspection, source_mani
         reverse[path], source_files[key] = key, digest
     _validate_native_contract({"layout": inspection.layout, "files": source_files,
                                "roles": {role: reverse[path] for role, path in inspection.roles.items()}})
-    directories = ("licenses/native-capture",) + (("licenses/mod-loader",) if loader_present else ())
-    if inspection.layout in HOT_PLUGIN_LAYOUTS:
-        directories += ('plugins',)
+    directories = (NATIVE_PAYLOAD_DIRECTORY, "licenses/native-capture") + (("licenses/mod-loader",) if loader_present else ())
     _validate_managed_members(resource_root, inspection.files, directories=directories)
-    forbidden = ("dwmapi.dll", "licenses/mods-plugin")
-    forbidden += ('NTE_Capture.dll',) if inspection.layout in HOT_PLUGIN_LAYOUTS else ('plugins',)
+    forbidden = ("d3d12.dll", "dwmapi.dll", "NTE_Capture.dll", "plugins", "licenses/mods-plugin")
     for relative in forbidden:
         if (resource_root / relative).exists():
-            raise ValueError("发行原生组件混入旧 Mods 插件或工作区。")
+            raise ValueError("发行原生组件混入未隔离的游戏代理、旧插件或工作区。")
     if not loader_present and ((resource_root / "nte-mod-loader.exe").exists()
                                or (resource_root / "licenses/mod-loader").exists()):
         raise ValueError("发行原生组件包含未声明 Loader。")

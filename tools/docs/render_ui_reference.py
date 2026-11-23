@@ -30,8 +30,12 @@ def main() -> None:
     from src.app.theme import apply_app_theme
     from src.app.version import __version__
     from src.features.home.page import build_home_page
-    from src.features.allocation.execute_page import _build_strategy_card, _build_run_button, _build_result_card
-    from src.features.inventory.equipment_display_view import _page_equipment
+    from src.features.allocation.execute_page import (
+        _build_strategy_card,
+        _build_run_button,
+        _build_result_card,
+    )
+    from src.features.inventory.equipment.display.display_view import _page_equipment
     from src.features.settings.work_mode_card import build_work_mode_card
 
     app = QApplication([])
@@ -131,7 +135,7 @@ def main() -> None:
     ], '展示离线模式；未运行模式确认、检测、部署或清理。', 280)
 
     from PySide6.QtCore import QObject, Signal
-    from src.features.settings.performance_card import PerformanceCard
+    from src.features.settings.performance.card import PerformanceCard
     class PerformancePreview(QObject):
         changed = Signal()
         log_dir = OUTPUT

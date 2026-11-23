@@ -1,0 +1,6 @@
+{
+  "name": "aes",
+  "version": "0.8.4",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/RustCrypto/block-ciphers"
+}

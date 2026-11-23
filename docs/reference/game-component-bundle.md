@@ -15,10 +15,15 @@ Windows 明确报告恶意软件阻止时显示系统拦截原因；临时文件
 自动管理仅消费当前 Calc 的 `component-bundle.json`。源码布局在
 `third_party/native-capture/component-bundle.json`，发行布局在应用资源根目录；所有清单文件路径相对当前应用资源根目录。
 PyInstaller 发行的资源根目录为 `_internal`，与主 EXE 所在目录不同；发行清单须使用该布局内的路径。
-原生采集链的代理 DLL 只按清单作为显式输入打包；依赖扫描不从工作目录自动收集同名 `dwmapi.dll` 或 `d3d12.dll`，
-避免将本机游戏代理误作 Qt 的 Windows 系统依赖。声明的 D3D 入口仍须通过成包哈希核对。
-原生安装包覆盖升级时清除旧安装误带的 `_internal/dwmapi.dll`，只处理 Calc 安装目录中的运行依赖；
-不通过安装器清理游戏目录，也不删除账号、战报或工作模式配置。
+游戏代理 `d3d12.dll`、插件及签名统一存放在 `_internal/native-capture/`，
+不进入 Calc 的资源根 DLL 搜索目录；Core 与 Loader 可执行文件仍在 `_internal`。
+部署按清单读取隔离目录中的来源文件，再写入游戏目录或 Loader 专用运行目录的正式布局，文件名不变。
+依赖扫描不从工作目录自动收集同名 `dwmapi.dll` 或 `d3d12.dll`，成包门禁同时拒绝资源根目录中的
+`d3d12.dll`、`dwmapi.dll`、`NTE_Capture.dll` 和旧 `plugins/`，并核对隔离目录的完整清单与哈希。
+原生安装包覆盖升级时清除 Calc 安装目录中旧的 `_internal/dwmapi.dll`；当前隔离布局还清除
+旧 `_internal/d3d12.dll`、`_internal/NTE_Capture.dll` 及 `_internal/plugins/` 中 User、Combat、HUD、Performance
+四个正式插件及各自签名。只删除确切文件，保留目录和其他文件；不清理游戏目录、账号、战报或工作模式配置。
+配套 Core 可用性受整包校验约束；校验失败表示组件包未通过核对，不能仅据此断言 Core 可执行文件缺失。
 缺少清单、来源声明、配套文件或哈希不符时，自动管理不可用，不追随外部仓库或其他安装的文件。
 
 清单为 UTF-8 JSON 对象：
@@ -56,7 +61,7 @@ v3 保留 v2 的宿主、User、Combat 和签名身份，新增必需 `hud_plugi
 
 每项声明是 `nte.component-notice/1`，构建方在原始 DLL 中核对并保留声明导出，Calc 按受保护哈希核对随附解析副本。授权声明与业务能力分开，不在此清单里发明私有源码权限或 AI 审查保证。
 
-当前工作区随附包已接入重新构建的 v3 五 DLL、最终签名和配套采集 Core，来源与发行映射均通过整包核验。清单记录未提交工作树及其冻结输入摘要；本地接入不代表已发布或实机验收完成。升级必须使用重新构建和核验的整套输入，不能只把旧清单改为 v3。
+当前工作区随附包包含 v3 六 DLL（含 Training）、五份最终签名和配套采集 Core，已按选定正式服 SDK 重新构建并通过整包核验。清单记录未提交工作树、冻结输入摘要及 SDK 输入哈希；本地接入不代表已发布或受保护组件的实机验收完成。升级必须使用重新构建和核验的整套输入，不能只把旧清单改为 v3。
 
 ## 旧独立采集组件清单
 
@@ -118,6 +123,11 @@ D3D 手动部署先完成旧清理待办；归属冲突或清理失败时保留�
 Loader 保留原有明确选择、受控提权、启动器定位和协作停止机制，使用配置目录的 `native-loader` 仅准备同一个
 采集 DLL。标准加载参数为 `--dll <运行目录>/NTE_Capture.dll --payload-load-mode loadlibrary`，
 不得将该运行时送入旧的默认 manual-map 路径，也不登记旧脚本工作区。选择 Loader 时自动管理沿用该入口。启动或重新准备 Loader 前，除游戏进程外，还按已选安装目录解析官方启动器并核对其运行进程的完整映像路径；启动器仍在运行或身份查询未完成时等待用户关闭并重试，不结束外部进程，也不以同名其他安装的启动器替代。
+启动器定位仅检查所选 `HTGame.exe` 对应的安装根，不要求根目录使用英文名称。
+候选包含根目录及既有 `NTELauncher/` 子目录中的 `NTELauncher.exe`、`NTEGlobalLauncher.exe`、
+`NTETWLauncher.exe`，另包含台服正式 `NTETW/NTETWLauncher.exe`；根目录入口优先。
+启动前核对全部已找到入口的运行状态，台服子目录入口仍运行时同样等待关闭。
+不扫描相邻安装或其他目录补找启动器；名称识别通过不代表 Steam 台服实际加载或业务连接已经验收。
 启动前通过 `--capabilities-json --dry-run --once` 核验当前可替换 Loader 与内嵌 shim；要求 shim 协议 3、
 标准加载能力及 `payload_kinds` 中的 `nte_capture_runtime_v1`。仅旧版标准加载声明不能证明新采集运行时适配。
 Calc 采用既有启动提权流程，普通非提权测试的错误不代表正常 Calc 加载失败。不使用固定 Loader SHA 白名单。

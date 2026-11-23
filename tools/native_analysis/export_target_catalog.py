@@ -13,11 +13,12 @@ sys.path.insert(0, str(ROOT))
 
 
 def export_catalog(database: Path) -> dict:
-    from src.services.battle_encounter_catalog_service import BattleEncounterCatalogService
-    from src.services.battle_target_catalog_service import BattleTargetCatalogService
+    from src.services.battle_report.targets.encounter.catalog import BattleEncounterCatalogService
+    from src.services.battle_report.targets.catalog import BattleTargetCatalogService
     from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 
-    with StaticGameDataDao(database) as dao:
+    # 构建候选会在导出后立即改名晋升，专属连接必须随本次导出关闭，不能留在进程共享池。
+    with StaticGameDataDao(database, reuse_connection=False) as dao:
         candidates = [asdict(row) for row in BattleEncounterCatalogService.load(dao)]
         configs = dao.list_outer_realm_configs()
         effects = dao.list_gameplay_effects()
@@ -52,7 +53,7 @@ def export_catalog(database: Path) -> dict:
 
 
 def export_axis_catalog(database: Path) -> dict:
-    from src.services.battle_animation_window_service import BattleAnimationWindowService
+    from src.services.battle_report.actions.animation_window import BattleAnimationWindowService
     from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 
     class SingleBinding:
@@ -73,7 +74,7 @@ def export_axis_catalog(database: Path) -> dict:
             return self.dao.get_combat_blueprint_asset(path)
 
     templates = {}
-    with StaticGameDataDao(database) as dao:
+    with StaticGameDataDao(database, reuse_connection=False) as dao:
         metadata = dao.summary()["dataset"]
         for character in dao.list_characters():
             character_id = int(character["character_id"])

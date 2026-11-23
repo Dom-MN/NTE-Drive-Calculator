@@ -589,7 +589,7 @@ def _write_forks(connection: sqlite3.Connection, output: Path) -> None:
 
 
 def _write_suits(connection: sqlite3.Connection, output: Path) -> None:
-    from src.services.battle_equipment_suit_service import (
+    from src.services.battle_report.buffs.equipment_suits import (
         BattleEquipmentSuitService,
     )
 
@@ -725,6 +725,7 @@ def _write_index(
 | [空幕套装](equipment-suits.md) | 二件套和四件套效果 |
 | [公共与特殊机制](system-mechanics.md) | DOT、环合、倾陷、最大生命、多目标和轴变化 |
 | [人工审计结论](review-notes.md) | 用户确认的触发、乘区、消费者和反事实规则 |
+| [逐角色审计](role-reviews.md) | 按角色 ID 排序的技能、被动与觉醒人工审计 |
 
 ## 状态口径
 

@@ -1,0 +1,6 @@
+{
+  "name": "autocfg",
+  "version": "1.5.1",
+  "license": "Apache-2.0 OR MIT",
+  "repository": "https://github.com/cuviper/autocfg"
+}

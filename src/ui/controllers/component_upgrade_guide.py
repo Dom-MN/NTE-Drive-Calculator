@@ -1,8 +1,7 @@
 # 将旧版组件证据投影为工作台升级引导。
 from __future__ import annotations
 
-from src.i18n import tr
-
+from src.ui.common.text_catalog import plain_tooltip, resolve_text_catalog
 from dataclasses import dataclass
 import os
 
@@ -10,8 +9,8 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from src.features.settings.component_upgrade_dialog import ComponentUpgradeDialog
-from src.services.component_upgrade_guide import UpgradeEvidence, inspect_upgrade_evidence
-from src.services.equipment_plugin_deployment import EquipmentPluginDeploymentError
+from src.services.components.upgrade_guide import UpgradeEvidence, inspect_upgrade_evidence
+from src.integrations.components.environment import EquipmentPluginDeploymentError
 
 
 @dataclass(frozen=True)
@@ -29,7 +28,7 @@ class ComponentUpgradeGuideMixin:
             return
         self._upgrade_cleanup_resume = False
         self._upgrade_cleanup_assessed = False
-        QTimer.singleShot(0, self._show_upgrade_when_idle)
+        QTimer.singleShot(0, self, self._show_upgrade_when_idle)
 
     def _upgrade_progress_path(self):
         return self.window.app_context.paths.config_dir / "component_upgrade_pending"
@@ -45,7 +44,7 @@ class ComponentUpgradeGuideMixin:
         self._upgrade_flow_active = active
 
     def start_upgrade_guidance(self) -> None:
-        """Assess old deployments after the normal first-run dialog has finished."""
+        """首启提示结束后评估旧部署；评估不等同清理或部署。"""
         self._upgrade_flow_active = self._upgrade_progress_path().is_file()
         self.request_upgrade_assessment(startup=True)
 
@@ -53,7 +52,7 @@ class ComponentUpgradeGuideMixin:
         if self._closed:
             return
         if QApplication.activeModalWidget() is not None:
-            QTimer.singleShot(1000, self._show_upgrade_when_idle)
+            QTimer.singleShot(1000, self, self._show_upgrade_when_idle)
             return
         self.show_upgrade_guide()
 
@@ -74,7 +73,7 @@ class ComponentUpgradeGuideMixin:
             except (OSError, ValueError, EquipmentPluginDeploymentError) as error:
                 evidence = UpgradeEvidence(
                     "path_unknown" if deployment else "none",
-                    tr("旧组件核对遇到问题，请在环境设置中重新检测。"),
+                    "旧组件核对遇到问题，请在环境设置中重新检测。",
                     type(error).__name__,
                     "loader" if deployment.get("loading_method") == "loader" else "native-capture",
                 )
@@ -108,13 +107,13 @@ class ComponentUpgradeGuideMixin:
         if stage is None:
             return
         summary = {
-            "path": tr("旧组件升级：先确认游戏位置。"),
-            "cleanup": tr("旧组件升级：请先关闭游戏并清理旧部署。"),
-            "mode": tr("旧组件已清理：请重新确认工作模式。"),
-            "deploy": tr("工作模式已确认：请部署当前版本组件。"),
-            "done": tr("旧组件已清理；当前模式无需原生部署。"),
+            "path": "旧组件升级：先确认游戏位置。",
+            "cleanup": "旧组件升级：请先关闭游戏并清理旧部署。",
+            "mode": "旧组件已清理：请重新确认工作模式。",
+            "deploy": "工作模式已确认：请部署当前版本组件。",
+            "done": "旧组件已清理；当前模式无需原生部署。",
         }
-        self.window.home_upgrade_summary.setText(tr(summary[stage]))
+        self.window.home_upgrade_summary.setText(summary[stage])
 
     def show_upgrade_guide(self) -> None:
         if self._closed:
@@ -131,6 +130,7 @@ class ComponentUpgradeGuideMixin:
             self.window, stage=stage,
             detail=evidence.reason + "\n" + evidence.detail,
             method=evidence.method, on_action=self._upgrade_action,
+            text_catalog=getattr(self, 'text_catalog', None),
         )
         self._upgrade_dialog = dialog
         dialog.finished.connect(lambda _result: self._dismiss_upgrade_dialog(dialog))
@@ -148,7 +148,7 @@ class ComponentUpgradeGuideMixin:
                 self.policy.set_auto_sync_enabled(False)
                 self.policy.set_component_auto_ready(False)
             except OSError:
-                QMessageBox.warning(self.window, tr("旧版插件升级"), tr("保存引导状态失败，请检查配置目录权限后重试。"))
+                QMessageBox.warning(self.window, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.upgrade_action.qmessagebox'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.upgrade_action.qmessagebox_2')))
                 return
             self._upgrade_cleanup_resume = True
             self._upgrade_cleanup_assessed = False
@@ -161,8 +161,8 @@ class ComponentUpgradeGuideMixin:
         elif stage == "mode":
             if self._controls:
                 combo = self._controls[0]
-                combo.setPlaceholderText(tr("未选择"))
-                # currentIndexChanged only refreshes emphasis; activated confirms a mode.
+                combo.setPlaceholderText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.allocation.manage_role_preferences.main_box'))
+                # 索引变化只刷新强调状态；activated 才进入用户确认模式入口。
                 combo.setCurrentIndex(-1)
             self.open_settings("mode")
         elif stage == "deploy":

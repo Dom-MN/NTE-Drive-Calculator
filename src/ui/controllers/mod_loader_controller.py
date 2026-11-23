@@ -1,17 +1,17 @@
 # 处理设置页中的原生组件加载意图，记录只属于本机工作模式。
-"""UI intent handlers for managed game component loading."""
+"""加载方式只记录本机意图；启动与清理复用正式模式 owner。"""
 from __future__ import annotations
 
-from src.i18n import tr
-
+from src.ui.common.enum_text import ui_enum_text
+from src.ui.common.text_catalog import plain_tooltip, resolve_text_catalog
 from typing import Any
 
 from PySide6.QtWidgets import QMessageBox
 
-from src.services.equipment_plugin_deployment import (
+from src.integrations.components.environment import (
     EquipmentPluginDeploymentError,
 )
-from src.services.mod_plugin_loading_service import ModPluginLoadingError
+from src.services.components.loader_service import ModPluginLoadingError
 
 
 def selected_plugin_loading_method(window: Any) -> str:
@@ -31,7 +31,7 @@ def equipment_plugin_loading_method_changed(window: Any, _index: int) -> None:
             combo.blockSignals(True)
             combo.setCurrentIndex(max(0, combo.findData("loader")))
             combo.blockSignals(False)
-            QMessageBox.warning(window, tr("切换加载方式"), tr("Loader 正在等待加载，请先清理当前加载入口后再切换。"))
+            QMessageBox.warning(window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.equipment_plugin_loading_method_changed.qmessagebox'), plain_tooltip(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.equipment_plugin_loading_method_changed.qmessagebox_2')))
             return
         record = window.work_mode_service.deployment_record
         record["loading_method"] = method
@@ -39,7 +39,7 @@ def equipment_plugin_loading_method_changed(window: Any, _index: int) -> None:
         window.work_mode_runtime.invalidate()
         window._refresh_equipment_plugin_status()
     except (EquipmentPluginDeploymentError, ModPluginLoadingError) as error:
-        QMessageBox.warning(window, tr("切换加载方式"), str(error))
+        QMessageBox.warning(window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.equipment_plugin_loading_method_changed.qmessagebox'), ui_enum_text(getattr(window, 'text_catalog', None), str(error)))
 
 
 def activate_equipment_plugin_loading_method(window: Any) -> None:
@@ -59,7 +59,7 @@ def start_equipment_mod_loader(window: Any) -> None:
     try:
         window.work_mode_service.require("native_load")
     except PermissionError as error:
-        QMessageBox.warning(window, tr("启动 Mod Loader"), str(error))
+        QMessageBox.warning(window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.controllers.start_equipment_mod_loader.qmessagebox'), ui_enum_text(getattr(window, 'text_catalog', None), str(error)))
         return
     executable = window.work_mode_service.settings.game_executable
     if not executable.strip():
@@ -70,5 +70,5 @@ def start_equipment_mod_loader(window: Any) -> None:
 
 
 def stop_equipment_mod_loader(window: Any) -> None:
-    """All stop/cleanup requests share the mode owner's pending lifecycle."""
+    """停止与清理统一交给模式 owner 的待收尾生命周期。"""
     window.work_mode_controller.cleanup()

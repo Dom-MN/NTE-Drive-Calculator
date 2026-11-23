@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from src.ui.common.text_catalog import TextActionButton, plain_label, plain_tooltip, resolve_text_catalog
+from src.ui.common.enum_text import ui_enum_text
 import os
 import re
 from pathlib import Path
@@ -10,7 +12,6 @@ from pathlib import Path
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QApplication,
     QButtonGroup,
     QComboBox,
     QDialog,
@@ -18,23 +19,23 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from functools import lru_cache
 
-from src.i18n import display_term, tr
 from src.models.equipment import Tape
 from src.app.theme import GRADE_COLORS, theme_rgba, themed_style
-from src.services.game_ui_asset_catalog import GameUiAssetCatalog
+from src.app.window_geometry import fit_dialog_to_available_screen
+from src.integrations.game_assets.catalog import GameUiAssetCatalog
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
-from src.ui.widgets import SearchableComboBox
+from src.ui.common.widgets import SearchableComboBox
 
 @lru_cache(maxsize=512)
 def _official_role_portrait(
@@ -65,6 +66,7 @@ def _official_role_portrait(
 
 
 def build_identify_page(window, text_edit_cls):
+    _ui_text = resolve_text_catalog(getattr(window, 'text_catalog', None)).render
     page = QWidget()
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
@@ -73,13 +75,13 @@ def build_identify_page(window, text_edit_cls):
     layout.setContentsMargins(20, 16, 20, 16)
     layout.setSpacing(12)
 
-    input_card = window._card(tr("快速鉴定"))
+    input_card = window._card(_ui_text('identification.page.build_identify_page.input_card'))
     type_row = QHBoxLayout()
     type_row.setSpacing(12)
-    type_row.addWidget(QLabel(tr("装备类型")))
+    type_row.addWidget(plain_label(_ui_text('identification.page.build_identify_page.label')))
     window.ident_type_group = QButtonGroup(window)
-    window.ident_drive_rb = QRadioButton(tr("驱动块"))
-    window.ident_tape_rb = QRadioButton(tr("卡带"))
+    window.ident_drive_rb = QRadioButton(_ui_text('identification.page.build_identify_page.ident_drive_rb'))
+    window.ident_tape_rb = QRadioButton(_ui_text('identification.page.build_identify_page.ident_tape_rb'))
     window.ident_drive_rb.setChecked(True)
     window.ident_type_group.addButton(window.ident_drive_rb, 0)
     window.ident_type_group.addButton(window.ident_tape_rb, 1)
@@ -87,18 +89,25 @@ def build_identify_page(window, text_edit_cls):
     type_row.addWidget(window.ident_drive_rb)
     type_row.addWidget(window.ident_tape_rb)
     type_row.addSpacing(18)
-    type_row.addWidget(QLabel(tr("品质")))
+    type_row.addWidget(plain_label(_ui_text('identification.page.build_identify_page.label_2')))
     window.ident_quality_combo = QComboBox()
-    for label, value in [(tr("金色"), "Gold"), (tr("紫色"), "Purple"), (tr("蓝色"), "Blue")]:
-        window.ident_quality_combo.addItem(label, value)
+    for label, value in [("金色", "Gold"), ("紫色", "Purple"), ("蓝色", "Blue")]:
+        window.ident_quality_combo.addItem(ui_enum_text(getattr(window, 'text_catalog', None), label), value)
     type_row.addWidget(window.ident_quality_combo)
     type_row.addStretch()
+    if window.role_suit_matching is not None:
+        matching = window.role_suit_matching
+        button = TextActionButton(matching.catalog.render("matching.title"))
+        button.setObjectName("btnNew")
+        button.setToolTip(plain_tooltip(matching.catalog.render("matching.scope_hint")))
+        button.clicked.connect(lambda: matching.open(page))
+        type_row.addWidget(button)
     input_card.layout().addLayout(type_row)
 
     window.ident_shape_row = QWidget()
     shape_row = QHBoxLayout(window.ident_shape_row)
     shape_row.setContentsMargins(0, 0, 0, 0)
-    shape_row.addWidget(QLabel(tr("驱动形状")))
+    shape_row.addWidget(plain_label(_ui_text('identification.page.build_identify_page.label_3')))
     window.ident_shape_combo = SearchableComboBox()
     shape_row.addWidget(window.ident_shape_combo, 1)
     input_card.layout().addWidget(window.ident_shape_row)
@@ -107,10 +116,10 @@ def build_identify_page(window, text_edit_cls):
     tape_row = QHBoxLayout(window.ident_tape_row)
     tape_row.setContentsMargins(0, 0, 0, 0)
     tape_row.setSpacing(8)
-    tape_row.addWidget(QLabel(tr("卡带套装")))
+    tape_row.addWidget(plain_label(_ui_text('identification.page.build_identify_page.label_4')))
     window.ident_set_combo = SearchableComboBox()
     tape_row.addWidget(window.ident_set_combo, 1)
-    tape_row.addWidget(QLabel(tr("主词条")))
+    tape_row.addWidget(plain_label(_ui_text('identification.page.build_identify_page.label_5')))
     window.ident_main_combo = SearchableComboBox()
     tape_row.addWidget(window.ident_main_combo, 1)
     input_card.layout().addWidget(window.ident_tape_row)
@@ -118,19 +127,19 @@ def build_identify_page(window, text_edit_cls):
     path_row = QHBoxLayout()
     path_row.setSpacing(8)
     window.ident_path_edit = QLineEdit()
-    window.ident_path_edit.setPlaceholderText(tr("图片路径；多个图片可用分号分隔"))
+    window.ident_path_edit.setPlaceholderText(_ui_text('identification.page.build_identify_page.ident_path_edit.placeholder'))
     window.ident_path_edit.textChanged.connect(window._refresh_identify_previews)
     path_row.addWidget(window.ident_path_edit, 1)
-    choose_btn = QPushButton(tr("选择图片"))
+    choose_btn = QPushButton(_ui_text('identification.page.build_identify_page.choose_btn'))
     choose_btn.clicked.connect(window._identify_choose_file)
     path_row.addWidget(choose_btn)
-    paste_btn = QPushButton(tr("粘贴"))
+    paste_btn = QPushButton(_ui_text('identification.page.build_identify_page.paste_btn'))
     paste_btn.clicked.connect(window._identify_from_clipboard)
     path_row.addWidget(paste_btn)
-    capture_btn = QPushButton(tr("截图鉴定"))
+    capture_btn = QPushButton(_ui_text('identification.page.build_identify_page.capture_btn'))
     capture_btn.clicked.connect(window._start_identify_capture_mode)
     path_row.addWidget(capture_btn)
-    window.ident_parse_btn = QPushButton(tr("解析图片"))
+    window.ident_parse_btn = QPushButton(_ui_text('identification.page.build_identify_page.ident_parse_btn'))
     window.ident_parse_btn.setObjectName("btnPrimary")
     window.ident_parse_btn.clicked.connect(window._identify_from_image_path)
     window.ident_parse_btn.setVisible(False)
@@ -150,24 +159,24 @@ def build_identify_page(window, text_edit_cls):
 
     window.ident_manual_text = text_edit_cls()
     window.ident_manual_text.setAcceptDrops(False)
-    window.ident_manual_text.setPlaceholderText(tr("手动输入副词条名称；数值可省略。支持逗号、空格、换行混合分隔，例如：攻击力% 暴击，爆伤"))
+    window.ident_manual_text.setPlaceholderText(_ui_text('identification.page.build_identify_page.ident_manual_text.placeholder'))
     window.ident_manual_text.setFixedHeight(108)
     input_card.layout().addWidget(window.ident_manual_text)
 
     button_row = QHBoxLayout()
     button_row.addStretch()
-    clear_btn = QPushButton(tr("清空"))
+    clear_btn = QPushButton(_ui_text('identification.page.build_identify_page.clear_btn'))
     clear_btn.clicked.connect(window._clear_identify_input)
     button_row.addWidget(clear_btn)
-    window.ident_manual_btn = QPushButton(tr("开始鉴定"))
+    window.ident_manual_btn = QPushButton(_ui_text('identification.page.build_identify_page.ident_manual_btn'))
     window.ident_manual_btn.setObjectName("btnPrimary")
     window.ident_manual_btn.clicked.connect(window._identify_start)
     button_row.addWidget(window.ident_manual_btn)
     input_card.layout().addLayout(button_row)
     layout.addWidget(input_card)
 
-    result_card = window._card(tr("鉴定结果"))
-    window.ident_summary = QLabel(tr("等待输入装备数据"))
+    result_card = window._card(_ui_text('identification.page.build_identify_page.result_card'))
+    window.ident_summary = plain_label(_ui_text('identification.page.build_identify_page.ident_summary'))
     window.ident_summary.setStyleSheet(themed_style("color:#8b949e"))
     result_card.layout().addWidget(window.ident_summary)
     window.ident_result_widget = QWidget()
@@ -209,7 +218,7 @@ def refresh_identify_previews(window, paths: list[Path], max_count: int = 12):
         grid.setContentsMargins(2, 2, 2, 2)
         grid.setSpacing(0)
 
-        label = QLabel()
+        label = plain_label()
         label.setFixedSize(92, 92)
         label.setAlignment(Qt.AlignCenter)
         label.setStyleSheet("border:none;background:transparent")
@@ -232,24 +241,25 @@ def refresh_identify_previews(window, paths: list[Path], max_count: int = 12):
 def show_identify_preview_image(parent, path: Path, style_sheet: str):
     dlg = QDialog(parent)
     dlg.setWindowTitle(path.name)
-    dlg.setMinimumSize(900, 650)
     dlg.setStyleSheet(style_sheet)
     layout = QVBoxLayout(dlg)
-    label = QLabel()
+    label = plain_label()
     label.setAlignment(Qt.AlignCenter)
     pix = QPixmap(str(path))
-    if not pix.isNull():
-        screen = QApplication.primaryScreen().availableGeometry()
-        max_size = QSize(min(1200, screen.width() - 160), min(800, screen.height() - 180))
-        label.setPixmap(pix.scaled(max_size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
     layout.addWidget(label, 1)
     buttons = QDialogButtonBox(QDialogButtonBox.Close)
     buttons.rejected.connect(dlg.reject)
     layout.addWidget(buttons)
+    # 使用 owner 所在屏幕的逻辑工作区，先限位，再为图片和关闭入口分配空间。
+    target = fit_dialog_to_available_screen(dlg, QSize(900, 650))
+    if not pix.isNull():
+        max_size = QSize(max(1, target.width() - 48), max(1, target.height() - 100))
+        label.setPixmap(pix.scaled(max_size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
     dlg.exec()
 
 
 def render_identify_result_page(window, pages: list[dict]):
+    _ui_text = resolve_text_catalog(getattr(window, 'text_catalog', None)).render
     if not pages:
         return
     index = max(0, min(getattr(window, "_identify_result_page_index", 0), len(pages) - 1))
@@ -260,12 +270,11 @@ def render_identify_result_page(window, pages: list[dict]):
 
     item = data.get("item")
     rows = data.get("rows", [])
-    item_name = display_term("卡带") if isinstance(item, Tape) else tr("驱动块")
+    item_name = "卡带" if isinstance(item, Tape) else "驱动块"
     page_text = f"（{index + 1}/{len(pages)}）" if len(pages) > 1 else ""
-    window.ident_summary.setText(
-        tr("{item}鉴定完成{page}：{count} 名角色可使用",
-           item=item_name, page=page_text, count=len(rows))
-    )
+    window.ident_summary.setText(_ui_text('identification.page.render_identify_result_page.ident_summary.state', item_name=f'{item_name}', page_text=f'{page_text}', value=f'{len(rows)}'))
+    if window.role_suit_matching is not None and data.get("matching_status") == "incomplete":
+        window.ident_summary.setText(window.role_suit_matching.catalog.render("matching.incomplete"))
 
     preview_weights = rows[0]["weights"] if rows else {}
     preview_main_weights = rows[0].get("main_weights") if rows else None
@@ -283,8 +292,8 @@ def render_identify_result_page(window, pages: list[dict]):
 
     if len(pages) > 1:
         nav = QHBoxLayout()
-        prev_btn = QPushButton(tr("上一页"))
-        next_btn = QPushButton(tr("下一页"))
+        prev_btn = QPushButton(_ui_text('identification.page.render_identify_result_page.prev_btn'))
+        next_btn = QPushButton(_ui_text('identification.page.render_identify_result_page.next_btn'))
         prev_btn.setEnabled(index > 0)
         next_btn.setEnabled(index < len(pages) - 1)
         prev_btn.clicked.connect(lambda: window._set_identify_result_page(index - 1))
@@ -295,7 +304,10 @@ def render_identify_result_page(window, pages: list[dict]):
         window.ident_result_layout.addLayout(nav)
 
     if not rows:
-        empty = QLabel(tr("没有找到图纸可使用该装备的角色。"))
+        matching = window.role_suit_matching
+        empty = plain_label(matching.catalog.render("matching.incomplete" if data.get("matching_status") == "incomplete"
+                       else "matching.unmatched") if matching is not None else _ui_text('identification.page.render_identify_result_page.empty.state'))
+        empty.setWordWrap(True)
         empty.setAlignment(Qt.AlignCenter)
         empty.setStyleSheet(themed_style("color:#6e7681;padding:20px"))
         window.ident_result_layout.addWidget(empty)
@@ -307,6 +319,7 @@ def render_identify_result_page(window, pages: list[dict]):
                 rank,
                 row,
                 game_ui_asset_root=window.app_context.paths.game_ui_asset_root,
+                catalog=window.role_suit_matching.catalog if window.role_suit_matching is not None else None,
             )
         )
     window.ident_result_layout.addStretch()
@@ -317,6 +330,7 @@ def build_identify_result_row(
     row: dict,
     *,
     game_ui_asset_root: Path,
+    catalog=None,
 ):
     grade = row["grade"]
     grade_color = GRADE_COLORS.get(grade, "#58a6ff")
@@ -327,7 +341,7 @@ def build_identify_result_row(
     layout.setSpacing(10)
     layout.setContentsMargins(8, 4, 8, 4)
 
-    rank_label = QLabel(str(rank))
+    rank_label = plain_label(str(rank))
     rank_label.setFixedSize(28, 28)
     rank_label.setAlignment(Qt.AlignCenter)
     rank_label.setStyleSheet(themed_style("background:#21262d;color:#c9d1d9;border-radius:14px;font-weight:700"))
@@ -337,7 +351,7 @@ def build_identify_result_row(
     info.setSpacing(2)
     role_header = QHBoxLayout()
     role_header.setSpacing(7)
-    avatar = QLabel()
+    avatar = plain_label()
     avatar.setFixedSize(48, 48)
     avatar.setAlignment(Qt.AlignCenter)
     avatar.setStyleSheet(themed_style("background:transparent;border:none;color:#8b949e;font-size:14px;font-weight:700"))
@@ -350,33 +364,53 @@ def build_identify_result_row(
     else:
         avatar.setPixmap(portrait.scaled(avatar.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
     role_header.addWidget(avatar)
-    role = QLabel(display_term(str(row["role"])))
+    role = plain_label(row["role"])
     role.setStyleSheet(themed_style("font-size:14px;font-weight:700;color:#c9d1d9;border:none"))
     role_header.addWidget(role)
     role_header.addStretch()
-    meta = QLabel(
-        f"{display_term(str(row['set']))} · {row['match']} · "
-        + tr("占比 {percent}%", percent=f"{row['percent']:.1f}")
-    )
-    meta.setStyleSheet(themed_style("color:#8b949e;font-size:11px;border:none"))
     info.addLayout(role_header)
-    info.addWidget(meta)
+    if catalog is not None and row.get("matched_suits"):
+        # 默认保持结果行紧凑，用户展开后才显示每个套装的全部适配位置。
+        toggle = QToolButton()
+        toggle.setText(catalog.render("matching.result_details"))
+        toggle.setCheckable(True)
+        toggle.setAutoRaise(True)
+        toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        toggle.setArrowType(Qt.RightArrow)
+        toggle.setStyleSheet(themed_style(
+            "QToolButton{color:#58a6ff;background:transparent;border:1px solid transparent;padding:2px 4px}"
+            "QToolButton:hover,QToolButton:checked{background:#161b22}"
+            "QToolButton:focus{border:1px solid #58a6ff;border-radius:4px}"))
+        details = plain_label("\n".join(catalog.render("matching.result_suit",
+            suit=match["name"], source=catalog.render("matching.source.default" if match["is_default"] else "matching.source.extra"),
+            positions=" / ".join(catalog.render("matching.position." + position) for position in match["positions"]))
+            for match in row["matched_suits"]))
+        details.setTextFormat(Qt.PlainText)
+        details.setWordWrap(True)
+        details.setStyleSheet(themed_style("color:#8b949e;background:transparent;border:none;padding:0"))
+        details.hide()
+        toggle.toggled.connect(details.setVisible)
+        toggle.toggled.connect(lambda expanded: toggle.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow))
+        info.addWidget(toggle, 0, Qt.AlignLeft)
+        info.addWidget(details)
     layout.addLayout(info, 1)
 
     badge = QFrame()
+    badge.setObjectName("identificationScoreBadge")
+    # 徽标只容纳两行数值，不跟随左侧展开内容拉高；样式也不扩散到子标签。
     badge.setStyleSheet(
-        f"QFrame{{background:{grade_bg};border:1px solid {grade_color};border-radius:6px;padding:4px 10px}}"
+        f"QFrame#identificationScoreBadge{{background:{grade_bg};border:1px solid {grade_color};border-radius:6px;padding:0}}"
     )
     badge_layout = QVBoxLayout(badge)
-    badge_layout.setContentsMargins(8, 2, 8, 2)
-    badge_layout.setSpacing(0)
-    score = QLabel(f"{row['score']:.1f}")
+    badge_layout.setContentsMargins(12, 7, 12, 7)
+    badge_layout.setSpacing(2)
+    score = plain_label(f"{row['score']:.1f}")
     score.setAlignment(Qt.AlignCenter)
-    score.setStyleSheet(f"font-size:18px;font-weight:800;color:{grade_color};border:none")
-    grade_label = QLabel(grade)
+    score.setStyleSheet(f"font-size:18px;font-weight:800;color:{grade_color};background:transparent;border:none;padding:0")
+    grade_label = plain_label(grade)
     grade_label.setAlignment(Qt.AlignCenter)
-    grade_label.setStyleSheet(f"font-size:11px;font-weight:700;color:{grade_color};border:none")
+    grade_label.setStyleSheet(f"font-size:11px;font-weight:700;color:{grade_color};background:transparent;border:none;padding:0")
     badge_layout.addWidget(score)
     badge_layout.addWidget(grade_label)
-    layout.addWidget(badge)
+    layout.addWidget(badge, 0, Qt.AlignVCenter)
     return frame

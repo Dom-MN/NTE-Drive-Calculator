@@ -14,8 +14,8 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.services.battle_report_history_service import BattleReportHistoryService  # noqa: E402
-from src.services.battle_report_persistence_service import BattleReportPersistenceDependencies  # noqa: E402
+from src.services.battle_report.history.service import BattleReportHistoryService  # noqa: E402
+from src.services.battle_report.persistence import BattleReportPersistenceDependencies  # noqa: E402
 from tools.battle_report.evaluate_native_analysis import _clone_database, compare_results  # noqa: E402
 from tools.battle_report.evaluate_native_application_parts import wire, numeric_wire  # noqa: E402
 
@@ -77,7 +77,7 @@ def evaluate(args):
         actual = page["analysis"]
         decode_error = None
         try:
-            from src.integrations.native_battle_page_wire import decode_page
+            from src.integrations.battle_analysis.page_wire import decode_page
             decode_page(page)
         except Exception as error:
             decode_error = {"type": type(error).__name__, "message": str(error)}

@@ -9,20 +9,20 @@ from PySide6.QtWidgets import QWidget
 
 from src.app.context import AppContext
 from src.app.constants import APP_VERSION
-from src.domain.stat_catalog import StatCatalog
+from src.domain.equipment.properties.stat_catalog import StatCatalog
 from src.features.battle_report.controller import BattleReportController
-from src.integrations.global_hotkeys import GlobalHotkeyManager
-from src.integrations.nte_core import NteCoreClient
-from src.integrations.analysis_core_release import create_bundled_analysis_client
+from src.integrations.runtime.global_hotkeys import GlobalHotkeyManager
+from src.integrations.native_core.nte_core import NteCoreClient
+from src.integrations.analysis_core.analysis_core_release import create_bundled_analysis_client
 from src.observability import OperationContext
-from src.services.battle_report_history_service import BattleReportHistoryService
-from src.services.battle_native_page_service import BattleNativePageService
-from src.services.battle_marginal_calculation_support import drive_substat_marginal_units
-from src.services.battle_report_transfer_service import (
+from src.services.battle_report.history.service import BattleReportHistoryService
+from src.services.battle_report.analysis.native_page import BattleNativePageService
+from src.services.battle_report.marginal.calculation_support import drive_substat_marginal_units
+from src.services.battle_report.history.transfer import (
     BattleReportTransferDependencies,
     BattleReportTransferService,
 )
-from src.services.battle_report_persistence_service import (
+from src.services.battle_report.persistence import (
     BattleReportPersistenceDependencies,
     BattleReportPersistenceService,
 )
@@ -130,9 +130,12 @@ def build_battle_report_controller(
     native_session,
     operation_entry: Callable[[str, str], bool] | None = None,
     operation_unavailable: Callable[..., None] | None = None,
+    axis_allocation_requested=None,
+    text_catalog=None,
 ) -> BattleReportController:
     service_factory = BattleReportServiceFactory(app_context)
     return BattleReportController(
+        axis_allocation_requested=axis_allocation_requested,
         app_context=app_context,
         dialog_parent=dialog_parent,
         inventory_sync_is_running=inventory_sync_is_running,
@@ -155,4 +158,5 @@ def build_battle_report_controller(
         history_factory=service_factory.history_service,
         transfer_factory=service_factory.transfer_service,
         marginal_units_provider=service_factory.marginal_units,
+        text_catalog=text_catalog,
     )

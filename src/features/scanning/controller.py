@@ -3,34 +3,39 @@
 
 from __future__ import annotations
 
+from src.ui.common.text_catalog import plain_tooltip, resolve_text_catalog
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton, QWidget
 
-from src.i18n import tr
 from src.app.context import AppContext
-from src.domain.work_mode import WorkMode
-from src.features.allocation.runner import AllocationController
-from src.features.allocation.filter_settings_dialog import AllocationFilterSettingsDialog
-from src.integrations.global_hotkeys import GlobalHotkeyManager
-from src.ui.equipment_presentation import EquipmentPresentation
-from src.services.allocation_filter_settings import (
+from src.domain.preferences.work_mode import WorkMode
+from src.features.allocation.controller import AllocationController
+from src.features.allocation.settings.filter_settings_dialog import AllocationFilterSettingsDialog
+from src.integrations.runtime.global_hotkeys import GlobalHotkeyManager
+from src.ui.equipment.equipment_presentation import EquipmentPresentation
+from src.services.allocation.inputs.filter_settings import (
     AllocationFilterSettings,
     AllocationFilterSettingsService,
     AllocationFilterValidationError,
 )
 from src.utils.logger import logger
-from src.features.scanning.file_workflow import (
+from src.features.scanning.files.file_workflow import (
+    clear_capture_recovery,
+    update_capture_actions,
+    resume_capture_stage,
+    retry_capture_publication,
+    publication_retry_done,
+    publication_retry_failed,
     delete_paths as _delete_paths,
     matching_scope_files as _matching_scope_files,
     move_first_full_scan_to_tail as _move_first_full_scan_to_tail,
     move_to_failed as _move_to_failed,
     next_full_scan_index as _next_full_scan_index,
     postprocess_vision_files as _postprocess_vision_files,
-    prepare_incremental_parse as _prepare_incremental_parse,
     rename_incremental_successes as _rename_incremental_successes,
     scan_lifecycle as _scan_lifecycle,
     scope_image as _is_scope_image,
@@ -43,6 +48,10 @@ from src.features.scanning.hotkey_actions import (
 )
 from src.features.scanning.scan_contracts import scanning_is_running as _scanning_is_running
 from src.features.scanning.entry_controls import open_scan_post_action_manager as _open_scan_post_action_manager
+from src.features.scanning.vision.vision_commit_controller import VisionCommitController
+from src.features.scanning.vision.manual_recovery import ManualRecoverySession
+from src.features.scanning.dependencies import scanning_dependencies_are_current
+from functools import partial
 from src.features.scanning.workflow import (
     _page_execute,
     _on_scan_change,
@@ -51,6 +60,9 @@ from src.features.scanning.workflow import (
     _start_vision_processing,
     _on_vision_progress,
     _on_vision_done,
+    _on_vision_committed,
+    _on_vision_commit_failed,
+    _on_vision_application_failed,
     _on_vision_error,
     _on_vision_cancel,
     _on_vision_canceled,
@@ -71,17 +83,22 @@ __all__ = ["ScanningController"]
 class ScanningController(QObject):
     """Own the calculation page, scanning workers, and their frozen state."""
 
+    allocation_saved = Signal(object)
+
     result_card: Any
     result_content_layout: Any
     role_selector: Any
     btn_run: QPushButton
 
+    resume_capture_stage = resume_capture_stage
+    retry_capture_publication = retry_capture_publication
+    _on_publication_retry_done = publication_retry_done
+    _on_publication_retry_failed = publication_retry_failed
     _on_scan_change = _on_scan_change
     _on_priority_changed = _on_priority_changed
     _open_scan_post_action_manager = _open_scan_post_action_manager
     _scan_lifecycle = _scan_lifecycle
     _is_scope_image = _is_scope_image
-    _prepare_incremental_parse = _prepare_incremental_parse
     _matching_scope_files = _matching_scope_files
     _unique_path = _unique_path
     _move_to_failed = _move_to_failed
@@ -93,6 +110,9 @@ class ScanningController(QObject):
     _start_vision_processing = _start_vision_processing
     _on_vision_progress = _on_vision_progress
     _on_vision_done = _on_vision_done
+    _on_vision_committed = _on_vision_committed
+    _on_vision_commit_failed = _on_vision_commit_failed
+    _on_vision_application_failed = _on_vision_application_failed
     _on_vision_error = _on_vision_error
     _on_vision_cancel = _on_vision_cancel
     _on_vision_canceled = _on_vision_canceled
@@ -114,6 +134,7 @@ class ScanningController(QObject):
         self,
         *,
         app_context: AppContext,
+        role_suit_matching=None,
         dialog_parent: QWidget,
         navigate: Callable[[str], None],
         work_mode_provider: Callable[[], WorkMode],
@@ -124,6 +145,7 @@ class ScanningController(QObject):
         refresh_home: Callable[[], None],
         preferences_provider: Callable[[], dict[str, Any]],
         save_preferences: Callable[[], None],
+        global_preferences,
         refresh_roles: Callable[[], None],
         refresh_equipment: Callable[[], None],
         card_factory: Callable[..., Any],
@@ -134,14 +156,25 @@ class ScanningController(QObject):
         operation_entry: Callable[[str, str], bool] | None = None,
         operation_unavailable: Callable[[str, str, str], None] | None = None,
         prepare_calculation: Callable[[Callable[[], None]], None] | None = None,
+        axis_selection_service_provider: Callable[[], Any] | None = None,
+        team_report_service_provider: Callable[[], Any] | None = None,
+        text_catalog=None,
+        current_page_key: Callable[[], str] = lambda: 'execute',
+        preparation_busy: Callable[[], bool] = lambda: False,
     ) -> None:
         super().__init__(dialog_parent)
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self.app_context = app_context
+        self.text_catalog = text_catalog
+        self.role_suit_matching = role_suit_matching
         self.operation_entry = operation_entry
         self.operation_unavailable = operation_unavailable
         self.operation_guard = operation_guard
         self.operation_generation = operation_generation
         self._prepare_calculation = prepare_calculation
+        self._axis_selection_service_provider = axis_selection_service_provider
+        self._team_report_service_provider = team_report_service_provider
+        self._team_axis_dialog = None
         self.dialog_parent = dialog_parent
         self.navigate = navigate
         self.work_mode_provider = work_mode_provider
@@ -153,9 +186,19 @@ class ScanningController(QObject):
         self._card_factory = card_factory
         self._preferences_provider = preferences_provider
         self._save_preferences_callback = save_preferences
+        from src.services.preferences.data_reading_settings import DataReadingSettings
+        self._data_reading_settings = DataReadingSettings(global_preferences)
         self._equipment_presentation = equipment_presentation
         self._hotkey_manager = hotkey_manager
         self._page: QWidget | None = None
+        self._manual_recovery = ManualRecoverySession(text_catalog=text_catalog)
+        self._capture_recovery = None
+        self._vision_commit = VisionCommitController(partial(scanning_dependencies_are_current, self), self)
+        self._vision_commit.committed.connect(self._on_vision_committed)
+        self._vision_commit.failed.connect(self._on_vision_commit_failed)
+        self._vision_commit.application_failed.connect(self._on_vision_application_failed)
+        self._vision_commit.publication_retried.connect(self._on_publication_retry_done)
+        self._vision_commit.publication_retry_failed.connect(self._on_publication_retry_failed)
         self._scan_worker: Any = None
         self._gamepad_worker: Any = None
         self._vision_worker: Any = None
@@ -195,7 +238,19 @@ class ScanningController(QObject):
             refresh_roles=refresh_roles,
             refresh_equipment=refresh_equipment,
             hotkey_manager=hotkey_manager,
+            text_catalog=text_catalog,
         )
+        self._allocation_controller.plans_saved.connect(self.allocation_saved.emit)
+        from src.features.scanning.team_calculation import TeamCalculationController
+        self.team_calculation = TeamCalculationController(self,
+            clear_preview=self._allocation_controller.clear_preview, current_page=current_page_key,
+            preparation_busy=preparation_busy, parent=self)
+
+    def calculate_team(self, team, service):
+        self.team_calculation.start(team, service)
+
+    def cancel_team_calculation(self):
+        self.team_calculation.cancel()
 
     def build_page(self) -> QWidget:
         if self._page is not None:
@@ -210,10 +265,12 @@ class ScanningController(QObject):
         )
         self._allocation_controller.bind_run_button(self.btn_run)
         self._allocation_controller.bind_save_button(self.btn_save)
+        update_capture_actions(self)
         return self._page
 
     def is_running(self) -> bool:
-        return _scanning_is_running(self) or self._allocation_controller.is_running()
+        return (self._vision_commit.is_running() or _scanning_is_running(self) or self._allocation_controller.is_running()
+                or self._team_axis_dialog is not None and self._team_axis_dialog.is_running())
 
     def _do_exec(self):
         if self.is_running():
@@ -223,20 +280,45 @@ class ScanningController(QObject):
         else:
             self._prepare_calculation(lambda: _do_exec(self))
 
+    def start_axis_allocation_from_battle(self, request):
+        """明确报告来自边际页；走同一冻结服务，不模拟点击或持久化候选。"""
+        _ui_text = resolve_text_catalog(getattr(self, 'text_catalog', None)).render
+        if self.is_running():
+            QMessageBox.warning(self.dialog_parent, _ui_text('scanning.dialogs.start_axis_allocation_from_battle.qmessagebox'), plain_tooltip(_ui_text('scanning.dialogs.start_axis_allocation_from_battle.qmessagebox.body')))
+            return
+        self.build_page()
+        self.navigate("execute")
+        self.scan_group.button(4).setChecked(True)
+        def start():
+            _do_exec(self, axis_initial_request=request)
+        if self._prepare_calculation is None:
+            start()
+        else:
+            self._prepare_calculation(start)
+
     def request_stop(self) -> None:
         """Revoke active input/parse work without waiting on the GUI thread."""
+        self.team_calculation.cancel()
+        if self._team_axis_dialog is not None:
+            self._team_axis_dialog.reject()
+        self._manual_recovery.cancel()
+        self._vision_commit.cancel()
+        clear_capture_recovery(self)
         self._allocation_controller.cancel()
         self._stop_scan_hotkeys()
         for name in ("_scan_worker", "_gamepad_worker"):
             worker = getattr(self, name, None)
+            if worker is not None and hasattr(worker, "request_cancel"):
+                worker.request_cancel()
+                continue
             scanner = getattr(worker, "scanner", None) if worker is not None else None
             if scanner is not None:
                 if hasattr(scanner, "emergency_stop"):
                     scanner.emergency_stop()
         vision_worker = getattr(self, "_vision_worker", None)
-        if vision_worker is not None and vision_worker.isRunning():
-            if hasattr(vision_worker, "request_cancel"):
-                vision_worker.request_cancel()
+        # 已结束线程的 processing_done 仍可能排队；停止必须一并撤销迟到交付。
+        if vision_worker is not None and hasattr(vision_worker, "request_cancel"):
+            vision_worker.request_cancel()
 
     def stop(self) -> None:
         """Stop account-bound workers, retaining the existing shutdown deadline."""
@@ -246,10 +328,22 @@ class ScanningController(QObject):
             if worker is not None and worker.isRunning():
                 worker.wait(5000)
 
+    def begin_close(self) -> None:
+        """退出先撤销副作用与交付；保留 owner，物理等待由窗口门禁负责。"""
+        self._manual_recovery.close()
+        self._vision_commit.close()
+        self._allocation_controller.begin_close()
+        self.request_stop()
+
     def close(self) -> None:
+        self.begin_close()
         self.stop()
 
     def reset_account_state(self) -> None:
+        self.request_stop()
+        from src.features.allocation.team_axis.team_axis_controls import reset_team_axis_controls
+        reset_team_axis_controls(self)
+        self._vision_commit.reset_account_state()
         self._pending_archive_paths = []
         self._pending_parse_only = False
         self._pending_parse_scope = "all"
@@ -261,6 +355,8 @@ class ScanningController(QObject):
         self._allocation_controller.reset_account_state()
 
     def _reload_allocation_filter_settings(self) -> None:
+        from src.features.allocation.team_axis.team_axis_controls import reload_search_mode
+        reload_search_mode(self)
         service = AllocationFilterSettingsService(
             self.app_context.account.user_database_path
         )
@@ -272,9 +368,11 @@ class ScanningController(QObject):
         self._update_allocation_filter_summary()
 
     def _open_allocation_filter_settings(self) -> None:
+        _ui_text = resolve_text_catalog(getattr(self, 'text_catalog', None)).render
         dialog = AllocationFilterSettingsDialog(
             self._allocation_filter_settings,
             self.dialog_parent,
+            text_catalog=getattr(self, 'text_catalog', None),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -286,7 +384,7 @@ class ScanningController(QObject):
         except Exception as exc:
             QMessageBox.warning(
                 self.dialog_parent,
-                tr("保存过滤设置失败"),
+                _ui_text('scanning.dialogs.open_allocation_filter_settings.qmessagebox'),
                 str(exc),
             )
             return
@@ -294,22 +392,24 @@ class ScanningController(QObject):
         self._update_allocation_filter_summary()
 
     def _allocation_filter_settings_are_valid(self) -> bool:
+        _ui_text = resolve_text_catalog(getattr(self, 'text_catalog', None)).render
         try:
             self._allocation_filter_settings.validate()
         except AllocationFilterValidationError as exc:
             QMessageBox.warning(
                 self.dialog_parent,
-                tr("过滤设置无效"),
+                _ui_text('scanning.dialogs.allocation_filter_settings_are_valid.qmessagebox'),
                 str(exc),
             )
             return False
         return True
 
     def _update_allocation_filter_summary(self) -> None:
+        _ui_text = resolve_text_catalog(getattr(self, 'text_catalog', None)).render
         label = getattr(self, "allocation_filter_summary", None)
         if label is None:
             return
-        quality_names = {"Blue": tr("蓝色"), "Purple": tr("紫色"), "Gold": tr("金色")}
+        quality_names = {"Blue": "蓝色", "Purple": "紫色", "Gold": "金色"}
         type_names = {"tape": "卡带", "drive": "驱动"}
         qualities = "、".join(
             quality_names[value]
@@ -321,7 +421,7 @@ class ScanningController(QObject):
             for value in ("tape", "drive")
             if value in self._allocation_filter_settings.item_types
         ) or "未选择"
-        label.setText(tr("过滤设置：品质 {qualities}；类型 {types}", qualities=qualities, types=item_types))
+        label.setText(_ui_text('scanning.dialogs.update_allocation_filter_summary.label.state', qualities=f'{qualities}', item_types=f'{item_types}'))
 
     def _start_scan_hotkeys(self, mode: str) -> None:
         """Bind this scan session without exposing hotkeys to other features."""
@@ -342,6 +442,23 @@ class ScanningController(QObject):
 
     def _save_ui_preferences(self) -> None:
         self._save_preferences_callback()
+
+    def load_reading_options_expanded(self) -> bool:
+        _ui_text = resolve_text_catalog(getattr(self, 'text_catalog', None)).render
+        try:
+            return self._data_reading_settings.load()
+        except (OSError, ValueError):
+            QMessageBox.warning(self.dialog_parent, _ui_text('scanning.dialogs.load_reading_options_expanded.qmessagebox'), plain_tooltip(_ui_text('scanning.dialogs.load_reading_options_expanded.qmessagebox.body')))
+            return False
+
+    def save_reading_options_expanded(self, expanded: bool) -> bool:
+        _ui_text = resolve_text_catalog(getattr(self, 'text_catalog', None)).render
+        try:
+            self._data_reading_settings.save(expanded)
+        except (OSError, ValueError):
+            QMessageBox.warning(self.dialog_parent, _ui_text('scanning.dialogs.save_reading_options_expanded.qmessagebox'), plain_tooltip(_ui_text('scanning.dialogs.save_reading_options_expanded.qmessagebox.body')))
+            return False
+        return True
 
     def _reload_full_scan_preference_widgets(self) -> None:
         """Project current-account scan preferences onto an already-built page."""
@@ -411,13 +528,14 @@ class ScanningController(QObject):
     def clear_calculation(self) -> None:
         """Discard only the current allocation preview, not saved plans or inputs."""
 
+        _ui_text = resolve_text_catalog(getattr(self, 'text_catalog', None)).render
         if self.is_running():
-            QMessageBox.information(self.dialog_parent, tr("暂不能清空"), tr("请等待当前任务结束后再清空计算结果。"))
+            QMessageBox.information(self.dialog_parent, _ui_text('scanning.dialogs.clear_calculation.qmessagebox'), plain_tooltip(_ui_text('scanning.dialogs.clear_calculation.qmessagebox.body')))
             return
         answer = QMessageBox.question(
             self.dialog_parent,
-            tr("清空计算结果"),
-            tr("清空当前计算结果？\n已保存的配装、角色选择和分配设置不会改变。"),
+            _ui_text('scanning.dialogs.clear_calculation.answer'),
+            plain_tooltip(_ui_text('scanning.dialogs.clear_calculation.answer.body')),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )

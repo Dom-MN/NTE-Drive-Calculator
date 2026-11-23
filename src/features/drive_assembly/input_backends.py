@@ -7,8 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-import pyautogui
-from src.integrations.operation_guard import GuardedGuiInput, OperationGuard, require_operation
+from src.integrations.runtime.operation_guard import GuardedGuiInput, OperationGuard, require_operation
 
 from src.features.drive_assembly.randomization import (
     RandomizationContext,
@@ -91,14 +90,31 @@ class AssemblyExecutionReport:
     duplicate_roles: list[dict[str, Any]] = field(default_factory=list)
     unrecognized_roles: list[dict[str, Any]] = field(default_factory=list)
     verification_failures: list[dict[str, Any]] = field(default_factory=list)
+    verified_roles: list[str] = field(default_factory=list)
+    current_role: str | None = None
+    stopped: bool = False
+    error: str = ""
+    partial_actions: int = 0
 
     @property
     def executed_actions(self) -> int:
-        return self.navigation_actions + sum(report.executed_actions for report in self.role_reports)
+        return self.navigation_actions + self.partial_actions + sum(report.executed_actions for report in self.role_reports)
 
 
 class AssemblyExecutionStopped(RuntimeError):
     """Raised when the user stops automatic assembly."""
+
+    def __init__(self, message, *, report=None):
+        super().__init__(message)
+        self.report = report
+
+
+class AssemblyExecutionFailed(RuntimeError):
+    """异常仍带回当前任务部分报告，不让已执行角色在界面上消失。"""
+
+    def __init__(self, message, *, report):
+        super().__init__(message)
+        self.report = report
 
 
 def f12_stop_checker() -> Callable[[], bool]:
@@ -117,16 +133,20 @@ def f12_stop_checker() -> Callable[[], bool]:
 class PyAutoGuiMouseBackend:
     """Mouse backend powered by pyautogui."""
 
-    def __init__(self, randomization: RandomizationContext | None = None, *, operation_guard: OperationGuard | None = None):
+    def __init__(self, randomization: RandomizationContext | None = None, *, operation_guard: OperationGuard | None = None, gui_driver: Any | None = None, verify_delivery: bool = False):
         self.operation_guard = operation_guard
         self._randomization = (
             randomization
             if randomization is not None
             else RandomizationContext()
         )
-        pyautogui.FAILSAFE = True
-        self._pyautogui = GuardedGuiInput(pyautogui, operation_guard)
-        self._send_input = _WindowsSendInputMouseDriver(randomization=self._randomization, operation_guard=operation_guard)
+        # 仅在正式创建输入后端时加载依赖，窗口冷导入不初始化鼠标或系统探测。
+        if gui_driver is None:
+            import pyautogui as gui_driver
+
+        gui_driver.FAILSAFE = True
+        self._pyautogui = GuardedGuiInput(gui_driver, operation_guard)
+        self._send_input = _WindowsSendInputMouseDriver(randomization=self._randomization, operation_guard=operation_guard, verify_delivery=verify_delivery)
         self._gamepad = _VirtualGamepadDriver(operation_guard=operation_guard)
         self._sleeper = time.sleep
         self._mouse_delivery_diagnostics: list[dict[str, Any]] = []
@@ -151,8 +171,9 @@ class PyAutoGuiMouseBackend:
             return
         self._pyautogui.mouseUp()
         self._pyautogui.moveTo(*jpos)
-        self._pyautogui.mouseDown()
+        # 按下调用也可能在已派发后抛错；释放必须覆盖首次派发。
         try:
+            self._pyautogui.mouseDown()
             sleeper(jhold)
         finally:
             self._pyautogui.mouseUp()
@@ -196,8 +217,9 @@ class PyAutoGuiMouseBackend:
         self._record_mouse_delivery("cloud_before_down")
         self._pyautogui.moveTo(*jpos)
         sleeper(0.05)
-        self._pyautogui.mouseDown(button="left")
+        # 按下调用也可能在已派发后抛错；释放必须覆盖首次派发。
         try:
+            self._pyautogui.mouseDown(button="left")
             self._record_mouse_delivery("cloud_after_down")
             sleeper(max(0.06, float(hold_seconds)))
         finally:
@@ -208,10 +230,15 @@ class PyAutoGuiMouseBackend:
         """Send both release routes so a cloud client never retains left-button state."""
 
         send_input_result: int | None = None
-        if self._send_input.available:
-            send_input_result = self._send_input.release_left()
-        self._pyautogui.mouseUp(button="left")
-        self._record_mouse_delivery("forced_release", send_input_result)
+        try:
+            if self._send_input.available:
+                send_input_result = self._send_input.release_left()
+        finally:
+            # 一路释放被系统拒绝时，另一路仍须尝试；故障保留给 owner。
+            try:
+                self._pyautogui.mouseUp(button="left")
+            finally:
+                self._record_mouse_delivery("forced_release", send_input_result)
 
     def consume_mouse_delivery_diagnostics(self) -> list[dict[str, Any]]:
         """Return and clear recent local button-state observations for one action batch."""
@@ -290,8 +317,9 @@ class PyAutoGuiMouseBackend:
         self._pyautogui.mouseUp(button="left")
         self._pyautogui.moveTo(*jittered_start)
         sleeper(jitter_timing(ctx, 0.15))
-        self._pyautogui.mouseDown(button="left")
+        # 按下调用也可能在已派发后抛错；释放必须覆盖首次派发。
         try:
+            self._pyautogui.mouseDown(button="left")
             sleeper(jitter_timing(ctx, EQUIPMENT_DRAG_HOLD_SECONDS))
             self._pyautogui.moveTo(*jittered_end, duration=duration)
         finally:
@@ -369,7 +397,9 @@ class _WindowsSendInputMouseDriver:
         sleeper: Callable[[float], None] = time.sleep,
         randomization: RandomizationContext | None = None,
         operation_guard: OperationGuard | None = None,
+        verify_delivery: bool = False,
     ):
+        self._verify_delivery = verify_delivery
         self.operation_guard = operation_guard
         self._randomization = randomization or _DEFAULT_RANDOMIZATION_CTX
         self._sleeper = sleeper
@@ -402,8 +432,9 @@ class _WindowsSendInputMouseDriver:
         jittered_duration_ms = jitter_duration_ms(ctx, duration_ms)
         self._move_to(jittered_start)
         self._sleeper(jitter_timing(ctx, 0.15))
-        self._send(MOUSEEVENTF_LEFTDOWN)
+        # 按下调用也可能在已派发后抛错；释放必须覆盖首次派发。
         try:
+            self._send(MOUSEEVENTF_LEFTDOWN)
             self._sleeper(jitter_timing(ctx, SENDINPUT_DRAG_HOLD_SECONDS))
             steps = self._drag_steps(jittered_start, jittered_end, jittered_duration_ms)
             self._move_relative_in_steps(jittered_start, jittered_end, steps, ctx=ctx)
@@ -420,8 +451,9 @@ class _WindowsSendInputMouseDriver:
         hold = hold_seconds if hold_seconds is not None else DEFAULT_CLICK_HOLD_SECONDS
         self._move_to(position)
         self._sleeper(0.05)
-        self._send(MOUSEEVENTF_LEFTDOWN)
+        # 按下调用也可能在已派发后抛错；释放必须覆盖首次派发。
         try:
+            self._send(MOUSEEVENTF_LEFTDOWN)
             self._sleeper(hold)
         finally:
             self._send(MOUSEEVENTF_LEFTUP)
@@ -455,20 +487,15 @@ class _WindowsSendInputMouseDriver:
         total_dx = end[0] - start[0]
         total_dy = end[1] - start[1]
         use_noise = ctx is not None and ctx.enabled and ctx.path_noise_pixels > 0
-        noise_dx = 0
-        noise_dy = 0
         for index in range(1, steps + 1):
             target_x = start[0] + round(total_dx * index / steps)
             target_y = start[1] + round(total_dy * index / steps)
-            # Zero-sum path noise: add noise on odd steps, undo on even steps
-            # so the endpoint is always exactly correct.
+            # 奇数中间点加偏移，下一点回到基准轨迹；相对差分自然抵消偏移。
+            # 最后一步始终使用目标原值，避免偶数步结束时留下负向漂移。
             if use_noise and index % 2 == 1 and index + 1 <= steps:
                 noise_dx, noise_dy = path_noise_offset(ctx)
-            elif use_noise and index % 2 == 0:
-                target_x -= noise_dx
-                target_y -= noise_dy
-                noise_dx = 0
-                noise_dy = 0
+                target_x += noise_dx
+                target_y += noise_dy
             dx = target_x - previous_x
             dy = target_y - previous_y
             if dx or dy:
@@ -514,11 +541,16 @@ class _WindowsSendInputMouseDriver:
         return max(50, min(90, max(duration_steps, distance_steps)))
 
     def _send(self, flags: int, dx: int = 0, dy: int = 0, mouse_data: int = 0) -> int:
+        # 取消/降级后仍允许释放，但移动、按下和滚轮必须再次复核权限。
         if flags != MOUSEEVENTF_LEFTUP:
             require_operation(self.operation_guard, "interface_input")
         mouse_input = self._mouse_input_cls(dx, dy, mouse_data, flags, 0, None)
         input_value = self._input_cls(INPUT_MOUSE, mouse_input)
-        return int(self._user32.SendInput(1, self._ctypes.byref(input_value), self._ctypes.sizeof(input_value)))
+        delivered = int(self._user32.SendInput(1, self._ctypes.byref(input_value), self._ctypes.sizeof(input_value)))
+        # 倒带将拒绝派发视为本次故障；不回退另一输入路线或自动重发。
+        if getattr(self, "_verify_delivery", False) and delivered != 1:
+            raise RuntimeError("input_delivery_rejected")
+        return delivered
 
     @staticmethod
     def _build_structs(ctypes_module: Any, wintypes_module: Any) -> tuple[Any, Any]:
@@ -581,14 +613,15 @@ class _VirtualGamepadDriver:
         if not attr_name:
             raise ValueError(f"unknown gamepad button: {button_name}")
         button = getattr(self._buttons, attr_name)
-        self._gamepad.press_button(button=button)
-        self._gamepad.update()
         hold_seconds = (
             ROLE_LIST_OPEN_RS_HOLD_SECONDS
             if key == "rs"
             else self._hold_seconds
         )
+        # 首次 update 失败时结果仍未知，只归中释放，不重发按下。
         try:
+            self._gamepad.press_button(button=button)
+            self._gamepad.update()
             self._sleeper(hold_seconds)
         finally:
             self._gamepad.release_button(button=button)
@@ -598,9 +631,10 @@ class _VirtualGamepadDriver:
     def push_left_joystick(self, x: float, y: float) -> None:
         self._ensure_connected()
         require_operation(self.operation_guard, "interface_input")
-        self._gamepad.left_joystick_float(x_value_float=float(x), y_value_float=float(y))
-        self._gamepad.update()
+        # 摇杆赋值和首次提交共用释放边界，异常仍回到中立值。
         try:
+            self._gamepad.left_joystick_float(x_value_float=float(x), y_value_float=float(y))
+            self._gamepad.update()
             self._sleeper(self._hold_seconds)
         finally:
             self._gamepad.left_joystick_float(x_value_float=0.0, y_value_float=0.0)

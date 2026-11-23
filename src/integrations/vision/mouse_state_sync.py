@@ -20,7 +20,7 @@ from src.integrations.vision.equipment_state_detection import (
     TRASH_BUTTON_CENTER,
     lock_to_discard_confirmation_visible,
 )
-from src.scanner.window_capture import game_content_rect
+from src.integrations.vision.window_capture import game_content_rect
 from src.utils.image_io import imread_unicode
 from src.utils.logger import logger
 
@@ -76,12 +76,14 @@ class MouseEquipmentStateSync:
         popup_detector: Callable[[Any], bool] = lock_to_discard_confirmation_visible,
         identity_verifier: Callable[[int, Any], bool] | None = None,
         sleep_fn: Callable[[float], None] = time.sleep,
+        check_current: Callable[[], None] | None = None,
     ) -> None:
         self.scanner = scanner
         self.state_detector = state_detector
         self.popup_detector = popup_detector
         self.identity_verifier = identity_verifier or self._reference_panel_matches
         self.sleep_fn = sleep_fn
+        self.check_current = check_current
 
     def sync(self, total_items: int, state_changes: list[dict[str, Any]]) -> MouseStateSyncResult:
         started = time.perf_counter()
@@ -111,6 +113,8 @@ class MouseEquipmentStateSync:
                 raise RuntimeError("状态管理启动时游戏未保持在扫描结束的最后一件驱动")
             for change in changes:
                 self._check_stopped()
+                if self.check_current is not None:
+                    self.check_current()
                 slot = by_index[int(change["index"])]
                 while current_page > slot.page:
                     frame = self._scroll_previous_page(frame, current_page)
@@ -141,6 +145,9 @@ class MouseEquipmentStateSync:
                     issues.append(issue)
                     continue
                 target = str(change["target_state"])
+                if self.check_current is not None:
+                    self.check_current()
+                # 单件状态动作已开始后完成原确认流程，再复核下一件，避免悬挂确认弹窗。
                 frame = self._apply_transition(frame, detected, target)
                 frame, verified = self._wait_for_state(frame, target)
                 if verified != target:

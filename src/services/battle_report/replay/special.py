@@ -1,0 +1,703 @@
+# 重放已由真实战报和静态等级曲线共同验证的特殊伤害。
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from src.domain.battle_report.timeline.events import BattleAnalysisHit
+from src.domain.battle_report.analysis.snapshot import BattleAnalysisSnapshot
+from src.domain.battle_report.buffs.models import BattleHitBuffProjection
+from src.domain.battle_report.replay.models import (
+    BattleHitReplayFactor, BattleHitReplayResult, BattleHitReplayTerm, BattleSkillDamageEvidence,
+)
+from src.domain.localization.catalog import localized_text
+from src.integrations.preferences.locale_files import enum_text
+from src.services.battle_report.replay.support import (
+    dot_final_replay_factors,
+    literal_replay_term,
+)
+from src.services.battle_report.damage.weave_source import find_paired_weave_source_hit
+from src.services.battle_report.replay.special_numeric import (
+    mitigation_input, numeric_replay,
+)
+
+
+_ELEMENT_PENETRATION_PROPERTIES = {
+    "chaos": "DamagePenetrateChaos",
+    "cosmos": "DamagePenetrateCosmos",
+    "incantation": "DamagePenetrateIncantation",
+    "lakshana": "DamagePenetrateLakshana",
+    "nature": "DamagePenetrateNature",
+    "psyche": "DamagePenetratePsyche",
+    "psychically": "DamagePenetratePsychically",
+}
+
+_ORDINARY_SCORCH_DAMAGE_ID = "buff_reaction_5_new"
+_ZANKOU_SCORCH_DAMAGE_ID = "buff_reaction_5_new_1036"
+
+_LOCALE_PREFIX = "battle_report.special."
+_SOURCE_LABELS = {
+    "character": "人物",
+    "target": "敌方",
+    "resolved": "攻击者",
+}
+
+
+def _text(text_catalog, key: str, fallback: str, **values: object) -> str:
+    """本文件用户可见说明统一挂在本模块前缀下；目录缺该 key 时回退原中文基线。"""
+
+    return localized_text(text_catalog, f"{_LOCALE_PREFIX}{key}", fallback, **values)
+
+
+def _source_labels(text_catalog):
+    """整表投影重放来源分组标签；未注入目录时保留中文基线。"""
+
+    return enum_text(text_catalog, _SOURCE_LABELS)
+
+
+def _factor(
+    factor_id: str,
+    label: str,
+    value: float,
+    basis: str,
+    formula: str,
+    *,
+    terms: tuple[BattleHitReplayTerm, ...] = (),
+) -> BattleHitReplayFactor:
+    return BattleHitReplayFactor(
+        factor_id=factor_id,
+        label=label,
+        value=float(value),
+        evidence_basis=basis,
+        formula=formula,
+        terms=terms,
+    )
+
+
+class BattleSpecialHitReplayService:
+    """Replay only special channels whose current formula is fully bounded."""
+
+    @classmethod
+    @numeric_replay
+    def replay(
+        cls,
+        *,
+        channel_id: str,
+        formula_label: str,
+        hit: BattleAnalysisHit,
+        evidence: BattleSkillDamageEvidence | None,
+        projection: BattleHitBuffProjection,
+        values: Mapping[str, float],
+        analysis: BattleAnalysisSnapshot,
+        text_catalog=None,
+    ) -> BattleHitReplayResult | None:
+        if channel_id == "reaction_hexed":
+            return cls._replay_weave(
+                hit=hit,
+                projection=projection,
+                values=values,
+                analysis=analysis,
+                formula_label=formula_label,
+                text_catalog=text_catalog,
+            )
+        if evidence is None:
+            return None
+        if channel_id == "reaction_nova":
+            return cls._replay_dark_star(
+                hit=hit,
+                evidence=evidence,
+                projection=projection,
+                values=values,
+                analysis=analysis,
+                formula_label=formula_label,
+                text_catalog=text_catalog,
+            )
+        if channel_id in {"reaction_creation", "reaction_scorch"}:
+            return cls._replay_standard_reaction(
+                channel_id=channel_id,
+                hit=hit,
+                evidence=evidence,
+                projection=projection,
+                values=values,
+                analysis=analysis,
+                formula_label=formula_label,
+                text_catalog=text_catalog,
+            )
+        return None
+
+    @staticmethod
+    def _replay_weave(
+        *,
+        hit: BattleAnalysisHit,
+        projection: BattleHitBuffProjection,
+        values: Mapping[str, float],
+        analysis: BattleAnalysisSnapshot,
+        formula_label: str,
+        text_catalog=None,
+    ) -> BattleHitReplayResult:
+        triggering_hit = find_paired_weave_source_hit(hit, analysis.hits)
+        if triggering_hit is None:
+            return BattleHitReplayResult(
+                event_id=hit.event_id,
+                observed_damage=hit.damage,
+                non_critical_damage=None,
+                critical_damage=None,
+                selected_damage=None,
+                selected_error_percent=None,
+                critical_state="unreplayable",
+                confidence="未解析",
+                factors=(),
+                missing_evidence=(_text(
+                    text_catalog, "missing.weave_source_hit",
+                    "缺少与覆纹同一正式事件的被记录原伤害"),),
+                formula_type=formula_label,
+            )
+        baseline = next(
+            (
+                row
+                for row in analysis.baselines
+                if row.character_id == hit.character_id
+            ),
+            None,
+        )
+        lingke_passive = bool(
+            baseline is not None
+            and "PASSIVE-1072-GA_Radio072_Passive_1"
+            in baseline.enabled_team_passive_ids
+        )
+        # 低层协议消费显式比例，不接收被动布尔值；.20 为基础，.13 仅属已确认被动扩展。
+        # 本入口采用正式现有模型 F=1；原伤已消费通伤，不再叠加父击增伤或猜测额外修正。
+        numbers = yield ("special_weave_v1", {
+            "ring_strength": float(values.get("MagBase", 0.0)),
+            "base_ratio": 0.20, "extra_ratio": 0.13 if lingke_passive else 0.0,
+            "final_multiplier": 1.0, "source_damage": triggering_hit.damage,
+            "observed": hit.damage,
+        })
+        ring_strength = numbers["ring_strength"]
+        strength_multiplier = numbers["strength_multiplier"]
+        copy_ratio = numbers["copy_ratio"]
+        followup_multiplier = numbers["followup_multiplier"]
+        predicted = numbers["selected"]
+        signed_error, absolute_error = numbers["signed_error"], numbers["absolute_error"]
+        confidence = (
+            "高" if absolute_error is not None and absolute_error <= 2.0
+            else "中" if absolute_error is not None and absolute_error <= 5.0
+            else "低"
+        )
+        unresolved = sum(row.status == "unresolved" for row in projection.decisions)
+        missing = (
+            ()
+            if unresolved == 0
+            else (_text(
+                text_catalog, "missing.weave_buffs",
+                "{count} 个覆纹相关 Buff 仍待结构化", count=unresolved),)
+        )
+        factors = (
+            _factor(
+                "recorded_direct_damage",
+                _text(text_catalog, "term.recorded_direct_damage.label", "原伤害实际值"),
+                triggering_hit.damage,
+                _text(text_catalog, "term.recorded_direct_damage.basis",
+                      "正式逐击 {event_id}", event_id=triggering_hit.event_id),
+                _text(text_catalog, "term.recorded_direct_damage.formula",
+                      "直接使用同一事件记录的有效原伤害"),
+            ),
+            _factor(
+                "weave_strength",
+                _text(text_catalog, "term.weave_strength.label", "覆纹环合强度区"),
+                strength_multiplier,
+                _text(text_catalog, "term.weave_strength.basis",
+                      "原伤害来源角色环合强度 {strength}", strength=f"{ring_strength:g}"),
+                _text(text_catalog, "term.weave_strength.formula",
+                      "1 + 20% × 环合强度 / (环合强度 + 180)"),
+            ),
+            _factor(
+                "weave_followup",
+                _text(text_catalog, "term.weave_followup.label", "覆纹追加倍率"),
+                followup_multiplier,
+                (
+                    _text(text_catalog, "term.weave_followup.basis.passive",
+                          "灵可突破被动「弱点感应」已解锁")
+                    if lingke_passive
+                    else _text(text_catalog, "term.weave_followup.basis.base", "基础覆纹规则")
+                ),
+                _text(
+                    text_catalog, "term.weave_followup.formula",
+                    "({copy} × 覆纹环合强度区 + clamp(覆纹环合强度区 - 1, 0, 100))"
+                    " × {multiplier}；逐区与最终系数按单精度结算",
+                    copy=f"{copy_ratio:.0%}", multiplier=f"{numbers['final_multiplier']:g}"),
+            ),
+        )
+        return BattleHitReplayResult(
+            event_id=hit.event_id,
+            observed_damage=hit.damage,
+            non_critical_damage=predicted,
+            critical_damage=None,
+            selected_damage=predicted,
+            selected_error_percent=absolute_error,
+            critical_state="not_applicable",
+            confidence=confidence,
+            factors=factors,
+            missing_evidence=missing,
+            formula_type=formula_label,
+            critical_rate=0.0,
+            expected_damage=predicted,
+            corrected_expected_damage=(hit.damage if predicted > 0.0 else None),
+            signed_error_percent=signed_error,
+            critical_policy="disabled",
+        )
+
+    @staticmethod
+    def _reaction_attribute(
+        hit: BattleAnalysisHit,
+        analysis: BattleAnalysisSnapshot,
+        evidence_attribute: str = "",
+    ) -> str:
+        evidence_value = str(evidence_attribute).casefold()
+        if evidence_value in _ELEMENT_PENETRATION_PROPERTIES:
+            return evidence_value
+        attribute = str(hit.damage_attribute).casefold()
+        if attribute in _ELEMENT_PENETRATION_PROPERTIES:
+            return attribute
+        counts: dict[str, int] = {}
+        for row in analysis.hits:
+            candidate = str(row.damage_attribute).casefold()
+            if (
+                row.character_id == hit.character_id
+                and row.direction == "outgoing"
+                and candidate in _ELEMENT_PENETRATION_PROPERTIES
+            ):
+                counts[candidate] = counts.get(candidate, 0) + 1
+        if counts:
+            return max(counts, key=lambda key: (counts[key], key))
+        return attribute if attribute else "normal"
+
+    @staticmethod
+    def _mitigation_context(
+        *,
+        hit: BattleAnalysisHit,
+        projection: BattleHitBuffProjection,
+        values: Mapping[str, float],
+        analysis: BattleAnalysisSnapshot,
+        evidence_attribute: str = "",
+        text_catalog=None,
+    ) -> tuple[str, dict, str, tuple[BattleHitReplayTerm, ...]]:
+        condition = analysis.target_condition
+        assert condition is not None
+        attribute = BattleSpecialHitReplayService._reaction_attribute(
+            hit,
+            analysis,
+            evidence_attribute,
+        )
+        sources = _source_labels(text_catalog)
+        defense_penetration = max(0.0, float(values.get("DefIgnore", 0.0)))
+        defense_basis = (
+            _text(text_catalog, "basis.defense.user_scene", "用户场景与显示等级近似")
+            if condition.enemy_defense_base is None
+            else _text(text_catalog, "basis.defense.target_profile", "目标属性包 DefBase/6")
+        )
+        baseline = next(
+            (
+                row
+                for row in analysis.baselines
+                if row.character_id == hit.character_id
+            ),
+            None,
+        )
+        character_level = 80.0 if baseline is None else baseline.character_level
+        defense_terms = (
+            ()
+            if condition.enemy_defense_base is None
+            else (
+                literal_replay_term(
+                    "character:level", "CharacterLevel",
+                    _text(text_catalog, "term.character_level.label", "角色等级"),
+                    character_level, "character", sources["character"],
+                    is_percent=False,
+                    basis=_text(text_catalog, "basis.character_level_frozen", "冻结角色等级"),
+                ),
+                literal_replay_term(
+                    "target:DefBase", "DefBase", "DefBase",
+                    condition.enemy_defense_base, "target", sources["target"],
+                    is_percent=False, basis=defense_basis,
+                ),
+                literal_replay_term(
+                    "target:DefUp", "DefUp",
+                    _text(text_catalog, "term.def_up.label", "防御提升"),
+                    condition.enemy_defense_up, "target", sources["target"],
+                    is_percent=True, basis=defense_basis,
+                ),
+                literal_replay_term(
+                    "target:DefAdd", "DefAdd",
+                    _text(text_catalog, "term.def_add.label", "额外防御"),
+                    condition.enemy_defense_add, "target", sources["target"],
+                    is_percent=False, basis=defense_basis,
+                ),
+                literal_replay_term(
+                    "attacker:DefIgnore", "DefIgnore",
+                    _text(text_catalog, "term.def_ignore.label", "防御穿透"),
+                    defense_penetration, "resolved", sources["resolved"],
+                    is_percent=True,
+                    basis=_text(text_catalog, "basis.hit_character_attribute", "命中时角色属性"),
+                ),
+                literal_replay_term(
+                    "target:DefReduction", "DefReduction",
+                    _text(text_catalog, "term.def_reduction.label", "防御降低"),
+                    condition.defense_reduction, "target", sources["target"],
+                    is_percent=True, basis=defense_basis,
+                ),
+            )
+        )
+        inputs = mitigation_input(condition, character_level, values, projection,
+                                  attribute, clamp_defense=True)
+        if attribute not in _ELEMENT_PENETRATION_PROPERTIES:
+            inputs["resistance_additions"] = []
+            inputs["resistance_penetration"] = 0.0
+        return attribute, inputs, defense_basis, defense_terms
+
+    @classmethod
+    def _replay_standard_reaction(
+        cls,
+        *,
+        channel_id: str,
+        hit: BattleAnalysisHit,
+        evidence: BattleSkillDamageEvidence,
+        projection: BattleHitBuffProjection,
+        values: Mapping[str, float],
+        analysis: BattleAnalysisSnapshot,
+        formula_label: str,
+        text_catalog=None,
+    ) -> BattleHitReplayResult:
+        ordinary_scorch = (
+            channel_id == "reaction_scorch"
+            and evidence.damage_id.casefold() == _ORDINARY_SCORCH_DAMAGE_ID
+        )
+        zankou_scorch = (
+            channel_id == "reaction_scorch"
+            and evidence.damage_id.casefold() == _ZANKOU_SCORCH_DAMAGE_ID
+        )
+        if zankou_scorch and evidence.state_multiplier <= 0.0:
+            return BattleHitReplayResult(
+                event_id=hit.event_id,
+                observed_damage=hit.damage,
+                non_critical_damage=None,
+                critical_damage=None,
+                selected_damage=None,
+                selected_error_percent=None,
+                critical_state="unreplayable",
+                confidence="未解析",
+                factors=(),
+                missing_evidence=(_text(
+                    text_catalog, "missing.zankou_stack_event",
+                    "缺少残虹被动逐层持续伤害施加事件及触发时点的浊燃伤害、"
+                    "元素与持续时间快照；周期结算 hit 不能替代施加事件"),),
+                formula_type=formula_label,
+                formula_damage_attribute=hit.damage_attribute,
+            )
+        if ordinary_scorch and (
+            hit.damage_attribute.casefold() not in _ELEMENT_PENETRATION_PROPERTIES
+        ):
+            return BattleHitReplayResult(
+                event_id=hit.event_id,
+                observed_damage=hit.damage,
+                non_critical_damage=None,
+                critical_damage=None,
+                selected_damage=None,
+                selected_error_percent=None,
+                critical_state="unreplayable",
+                confidence="未解析",
+                factors=(),
+                missing_evidence=(_text(
+                    text_catalog, "missing.scorch_attribute",
+                    "普通浊燃正式伤害项未固定元素属性，本击也未提供可确认的伤害属性；"
+                    "不能猜测目标抗性与角色穿透"),),
+                formula_type=formula_label,
+                formula_damage_attribute="",
+            )
+        level_multiplier = evidence.level_multiplier
+        if level_multiplier is None:
+            return BattleHitReplayResult(
+                event_id=hit.event_id,
+                observed_damage=hit.damage,
+                non_critical_damage=None,
+                critical_damage=None,
+                selected_damage=None,
+                selected_error_percent=None,
+                critical_state="unreplayable",
+                confidence="未解析",
+                factors=(),
+                missing_evidence=(_text(
+                    text_catalog, "missing.reaction_level_curve",
+                    "缺少{label}的官方 16 档等级基础值", label=formula_label),),
+                formula_type=formula_label,
+            )
+        attribute, mitigation, defense_basis, defense_terms = cls._mitigation_context(
+            hit=hit, projection=projection, values=values, analysis=analysis,
+            evidence_attribute=evidence.damage_attribute, text_catalog=text_catalog,
+        )
+        numbers = yield ("special_reaction_v1", {
+            "observed": hit.damage, "level_multiplier": level_multiplier,
+            "ring_strength": float(values.get("MagBase", 0.0)),
+            "mitigation": mitigation, "scorch": channel_id == "reaction_scorch",
+            "state_multiplier": evidence.state_multiplier,
+            "dot_final_multiplier": evidence.dot_final_multiplier,
+            "crit_damage": float(values.get("CritDamageBase", 0.50)),
+        })
+        ring_strength, ring_multiplier = numbers["ring_strength"], numbers["ring_multiplier"]
+        defense, resistance, vulnerability = (numbers[key] for key in
+                                              ("defense", "resistance", "vulnerability"))
+        stack_multiplier, crit_damage = numbers["stack_multiplier"], numbers["crit_damage"]
+        non_critical, critical, selected = (numbers[key] for key in
+                                           ("noncritical", "critical", "selected"))
+        critical_state, critical_rate = numbers["critical_state"], numbers["critical_rate"]
+        expected = numbers["expected"]
+        signed_error, absolute_error = numbers["signed_error"], numbers["absolute_error"]
+        confidence = (
+            "高" if absolute_error is not None and absolute_error <= 2.0
+            else "中" if absolute_error is not None and absolute_error <= 5.0
+            else "低"
+        )
+        unresolved = sum(row.status == "unresolved" for row in projection.decisions)
+        missing = []
+        if unresolved:
+            missing.append(_text(
+                text_catalog, "missing.reaction_buffs",
+                "{count} 个{label}相关 Buff 仍待结构化", count=unresolved, label=formula_label))
+        if zankou_scorch and evidence.state_multiplier_label:
+            missing.append(_text(
+                text_catalog, "missing.scorch_state_layers",
+                "浊燃层数由逐击正向重放（置信度{confidence}），"
+                "待运行时目标 Buff 层数覆盖", confidence=evidence.state_confidence))
+        condition = analysis.target_condition
+        assert condition is not None
+        stack_factors = (
+            ()
+            if channel_id != "reaction_scorch" or not evidence.state_multiplier_label
+            else (_factor(
+                "state_coefficient",
+                evidence.state_multiplier_label,
+                stack_multiplier,
+                evidence.state_multiplier_basis,
+                (
+                    _text(text_catalog, "term.state_coefficient.formula.zankou",
+                          "min(结算前残虹浊燃层数, 3) × 单层伤害")
+                    if zankou_scorch else _text(
+                        text_catalog, "term.state_coefficient.formula.ordinary",
+                        "普通浊燃固定 1 层 × 单层伤害")
+                ),
+            ),)
+        )
+        factors = (
+            _factor(
+                "skill",
+                _text(text_catalog, "term.level_base.label", "等级基础值"),
+                level_multiplier,
+                evidence.evidence_basis,
+                _text(text_catalog, "term.level_base.formula",
+                      "官方环合伤害曲线按角色等级取档"),
+            ),
+            *stack_factors,
+            _factor(
+                "scaling",
+                _text(text_catalog, "term.ring_strength.label", "环合强度区"),
+                ring_multiplier,
+                _text(text_catalog, "term.ring_strength.basis",
+                      "命中归属角色环合强度 {strength}", strength=f"{ring_strength:g}"),
+                _text(text_catalog, "term.ring_strength.formula", "1 + 环合强度 / 600"),
+            ),
+            _factor(
+                "defense",
+                _text(text_catalog, "term.defense.label", "防御区"),
+                defense,
+                defense_basis,
+                _text(text_catalog, "term.defense.basis.matching_target",
+                      "角色等级与敌方防御"),
+                terms=defense_terms,
+            ),
+            _factor(
+                "resistance",
+                _text(text_catalog, "term.resistance.label", "抗性区"),
+                resistance,
+                _text(text_catalog, "term.resistance.basis.attribute",
+                      "{attribute} 属性抗性与穿透", attribute=attribute),
+                _text(text_catalog, "term.resistance.formula.attribute",
+                      "抗性分段函数(目标抗性 - 属性穿透)"),
+            ),
+            _factor(
+                "vulnerability",
+                _text(text_catalog, "term.vulnerability.label", "易伤区"),
+                vulnerability,
+                _text(text_catalog, "term.vulnerability.basis.target_damage",
+                      "敌方受到伤害提升"),
+                _text(text_catalog, "term.vulnerability.formula", "1 + 易伤"),
+            ),
+            *(
+                dot_final_replay_factors(evidence)
+                if channel_id == "reaction_scorch" else ()
+            ),
+            _factor(
+                "critical",
+                _text(text_catalog, "term.critical.label", "暴击伤害倍率"),
+                1.0 + crit_damage if channel_id == "reaction_scorch" else 1.0,
+                _text(text_catalog, "term.critical.basis.scorch", "浊燃固定 50% 暴击率")
+                if channel_id == "reaction_scorch"
+                else _text(text_catalog, "term.critical.basis.creation", "创生不暴击"),
+                _text(text_catalog, "term.critical.formula.scorch", "1 + 暴击伤害")
+                if channel_id == "reaction_scorch"
+                else _text(text_catalog, "term.critical.formula.fixed", "固定为 1"),
+            ),
+        )
+        return BattleHitReplayResult(
+            event_id=hit.event_id,
+            observed_damage=hit.damage,
+            non_critical_damage=non_critical,
+            critical_damage=critical,
+            selected_damage=selected,
+            selected_error_percent=absolute_error,
+            critical_state=critical_state,
+            confidence=confidence,
+            factors=factors,
+            missing_evidence=tuple(missing),
+            formula_type=formula_label,
+            critical_rate=critical_rate,
+            expected_damage=expected,
+            corrected_expected_damage=(
+                numbers["corrected_expected"]
+            ),
+            signed_error_percent=signed_error,
+            critical_policy=(
+                "fixed" if channel_id == "reaction_scorch" else "disabled"
+            ),
+            formula_damage_attribute=attribute,
+        )
+
+    @staticmethod
+    def _replay_dark_star(
+        *,
+        hit: BattleAnalysisHit,
+        evidence: BattleSkillDamageEvidence,
+        projection: BattleHitBuffProjection,
+        values: Mapping[str, float],
+        analysis: BattleAnalysisSnapshot,
+        formula_label: str,
+        text_catalog=None,
+    ) -> BattleHitReplayResult:
+        condition = analysis.target_condition
+        assert condition is not None
+        level_multiplier = evidence.level_multiplier
+        if level_multiplier is None:
+            return BattleHitReplayResult(
+                event_id=hit.event_id,
+                observed_damage=hit.damage,
+                non_critical_damage=None,
+                critical_damage=None,
+                selected_damage=None,
+                selected_error_percent=None,
+                critical_state="unreplayable",
+                confidence="未解析",
+                factors=(),
+                missing_evidence=(_text(
+                    text_catalog, "missing.dark_star_level_curve",
+                    "缺少黯星的官方 16 档等级基础值"),),
+                formula_type=formula_label,
+            )
+        numbers = yield ("special_nova_v1", {
+            "observed": hit.damage, "level_multiplier": level_multiplier,
+            "ring_strength": float(values.get("MagBase", 0.0)),
+            "mitigation": mitigation_input(condition, 80.0, values, projection,
+                                           "psychically", clamp_defense=True),
+        })
+        ring_strength, ring_multiplier = numbers["ring_strength"], numbers["ring_multiplier"]
+        resistance, vulnerability = numbers["resistance"], numbers["vulnerability"]
+        predicted = numbers["selected"]
+        signed_error, absolute_error = numbers["signed_error"], numbers["absolute_error"]
+        confidence = (
+            "高" if absolute_error is not None and absolute_error <= 2.0
+            else "中" if absolute_error is not None and absolute_error <= 5.0
+            else "低"
+        )
+        unresolved = sum(
+            row.status == "unresolved" for row in projection.decisions
+        )
+        missing = (
+            ()
+            if unresolved == 0
+            else (_text(
+                text_catalog, "missing.dark_star_buffs",
+                "{count} 个黯星相关 Buff 仍待结构化", count=unresolved),)
+        )
+        factors = (
+            _factor(
+                "skill",
+                _text(text_catalog, "term.level_base.label", "等级基础值"),
+                level_multiplier,
+                evidence.evidence_basis,
+                _text(text_catalog, "term.level_base.formula",
+                      "官方环合伤害曲线按角色等级取档"),
+            ),
+            _factor(
+                "scaling",
+                _text(text_catalog, "term.ring_strength.label", "环合强度区"),
+                ring_multiplier,
+                _text(text_catalog, "term.ring_strength.basis",
+                      "命中归属角色环合强度 {strength}", strength=f"{ring_strength:g}"),
+                _text(text_catalog, "term.ring_strength.formula", "1 + 环合强度 / 600"),
+            ),
+            _factor(
+                "damage_up",
+                _text(text_catalog, "term.damage_up.label", "增伤区"),
+                1.0,
+                _text(text_catalog, "term.damage_up.basis", "黯星不读取角色通伤"),
+                _text(text_catalog, "term.damage_up.formula", "固定为 1"),
+            ),
+            _factor(
+                "defense",
+                _text(text_catalog, "term.defense.label", "防御区"),
+                1.0,
+                _text(text_catalog, "term.defense.basis.dark_star", "黯星为心灵伤害"),
+                _text(text_catalog, "term.defense.formula", "固定为 1"),
+            ),
+            _factor(
+                "resistance",
+                _text(text_catalog, "term.resistance.label", "抗性区"),
+                resistance,
+                _text(text_catalog, "term.resistance.basis.dark_star",
+                      "用户确认心灵抗性与命中时减抗/穿透"),
+                _text(text_catalog, "term.resistance.formula.dark_star",
+                      "抗性分段函数(心灵抗性 - 心灵穿透)"),
+            ),
+            _factor(
+                "vulnerability",
+                _text(text_catalog, "term.vulnerability.label", "易伤区"),
+                vulnerability,
+                _text(text_catalog, "term.vulnerability.basis.dark_star",
+                      "用户确认目标条件与敌方 Buff"),
+                _text(text_catalog, "term.vulnerability.formula.dark_star",
+                      "1 + 敌方受到伤害提升"),
+            ),
+            _factor(
+                "independent",
+                _text(text_catalog, "term.independent.label", "独立最终乘区"),
+                1.0,
+                _text(text_catalog, "term.independent.basis", "当前无黯星独立修正"),
+                _text(text_catalog, "term.independent.formula", "固定为 1"),
+            ),
+        )
+        return BattleHitReplayResult(
+            event_id=hit.event_id,
+            observed_damage=hit.damage,
+            non_critical_damage=predicted,
+            critical_damage=None,
+            selected_damage=predicted,
+            selected_error_percent=absolute_error,
+            critical_state="not_applicable",
+            confidence=confidence,
+            factors=factors,
+            missing_evidence=missing,
+            formula_type=formula_label,
+            critical_rate=0.0,
+            expected_damage=predicted,
+            corrected_expected_damage=(hit.damage if predicted > 0.0 else None),
+            signed_error_percent=signed_error,
+            critical_policy="disabled",
+        )

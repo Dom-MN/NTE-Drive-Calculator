@@ -1,0 +1,6 @@
+{
+  "name": "rusqlite",
+  "version": "0.40.1",
+  "license": "MIT",
+  "repository": "https://github.com/rusqlite/rusqlite"
+}

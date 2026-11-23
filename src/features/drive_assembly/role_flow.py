@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from src.domain.drive_layout import (
+from src.domain.equipment.geometry.drive_layout import (
     extract_drive_blocks_from_state,
     extract_tape_filters_from_state,
 )
@@ -160,6 +160,7 @@ def plan_role_assembly_from_observations(
                 }
             )
 
+    # complete 只表示本次装配目标均可定位；它不是正式背包完整性或原生 UID 证据。
     planned_roles = [plan["role_name"] for plan in plans if plan.get("role_name")]
     missing = [role for role in required if role not in set(planned_roles)]
     return {

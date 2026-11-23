@@ -83,7 +83,7 @@ def inline(text: str, origin: Path) -> str:
 
 
 def render(text: str, origin: Path) -> str:
-    """Render this documentation's small Markdown subset without dependencies."""
+    """只渲染当前文档约定的有限 Markdown；本地链接须先登记来源身份。"""
     lines = text.splitlines()
     output = []
     index = 0
@@ -214,7 +214,7 @@ def protection() -> dict:
 
 
 def operation_panels(document: Path) -> list[dict]:
-    """Read explicit stable child identities and validate every ancestor chain."""
+    """按稳定 key 与 parent 校验文档导航；AST 读取应用声明，不导入 Qt 或应用。"""
     chunks = re.split(r'^## (.+)$', read(document), flags=re.M)
     panels = []
     heading = re.compile(
@@ -245,7 +245,7 @@ def operation_panels(document: Path) -> list[dict]:
             ancestors.add(parent)
             parent = by_id[parent]['parent']
     # Read app navigation metadata without importing the application or Qt.
-    navigation = ROOT / 'src/ui/navigation.py'
+    navigation = ROOT / 'src/ui/main_window/navigation.py'
     tree = ast.parse(read(navigation))
     assignment = next(node for node in tree.body if isinstance(node, ast.Assign)
                       and any(isinstance(target, ast.Name) and target.id == 'NAV_ITEMS' for target in node.targets))

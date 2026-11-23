@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from src.ui.common.text_catalog import resolve_text_catalog
 from collections.abc import Callable
 
 from PySide6.QtCore import Signal
@@ -18,22 +19,20 @@ from PySide6.QtWidgets import (
 from .role_calculation import (
     _build_damage_formula_group,
     _build_margin_group,
+    _build_weight_group,
     _calculation_detail,
 )
 from .role_equipment import _build_drive_summary_group
 from .role_awakening import _build_awakening_group
-from .role_growth import (
-    _build_base_group,
-    _build_fork_group,
-    _build_skill_group,
-)
-from .role_weights import _build_weight_group
+from .editing.growth_fields import _build_base_group
+from .editing.skill_fields import _build_skill_group
+from .editing.fork_fields import _build_fork_group
 
 __all__ = ["OfficialRoleProfileEditor"]
 
 
 class OfficialRoleProfileEditor(QWidget):
-    """Edit cultivation fields while keeping persistence outside the widget."""
+    """编辑养成草稿并投影公开字段；数据库保存及原始快照保护仍由调用方负责。"""
 
     changed = Signal()
 
@@ -50,8 +49,10 @@ class OfficialRoleProfileEditor(QWidget):
         equipment_replacement_handler: Callable[[dict, str], bool] | None = None,
         scoring_engine=None,
         shape_areas: dict[str, int] | None = None,
+        text_catalog=None,
     ) -> None:
         super().__init__(parent)
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self.scoring_engine = scoring_engine
         self._shape_areas = dict(shape_areas or {})
         self._detail = detail
@@ -106,7 +107,7 @@ class OfficialRoleProfileEditor(QWidget):
                 )
             )
         if self._include_analysis:
-            layout.addWidget(_build_damage_formula_group(detail, self._editor))
+            layout.addWidget(_build_damage_formula_group(detail, self._editor, text_catalog=text_catalog))
             layout.addWidget(
                 _build_weight_group(self, character_id, detail, self._editor)
             )
@@ -142,6 +143,7 @@ class OfficialRoleProfileEditor(QWidget):
             return None
         context_key = str(self._editor.get("equipment_context_key") or "battle")
         context = (self._detail.get("equipment_contexts") or {}).get(context_key)
+        # 只交付实际可冻结的配装上下文；理论模板不伪装成来源方案或正式背包 UID。
         if context is None or context_key == "theory":
             raise ValueError("请选择可冻结的空幕/驱动配装")
         return context_key, context

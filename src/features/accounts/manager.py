@@ -3,14 +3,13 @@
 
 from __future__ import annotations
 
+from src.ui.common.enum_text import ui_enum_text
+from src.ui.common.text_catalog import TextActionButton, plain_label, plain_tooltip, resolve_text_catalog
 import json
 import re
 import shutil
-import sqlite3
-import tempfile
 import time
-import zipfile
-from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -19,27 +18,48 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
-    QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QVBoxLayout,
 )
 
-from src.i18n import tr
 from src.app.context import AccountContext
-from src.services.account_naming_service import AccountNamingService
+from src.integrations.accounts.index_file import (
+    locked_account_index, read_account_index_bytes, write_account_index_bytes,
+)
+from src.integrations.distribution.lock import reject_links
+from src.integrations.accounts.mutation_directories import (
+    AccountMutationRecoveryError,
+    account_mutation_path, create_account_directory, delete_account_directory,
+    directory_occupied, require_account_directory_ready, retired_account_directory,
+)
+from src.services.accounts.naming import AccountNamingService, normalize_account_name
+from src.services.accounts.transfer import export_account_data, import_account_data
+from src.integrations.accounts.transfer_archive import (
+    AccountDirectoryBusyError, AccountImportRecoveryError, account_directory_identity,
+)
 from src.storage.config_migration import replace_core_config_dir
 from src.storage.sqlite.user_data_dao import UserDataDao
 from src.utils.logger import logger
 
 
-TRANSFER_FORMAT_VERSION = 1
-TRANSFER_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp"}
 USER_DATABASE_FILENAME = "user_data.sqlite3"
 
 
 AccountState = AccountContext
+
+
+@dataclass(frozen=True)
+class AccountDeletionTarget:
+    account_id: str
+    account: dict
+    directory_identity: tuple[int, int] | None
+
+
+@dataclass(frozen=True)
+class AccountDeletionResult:
+    active_account_id: str
+    cleanup_pending: Path | None
 
 
 class AccountManager:
@@ -69,20 +89,19 @@ class AccountManager:
         return cleaned[:40] or f"account_{int(time.time())}"
 
     def read_index(self) -> dict:
-        if self.accounts_index_file.exists():
-            try:
-                with open(self.accounts_index_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, dict) and data.get("accounts"):
-                    return data
-            except Exception as exc:
-                logger.warning(f"账号索引读取失败，使用默认账号配置: {exc}")
-        return {"active_account_id": "default", "accounts": [{"id": "default", "name": tr("默认账号")}]}
+        with locked_account_index():
+            if self.accounts_index_file.exists():
+                try:
+                    data = json.loads(read_account_index_bytes(self.accounts_index_file).decode("utf-8"))
+                    if isinstance(data, dict) and data.get("accounts"):
+                        return data
+                except Exception as exc:
+                    logger.warning(f"账号索引读取失败，使用默认账号配置: {exc}")
+            return {"active_account_id": "default", "accounts": [{"id": "default", "name": "默认账号"}]}
 
     def write_index(self, data: dict) -> None:
-        self.accounts_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.accounts_index_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        raw = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+        write_account_index_bytes(self.accounts_index_file, raw)
 
     def account_meta(self, account_id: str | None = None) -> dict:
         data = self.read_index()
@@ -90,7 +109,7 @@ class AccountManager:
         for account in data.get("accounts", []):
             if account.get("id") == target:
                 return account
-        return data.get("accounts", [{"id": "default", "name": tr("默认账号")}])[0]
+        return data.get("accounts", [{"id": "default", "name": "默认账号"}])[0]
 
     def account_dir(self, account_id: str) -> Path:
         return self.accounts_dir / account_id
@@ -104,100 +123,125 @@ class AccountManager:
 
         src_templates = self.bundled_config_dir / "templates"
         if src_templates.exists() and src_templates.resolve() != self.template_dir.resolve():
-            shutil.copytree(str(src_templates), str(self.template_dir), dirs_exist_ok=True)
+            # 模板在运行数据域可编辑；发行新增项只初始化缺项，不覆盖用户已有内容。
+            for source in src_templates.rglob("*"):
+                destination = self.template_dir / source.relative_to(src_templates)
+                reject_links(destination)
+                if source.is_file() and not destination.exists():
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, destination)
 
-    def seed_account_data(self, account_id: str, migrate_legacy: bool = False) -> None:
-        account_root = self.account_dir(account_id)
-        account_config = account_root / "config"
-        for subdir in (account_config, account_root / "scanned_images", account_root / "logs"):
+    def _seed_account_profile(self, account_id: str) -> Path:
+        """调用方已持索引锁；正式 ID 重检后才取得账号 DAO 写锁。"""
+        account = next((row for row in self.read_index().get("accounts", [])
+                        if row.get("id") == account_id), None)
+        if account is None:
+            raise ValueError("account_not_found")
+        account_root = account_mutation_path(self.accounts_dir, account_id)
+        require_account_directory_ready(account_root)
+        for subdir in (account_root / "config", account_root / "scanned_images", account_root / "logs"):
             subdir.mkdir(parents=True, exist_ok=True)
-
-        # 用户数据库属于账号运行数据：首次创建账号时生成，不随安装包覆盖。
-        account = self.account_meta(account_id)
         account_name = str(account.get("name") or account_id)
-        with UserDataDao(
-            account_root / USER_DATABASE_FILENAME,
-            account_id=account_id,
-            account_name=account_name,
-        ) as user_database:
+        # 用户数据库只属账号运行数据；已有 profile 校正参与同一索引锁。
+        with UserDataDao(account_root / USER_DATABASE_FILENAME,
+                         account_id=account_id, account_name=account_name) as user_database:
             if user_database.profile()["account_name"] != account_name:
                 user_database.rename_account(account_name)
+        return account_root
 
-        legacy_config = self.data_root / "config"
+    def _seed_legacy_account_files(self, account_root: Path, migrate_legacy: bool) -> None:
+        # 模板与图片准备不持索引锁，不在临界区等待任务或触发账号切换。
+        if not migrate_legacy:
+            return
+        account_config = account_root / "config"
         for fname in self.account_user_files:
             dst = account_config / fname
-            if dst.exists():
-                continue
-            src = legacy_config / fname if migrate_legacy else None
-            if src and src.exists() and src.resolve() != dst.resolve():
+            src = self.data_root / "config" / fname
+            if not dst.exists() and src.exists() and src.resolve() != dst.resolve():
                 shutil.copy2(str(src), str(dst))
-
         legacy_screenshots = self.data_root / "scanned_images"
         account_screenshots = account_root / "scanned_images"
-        if migrate_legacy and legacy_screenshots.exists() and not any(account_screenshots.iterdir()):
+        if legacy_screenshots.exists() and not any(account_screenshots.iterdir()):
             for file in self.iter_image_files(legacy_screenshots):
                 try:
                     shutil.copy2(str(file), str(account_screenshots / file.name))
                 except Exception as exc:
                     logger.warning(f"迁移旧截图失败，已跳过该文件: {file} | {exc}")
 
+    def seed_account_data(self, account_id: str, migrate_legacy: bool = False) -> None:
+        with locked_account_index():
+            account_root = self._seed_account_profile(account_id)
+        self._seed_legacy_account_files(account_root, migrate_legacy)
+
     def activate(self, account_id: str) -> AccountState:
-        data = self.read_index()
-        account = next((a for a in data.get("accounts", []) if a.get("id") == account_id), None)
-        if not account:
-            account = {"id": "default", "name": tr("默认账号")}
-        active_id = account["id"]
-        active_name = account.get("name") or active_id
-        account_root = self.account_dir(active_id)
-        self.seed_account_data(active_id)
-        return AccountState(
-            active_account_id=active_id,
-            active_account_name=active_name,
-            account_data_root=account_root,
-            user_database_path=account_root / USER_DATABASE_FILENAME,
-            user_config_dir=account_root / "config",
-            screenshot_dir=account_root / "scanned_images",
-            log_dir=account_root / "logs",
-        )
+        with locked_account_index():
+            data = self.read_index()
+            account = next((a for a in data.get("accounts", []) if a.get("id") == account_id), None)
+            if not account:
+                account = {"id": "default", "name": "默认账号"}
+            active_id = account["id"]
+            account_root = self._seed_account_profile(active_id)
+            return AccountState(
+                active_account_id=active_id,
+                active_account_name=account.get("name") or active_id,
+                account_data_root=account_root,
+                user_database_path=account_root / USER_DATABASE_FILENAME,
+                user_config_dir=account_root / "config",
+                screenshot_dir=account_root / "scanned_images",
+                log_dir=account_root / "logs",
+            )
 
     def initialize(self) -> AccountState:
         self.seed_user_config()
-        data = self.read_index()
-        ids = []
-        normalized = []
-        for account in data.get("accounts", []):
-            account_id = self.safe_account_id(account.get("id") or account.get("name") or "default")
-            if account_id in ids:
-                continue
-            ids.append(account_id)
-            normalized.append({"id": account_id, "name": account.get("name") or account_id})
-        if not normalized:
-            normalized = [{"id": "default", "name": tr("默认账号")}]
-        active_id = data.get("active_account_id") if data.get("active_account_id") in ids else normalized[0]["id"]
-        self.write_index({"active_account_id": active_id, "accounts": normalized})
-        self.seed_account_data(active_id, migrate_legacy=(active_id == "default"))
+        with locked_account_index():
+            data = self.read_index()
+            ids = []
+            normalized = []
+            for account in data.get("accounts", []):
+                account_id = self.safe_account_id(account.get("id") or account.get("name") or "default")
+                if account_id in ids:
+                    continue
+                ids.append(account_id)
+                normalized.append({"id": account_id, "name": account.get("name") or account_id})
+            if not normalized:
+                normalized = [{"id": "default", "name": "默认账号"}]
+            active_id = data.get("active_account_id") if data.get("active_account_id") in ids else normalized[0]["id"]
+            self.write_index({"active_account_id": active_id, "accounts": normalized})
+            account_root = self._seed_account_profile(active_id)
+        self._seed_legacy_account_files(account_root, active_id == "default")
         return self.activate(active_id)
 
     def set_active_account_id(self, account_id: str) -> None:
-        data = self.read_index()
-        if not any(a.get("id") == account_id for a in data.get("accounts", [])):
-            return
-        data["active_account_id"] = account_id
-        self.write_index(data)
+        with locked_account_index():
+            data = self.read_index()
+            if not any(a.get("id") == account_id for a in data.get("accounts", [])):
+                raise ValueError("account_not_found")
+            data["active_account_id"] = account_id
+            self.write_index(data)
 
     def create_account(self, name: str) -> str:
-        data = self.read_index()
-        existing = {a.get("id") for a in data.get("accounts", [])}
-        base = self.safe_account_id(name)
-        account_id = base
-        suffix = 2
-        while account_id in existing:
-            account_id = f"{base}_{suffix}"
-            suffix += 1
-        data.setdefault("accounts", []).append({"id": account_id, "name": name.strip()})
-        self.write_index(data)
-        self.seed_account_data(account_id)
-        return account_id
+        name = normalize_account_name(name)
+        with locked_account_index():
+            data = self.read_index()
+            existing = {a.get("id") for a in data.get("accounts", [])}
+            base = self.safe_account_id(name)
+            account_id = base
+            suffix = 2
+            while (account_id in existing or directory_occupied(self.account_dir(account_id))
+                   or directory_occupied(retired_account_directory(self.account_dir(account_id)))):
+                account_id = f"{base}_{suffix}"
+                suffix += 1
+            target = account_mutation_path(self.accounts_dir, account_id)
+            data.setdefault("accounts", []).append({"id": account_id, "name": name})
+
+            def prepare(staged: Path) -> None:
+                for subdir in ("config", "scanned_images", "logs"):
+                    (staged / subdir).mkdir()
+                with UserDataDao(staged / USER_DATABASE_FILENAME, account_id=account_id, account_name=name):
+                    pass
+
+            create_account_directory(target, prepare, lambda: self.write_index(data))
+            return account_id
 
     def rename_account(self, account_id: str, name: str) -> None:
         database_path = self.account_dir(account_id) / USER_DATABASE_FILENAME
@@ -210,200 +254,37 @@ class AccountManager:
             context_is_current=lambda: True,
         ).rename(name)
 
-    def delete_account(self, account_id: str) -> str | None:
-        data = self.read_index()
-        accounts = data.get("accounts", [])
-        if len(accounts) <= 1:
-            raise ValueError("at_least_one_account_required")
-        was_active = data.get("active_account_id") == account_id
-        data["accounts"] = [a for a in accounts if a.get("id") != account_id]
-        new_active_id = None
-        if was_active:
-            new_active_id = data["accounts"][0]["id"]
-            data["active_account_id"] = new_active_id
-        self.write_index(data)
-        shutil.rmtree(self.account_dir(account_id), ignore_errors=True)
-        return new_active_id
+    def prepare_account_deletion(self, account_id: str) -> AccountDeletionTarget:
+        with locked_account_index():
+            accounts = self.read_index().get("accounts", [])
+            account = next((row for row in accounts if row.get("id") == account_id), None)
+            if account is None:
+                raise ValueError("account_not_found")
+            if not any(row.get("id") != account_id for row in accounts):
+                raise ValueError("at_least_one_account_required")
+            target = account_mutation_path(self.accounts_dir, account_id)
+            require_account_directory_ready(target)
+            return AccountDeletionTarget(account_id, dict(account), account_directory_identity(target))
 
-
-def _safe_zip_member_path(root: Path, member: str) -> Path:
-    target = (root / member).resolve()
-    root = root.resolve()
-    if root != target and root not in target.parents:
-        raise ValueError(f"unsafe zip path: {member}")
-    return target
-
-
-def _write_tree_to_zip(zf: zipfile.ZipFile, source: Path, archive_root: str) -> None:
-    if not source.exists():
-        return
-    for path in sorted(p for p in source.rglob("*") if p.is_file()):
-        zf.write(path, f"{archive_root}/{path.relative_to(source).as_posix()}")
-
-
-def _write_sqlite_backup_to_zip(
-    zf: zipfile.ZipFile,
-    source: Path,
-    archive_name: str,
-) -> None:
-    """Write one consistent SQLite snapshot without exporting its WAL sidecars."""
-
-    with tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False) as temporary:
-        backup_path = Path(temporary.name)
-    try:
-        source_connection = sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)
-        backup_connection = sqlite3.connect(backup_path)
-        try:
-            source_connection.backup(backup_connection)
-        finally:
-            backup_connection.close()
-            source_connection.close()
-        zf.write(backup_path, archive_name)
-    finally:
-        backup_path.unlink(missing_ok=True)
-
-
-def export_account_data(manager: AccountManager, account_id: str, target_zip: Path) -> Path:
-    """Export one account's user data plus the baseline screenshot."""
-
-    account = manager.account_meta(account_id)
-    source_root = manager.account_dir(account.get("id", account_id))
-    if not source_root.exists():
-        raise FileNotFoundError(source_root)
-
-    target_zip = Path(target_zip)
-    target_zip.parent.mkdir(parents=True, exist_ok=True)
-    manifest = {
-        "format": "nte-account-export",
-        "version": TRANSFER_FORMAT_VERSION,
-        "account": {"id": account.get("id", account_id), "name": account.get("name") or account_id},
-    }
-    with zipfile.ZipFile(target_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        zf.writestr(
-            "accounts.json",
-            json.dumps(
-                {"active_account_id": manifest["account"]["id"], "accounts": [manifest["account"]]},
-                ensure_ascii=False,
-                indent=2,
-            ),
-        )
-        for child in sorted(source_root.iterdir()):
-            if child.name in {"logs", "scanned_images", ".migration-backups"}:
-                continue
-            if child.is_dir():
-                _write_tree_to_zip(zf, child, f"account/{child.name}")
-            elif child.is_file():
-                if child.name == USER_DATABASE_FILENAME:
-                    _write_sqlite_backup_to_zip(zf, child, f"account/{child.name}")
-                elif child.name not in {
-                    f"{USER_DATABASE_FILENAME}-shm",
-                    f"{USER_DATABASE_FILENAME}-wal",
-                }:
-                    zf.write(child, f"account/{child.name}")
-        screenshot_dir = source_root / "scanned_images"
-        for image in sorted(screenshot_dir.glob("raw_drive_0001.*")):
-            if image.is_file() and image.suffix.lower() in TRANSFER_IMAGE_EXTS:
-                zf.write(image, f"account/scanned_images/{image.name}")
-    return target_zip
-
-
-def import_account_data(
-    manager: AccountManager,
-    source_zip: Path,
-    before_replace: Callable[[str], None] | None = None,
-) -> str:
-    """Import one account export. Existing accounts with the same name are replaced."""
-
-    source_zip = Path(source_zip)
-    with zipfile.ZipFile(source_zip, "r") as zf:
-        try:
-            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
-        except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ValueError(tr("账号导入文件缺少有效的 manifest.json")) from error
-        if not isinstance(manifest, dict) or manifest.get("format") != "nte-account-export":
-            raise ValueError(tr("账号导入文件格式不受支持"))
-        if manifest.get("version") != TRANSFER_FORMAT_VERSION:
-            raise ValueError(tr("账号导入文件版本不受支持"))
-        account = manifest.get("account")
-        if not isinstance(account, dict):
-            raise ValueError(tr("账号导入文件缺少账号信息"))
-        account_name = str(account.get("name") or account.get("id") or "Imported").strip() or "Imported"
-        original_id = str(account.get("id") or account_name)
-
-        index = manager.read_index()
-        accounts = [dict(item) for item in index.get("accounts", []) if isinstance(item, dict)]
-        existing = next((item for item in accounts if item.get("name") == account_name), None)
-        if existing:
-            target_id = existing.get("id") or manager.safe_account_id(account_name)
-            existing["name"] = account_name
-        else:
-            existing_ids = {item.get("id") for item in accounts}
-            base_id = manager.safe_account_id(original_id or account_name)
-            target_id = base_id
-            suffix = 2
-            while target_id in existing_ids:
-                target_id = f"{base_id}_{suffix}"
-                suffix += 1
-            accounts.append({"id": target_id, "name": account_name})
-
-        staged_members = []
-        member_names: set[str] = set()
-        validation_root = manager.accounts_dir / ".account-import-validation"
-        for member in zf.infolist():
-            if member.is_dir():
-                continue
-            name = member.filename.replace("\\", "/")
-            if not name.startswith("account/"):
-                continue
-            if name in member_names:
-                raise ValueError(tr("账号导入文件包含重复条目: {name}", name=name))
-            member_names.add(name)
-            _safe_zip_member_path(
-                validation_root,
-                name.removeprefix("account/"),
-            )
-            staged_members.append(member)
-        if f"account/{USER_DATABASE_FILENAME}" not in member_names:
-            raise ValueError(tr("账号导入文件缺少用户数据"))
-
-        manager.accounts_dir.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(
-            prefix=".account-import-",
-            dir=manager.accounts_dir,
-        ) as temporary:
-            temporary_root = Path(temporary)
-            staged_root = temporary_root / "account"
-            staged_root.mkdir()
-            for member in staged_members:
-                relative = member.filename.replace("\\", "/").removeprefix("account/")
-                target = _safe_zip_member_path(staged_root, relative)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(member) as src, open(target, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
-
-            target_root = manager.account_dir(target_id)
-            backup_root = temporary_root / "previous-account"
-            replacement_index = dict(index)
-            replacement_index["accounts"] = accounts
-            replacement_index["active_account_id"] = target_id
-            target_existed = target_root.exists()
-            if target_existed:
-                if before_replace is not None:
-                    before_replace(target_id)
-                target_root.replace(backup_root)
-            try:
-                staged_root.replace(target_root)
-                manager.write_index(replacement_index)
-                manager.seed_account_data(target_id)
-            except Exception:
-                shutil.rmtree(target_root, ignore_errors=True)
-                if target_existed and backup_root.exists():
-                    backup_root.replace(target_root)
-                manager.write_index(index)
-                raise
-
-    return target_id
+    def delete_account(self, account_id: str, *, expected: AccountDeletionTarget | None = None,
+                       active_account_id: str | None = None) -> AccountDeletionResult:
+        with locked_account_index():
+            current = self.prepare_account_deletion(account_id)
+            if expected is not None and current != expected:
+                raise ValueError("account_delete_target_changed")
+            data = self.read_index()
+            accounts = data.get("accounts", [])
+            target = account_mutation_path(self.accounts_dir, account_id)
+            was_active = data.get("active_account_id") == account_id
+            data["accounts"] = [a for a in accounts if a.get("id") != account_id]
+            if active_account_id is not None:
+                if not any(row["id"] == active_account_id for row in data["accounts"]):
+                    raise ValueError("active_account_not_found")
+                data["active_account_id"] = active_account_id
+            elif was_active:
+                data["active_account_id"] = data["accounts"][0]["id"]
+            cleanup_pending = delete_account_directory(target, lambda: self.write_index(data))
+            return AccountDeletionResult(data["active_account_id"], cleanup_pending)
 
 
 def populate_account_combo(combo: QComboBox, accounts_index: dict, active_account_id: str) -> None:
@@ -411,16 +292,16 @@ def populate_account_combo(combo: QComboBox, accounts_index: dict, active_accoun
     combo.clear()
     active_index = 0
     for idx, account in enumerate(accounts_index.get("accounts", [])):
-        combo.addItem(tr(str(account.get("name") or account.get("id"))), account.get("id"))
+        combo.addItem(account.get("name") or account.get("id"), account.get("id"))
         if account.get("id") == active_account_id:
             active_index = idx
     combo.setCurrentIndex(active_index)
     combo.blockSignals(False)
 
 
-def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManager, active_account_id: str, switch_account_callback, refresh_account_combo_callback) -> None:
+def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManager, active_account_id: str, switch_account_callback, refresh_account_combo_callback, *, text_catalog=None) -> None:
     dialog = QDialog(parent)
-    dialog.setWindowTitle(tr("管理账号"))
+    dialog.setWindowTitle(resolve_text_catalog(text_catalog).render('navigation.main.build_ui.account_btn'))
     dialog.setMinimumSize(460, 220)
     dialog.setStyleSheet(style_sheet)
 
@@ -428,27 +309,27 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
     layout.setSpacing(10)
 
     row = QHBoxLayout()
-    row.addWidget(QLabel(tr("账号")))
+    row.addWidget(plain_label(resolve_text_catalog(text_catalog).render('ui.accounts.show_account_manager_dialog.caption')))
     combo = QComboBox()
     row.addWidget(combo, 1)
     layout.addLayout(row)
 
     name_edit = QLineEdit()
-    name_edit.setPlaceholderText(tr("账号名称"))
+    name_edit.setPlaceholderText(resolve_text_catalog(text_catalog).render('ui.accounts.show_account_manager_dialog.name_edit'))
     layout.addWidget(name_edit)
 
     btn_row = QHBoxLayout()
-    add_btn = QPushButton(tr("新建"))
+    add_btn = TextActionButton(resolve_text_catalog(text_catalog).render('ui.accounts.show_account_manager_dialog.add_btn'))
     add_btn.setObjectName("btnPrimary")
-    rename_btn = QPushButton(tr("保存命名"))
+    rename_btn = TextActionButton(resolve_text_catalog(text_catalog).render('ui.accounts.show_account_manager_dialog.rename_btn'))
     rename_btn.setObjectName("btnAction")
-    delete_btn = QPushButton(tr("删除"))
-    export_btn = QPushButton(tr("导出数据"))
+    delete_btn = TextActionButton(resolve_text_catalog(text_catalog).render('warehouse.management.rules.delete'))
+    export_btn = TextActionButton(resolve_text_catalog(text_catalog).render('ui.accounts.show_account_manager_dialog.export_btn'))
     export_btn.setObjectName("btnAction")
-    import_btn = QPushButton(tr("导入数据"))
+    import_btn = TextActionButton(resolve_text_catalog(text_catalog).render('ui.accounts.show_account_manager_dialog.import_btn'))
     import_btn.setObjectName("btnAction")
     delete_btn.setObjectName("btnDanger")
-    close_btn = QPushButton(tr("关闭"))
+    close_btn = TextActionButton(resolve_text_catalog(text_catalog).render('common.close'))
     for btn in (rename_btn, export_btn, import_btn, add_btn, delete_btn):
         btn_row.addWidget(btn)
     btn_row.addStretch()
@@ -471,12 +352,30 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
         name_edit.setText(account.get("name", ""))
 
     def add_account():
-        name, ok = QInputDialog.getText(dialog, tr("新建账号"), tr("请输入账号名称："))
+        name, ok = QInputDialog.getText(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.add_account.name_ok'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.add_account.name_ok_2')))
         if not ok or not name.strip():
             return
-        account_id = manager.create_account(name.strip())
+        try:
+            account_id = manager.create_account(name.strip())
+        except Exception as exc:
+            QMessageBox.warning(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.add_account.qmessagebox'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.add_account.qmessagebox_2', exc=f'{exc}')))
+            return
         refresh(account_id)
         refresh_account_combo_callback()
+
+    def report_cleanup(result: AccountDeletionResult) -> None:
+        if result.cleanup_pending is not None:
+            QMessageBox.warning(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.report_cleanup.qmessagebox'),
+                                plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.report_cleanup.qmessagebox_2', cleanup_pending=f'{result.cleanup_pending}')))
+
+    def remove_temporary_account(account_id: str) -> None:
+        # 导入/切换完成与临时目录清理是两项结果；清理失败不反转已提交的当前账号。
+        try:
+            result = manager.delete_account(account_id)
+        except Exception as exc:
+            QMessageBox.warning(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.remove_temporary_account.qmessagebox'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.remove_temporary_account.qmessagebox_2', exc=f'{exc}')))
+            return
+        report_cleanup(result)
 
     def rename_account():
         account_id = current_id()
@@ -491,27 +390,45 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
 
     def delete_account():
         account_id = current_id()
-        data = manager.read_index()
-        if len(data.get("accounts", [])) <= 1:
-            QMessageBox.information(dialog, tr("删除账号"), tr("至少需要保留一个账号。"))
+        try:
+            target = manager.prepare_account_deletion(account_id)
+        except AccountMutationRecoveryError as exc:
+            QMessageBox.warning(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.delete_account.qmessagebox'), ui_enum_text(text_catalog, str(exc)))
             return
-        account = manager.account_meta(account_id)
+        except ValueError:
+            QMessageBox.information(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.delete_account.ret'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.delete_account.qmessagebox_2')))
+            return
         ret = QMessageBox.question(
             dialog,
-            tr("删除账号"),
-            tr("确定删除账号「{name}」及其库存、配装、截图等数据吗？\n此操作不可恢复。",
-               name=account.get("name", account_id)),
+            resolve_text_catalog(text_catalog).render('ui.accounts.delete_account.ret'),
+            plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.delete_account.ret_2', value=f"{target.account.get('name', account_id)}")),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
         if ret != QMessageBox.Yes:
             return
-        new_active_id = manager.delete_account(account_id)
-        if new_active_id:
-            runtime["active_id"] = new_active_id
-            switch_account_callback(new_active_id)
-        refresh(new_active_id or runtime["active_id"])
+        # 实际运行 owner 而非索引 active 决定是否先切换；回调和弹窗始终在锁外。
+        if account_id == runtime["active_id"]:
+            replacement_id = next((row.get("id") for row in manager.read_index().get("accounts", [])
+                                   if row.get("id") != account_id), None)
+            try:
+                switched = replacement_id is not None and switch_account_callback(replacement_id) is True
+            except Exception:
+                switched = False
+            if not switched:
+                QMessageBox.warning(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.delete_account.ret'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.delete_account.qmessagebox_3')))
+                return
+            runtime["active_id"] = replacement_id
+        try:
+            result = manager.delete_account(account_id, expected=target, active_account_id=runtime["active_id"])
+        except Exception as exc:
+            refresh(runtime["active_id"])
+            refresh_account_combo_callback()
+            QMessageBox.warning(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.delete_account.ret'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.delete_account.qmessagebox_4', exc=f'{exc}')))
+            return
+        refresh(runtime["active_id"])
         refresh_account_combo_callback()
+        report_cleanup(result)
 
     def export_account():
         account_id = current_id()
@@ -519,18 +436,18 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
             return
         account = manager.account_meta(account_id)
         default_name = f"{manager.safe_account_id(account.get('name') or account_id)}_nte_account.zip"
-        path, _ = QFileDialog.getSaveFileName(dialog, tr("导出账号数据"), default_name, "NTE Account Export (*.zip)")
+        path, _ = QFileDialog.getSaveFileName(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.export_account.path'), default_name, "NTE Account Export (*.zip)")
         if not path:
             return
         try:
             export_account_data(manager, account_id, Path(path))
         except Exception as exc:
-            QMessageBox.critical(dialog, tr("导出账号数据"), tr("导出失败：{error}", error=exc))
+            QMessageBox.critical(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.export_account.path'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.export_account.qmessagebox_2', exc=f'{exc}')))
             return
-        QMessageBox.information(dialog, tr("导出账号数据"), tr("当前账号数据已导出。"))
+        QMessageBox.information(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.export_account.path'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.export_account.qmessagebox')))
 
     def import_account():
-        path, _ = QFileDialog.getOpenFileName(dialog, tr("导入账号数据"), "", "NTE Account Export (*.zip)")
+        path, _ = QFileDialog.getOpenFileName(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.import_account.path'), "", "NTE Account Export (*.zip)")
         if not path:
             return
         temporary_account_id: str | None = None
@@ -542,11 +459,11 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
             nonlocal temporary_account_id
             if target_id != runtime["active_id"]:
                 return
-            temporary_account_id = manager.create_account(tr("导入临时账号"))
-            if not switch_account_callback(temporary_account_id):
-                manager.delete_account(temporary_account_id)
+            temporary_account_id = manager.create_account("导入临时账号")
+            if switch_account_callback(temporary_account_id) is not True:
+                remove_temporary_account(temporary_account_id)
                 temporary_account_id = None
-                raise RuntimeError(tr("无法停止当前账号任务，导入未开始"))
+                raise RuntimeError("无法停止当前账号任务，导入未开始")
             runtime["active_id"] = temporary_account_id
 
         try:
@@ -554,22 +471,49 @@ def show_account_manager_dialog(parent, style_sheet: str, manager: AccountManage
                 manager, Path(path), before_replace=release_replaced_account,
             )
         except Exception as exc:
-            if temporary_account_id is not None:
-                switch_account_callback(original_active_id)
-                if manager.account_dir(temporary_account_id).exists():
-                    shutil.rmtree(manager.account_dir(temporary_account_id), ignore_errors=True)
-                runtime["active_id"] = original_active_id
-            QMessageBox.critical(
-                dialog, tr("导入账号数据"), tr("导入失败：{error}", error=exc)
-            )
+            switch_pending = False
+            if temporary_account_id is not None and isinstance(exc, AccountImportRecoveryError):
+                # 文件系统补偿受阻时原目录可能仍是候选；不自动切入未恢复账号。
+                switch_pending = True
+                refresh(runtime["active_id"])
+                refresh_account_combo_callback()
+            elif temporary_account_id is not None:
+                try:
+                    switched = switch_account_callback(original_active_id) is True
+                except Exception:
+                    switched = False
+                # 切换成功才释放临时 owner；False/抛错保留当前运行上下文与目录。
+                if switched:
+                    runtime["active_id"] = original_active_id
+                    remove_temporary_account(temporary_account_id)
+                else:
+                    switch_pending = True
+                    refresh(runtime["active_id"])
+                    refresh_account_combo_callback()
+            detail = "\n账号回切尚未完成，临时账号已保留，请重试切换。" if switch_pending else ""
+            if isinstance(exc, AccountDirectoryBusyError):
+                # 原目录尚未移动：按“状态 → 原因 → 下一步”提示，原始异常只进本机日志。
+                logger.warning(f"account.import_directory_busy | 账号目录仍被占用，导入未替换原件 | error={exc}")
+                QMessageBox.warning(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.import_account.path'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.import_account.directory_busy', detail=ui_enum_text(text_catalog, f'{detail}'))))
+                return
+            QMessageBox.critical(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.import_account.path'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.import_account.qmessagebox_3', exc=f'{exc}', detail=ui_enum_text(text_catalog, f'{detail}'))))
+            return
+        try:
+            switched = switch_account_callback(imported_id) is True
+        except Exception:
+            switched = False
+        if not switched:
+            # 数据导入与运行时切换是两项结果，保留实际 owner，不把索引 active 当成切换。
+            refresh(runtime["active_id"])
+            refresh_account_combo_callback()
+            QMessageBox.warning(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.import_account.path'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.import_account.qmessagebox_2')))
             return
         runtime["active_id"] = imported_id
-        switch_account_callback(imported_id)
-        if temporary_account_id is not None and manager.account_dir(temporary_account_id).exists():
-            shutil.rmtree(manager.account_dir(temporary_account_id), ignore_errors=True)
+        if temporary_account_id is not None:
+            remove_temporary_account(temporary_account_id)
         refresh(imported_id)
         refresh_account_combo_callback()
-        QMessageBox.information(dialog, tr("导入账号数据"), tr("账号数据已导入。"))
+        QMessageBox.information(dialog, resolve_text_catalog(text_catalog).render('ui.accounts.import_account.path'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.accounts.import_account.qmessagebox')))
 
     combo.currentIndexChanged.connect(on_combo_changed)
     add_btn.clicked.connect(add_account)

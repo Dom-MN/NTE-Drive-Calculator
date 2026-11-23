@@ -13,7 +13,7 @@ _PLAYER_VARIANT_PATTERN = re.compile(
 
 
 def _player_variant_id(asset: Any) -> str | None:
-    """Return the stable three-digit player asset identity when available."""
+    """仅从正式角色资产路径提取稳定三位编号，未匹配保留缺失。"""
 
     path = (asset_path(asset) or "") if isinstance(asset, dict) else str(asset or "")
     match = _PLAYER_VARIANT_PATTERN.search(path)
@@ -37,7 +37,13 @@ class CharacterImportMixin:
             growth = str(element.get("UpgradeModifyPackId") or "")
             transformation = overrides.get(key, {}).get("classification") == "combat_transformation"
             reason = None
-            if not text_parts(row.get("ItemName"))[0]:
+            # 显式测试配置可保留来源行而排除可计算角色，缺项不补成默认数值。
+            exclusion = overrides.get(key, {}).get("calculation_exclusion_reason")
+            if exclusion is not None:
+                if not isinstance(exclusion, str) or not exclusion.strip():
+                    raise StaticDatabaseError(f"角色计算排除原因无效：{key}")
+                reason = exclusion
+            elif not text_parts(row.get("ItemName"))[0]:
                 reason = "missing_official_name"
             elif not transformation and (not base.endswith("_base") or growth.casefold() != (base[:-5] + "_lv").casefold()):
                 reason = "base_and_growth_identity_conflict"
@@ -45,6 +51,9 @@ class CharacterImportMixin:
                 reason = "missing_skill_catalog"
             if reason:
                 self.excluded_roles.append({"character_id": key, "reason": reason})
+                if exclusion and overrides.get(key, {}).get("reference_only"):
+                    from tools.game_data.static_database_reference_characters import import_reference_character
+                    import_reference_character(self, key, row, reason)
             else:
                 selected[key] = row
         self.rows["character"] = selected
@@ -339,7 +348,10 @@ class CharacterImportMixin:
                     )
 
     def _import_character_likeability_bonuses(self) -> None:
-        """Import the formal level-ten panel bonus for each supported role."""
+        """仅导入可唯一关联、无条件且属性已知的正式好感十级面板加成。"""
+
+        self.unavailable_likeability = []
+        overrides = json.loads(self.overrides_path.read_text(encoding="utf-8"))["character_overrides"]
 
         known_attributes = {
             str(row[0])
@@ -390,8 +402,24 @@ class CharacterImportMixin:
             if len(level_ten) != 1:
                 raise StaticDatabaseError(f"角色存在重复好感度 10 级加成：{character_id}")
             modify_data_id = str(level_ten[0].get("Value") or "").strip()
+            if modify_data_id and modify_data_id not in modify_rows:
+                # 角色与已知成长仍有效；持久保留正式缺项引用，消费端不得将其解释为零。
+                self.connection.execute(
+                    "INSERT INTO character_likeability_gap VALUES (?,?,?,?,?)",
+                    (character_id, 10, modify_data_id,
+                     self.source_row_id("likeability_roles", role_row_key), "missing_modifier_source"),
+                )
+                continue
             modifier = modify_rows.get(modify_data_id)
             if not modify_data_id or not isinstance(modifier, dict):
+                acknowledged = overrides.get(str(character_id), {}).get("unavailable_likeability_modifier")
+                if modify_data_id and acknowledged == modify_data_id:
+                    # 仅跳过明确登记的缺失字段组；不写加成零值，UI 保持该选项不可用。
+                    self.unavailable_likeability.append({
+                        "character_id": character_id, "modifier_id": modify_data_id,
+                        "reason": "referenced_modifier_missing", "status": "unknown",
+                    })
+                    continue
                 raise StaticDatabaseError(
                     f"角色好感度 10 级修改包不存在：{character_id}/{modify_data_id}"
                 )

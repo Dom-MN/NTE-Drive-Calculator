@@ -1,0 +1,6 @@
+{
+  "name": "memchr",
+  "version": "2.8.1",
+  "license": "Unlicense OR MIT",
+  "repository": "https://github.com/BurntSushi/memchr"
+}

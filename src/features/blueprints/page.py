@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from src.ui.common.text_catalog import TextActionButton, plain_label, resolve_text_catalog
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
@@ -12,24 +13,20 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
-from src.i18n import tr, display_term
 from src.app.context import AppContext
 from src.app.theme import themed_style
 from src.app.workers import WorkerThread
 from src.features.blueprints.controller import BlueprintController
 from src.features.blueprints.dependencies import BlueprintDependencies
-from src.features.inventory.warehouse import warehouse_shape_pixmap
-from src.services.blueprint_service import (
-    OFFICIAL_SHAPE_LABELS as _OFFICIAL_SHAPE_LABELS,
-)
-from src.ui.puzzle_board import PuzzleBoardWidget
-from src.ui.widgets import match_pinyin
+from src.features.inventory.warehouse.display.cards import warehouse_shape_pixmap
+from src.domain.equipment.geometry.shapes import OFFICIAL_SHAPE_LABELS as _OFFICIAL_SHAPE_LABELS
+from src.ui.equipment.puzzle_board import PuzzleBoardWidget
+from src.ui.common.widgets import match_pinyin
 
 __all__ = ["BlueprintPage"]
 
@@ -42,7 +39,9 @@ class BlueprintPage:
         *,
         app_context: AppContext,
         navigate: Callable[[str], None],
+        text_catalog=None,
     ) -> None:
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self._app_context = app_context
         self._navigate = navigate
         self._widget: QScrollArea | None = None
@@ -64,22 +63,22 @@ class BlueprintPage:
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(12)
         header = QHBoxLayout()
-        return_button = QPushButton(tr("← 返回角色"))
+        return_button = TextActionButton(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.build.return_button'))
         return_button.setObjectName("returnToRoleButton")
         return_button.clicked.connect(lambda: self._navigate("my_role"))
         header.addWidget(return_button)
         self._search = QLineEdit()
-        self._search.setPlaceholderText(tr("搜索角色图纸（支持拼音）…"))
+        self._search.setPlaceholderText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.build.search'))
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self.filter)
         header.addWidget(self._search, 1)
-        refresh_button = QPushButton(tr("生成图纸"))
+        refresh_button = TextActionButton(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.build.refresh_button'))
         refresh_button.setObjectName("btnAction")
         refresh_button.clicked.connect(self.refresh)
         header.addWidget(refresh_button)
         layout.addLayout(header)
-        self._status = QLabel(
-            tr("图纸由本地求解器生成；官方角色读取发行模板，自建角色读取当前账号保存的底盘与默认套装。")
+        self._status = plain_label(
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.build.status')
         )
         self._status.setStyleSheet(themed_style("color:#8b949e"))
         layout.addWidget(self._status)
@@ -93,10 +92,12 @@ class BlueprintPage:
         return scroll
 
     def refresh(self) -> None:
+        if self._controller is not None:
+            self._controller.cancel()
         content_layout, status = self._require_widgets()
         self._clear_content(content_layout)
-        status.setText(tr("正在生成官方与自建角色图纸…"))
-        content_layout.addWidget(QLabel(tr("正在组合驱动并求解盘面…")))
+        status.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.refresh.status'))
+        content_layout.addWidget(plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.refresh.caption')))
         dependencies = BlueprintDependencies.from_app_context(self._app_context)
         controller = BlueprintController(dependencies)
         worker = WorkerThread(target=controller.generate, parent=self._widget)
@@ -108,36 +109,39 @@ class BlueprintPage:
         worker.error.connect(
             lambda error: self._render_error(error, controller)
         )
-        worker.finished.connect(self._release_worker)
+        worker.finished.connect(lambda: self._release_worker(worker))
         worker.start()
 
     def filter(self, text: str) -> None:
         self._draw(text)
 
     def reset_account_state(self) -> None:
+        if self._controller is not None:
+            self._controller.cancel()
+            self._controller = None
         self._data = {}
         if self._content_layout is not None:
             self._clear_content(self._content_layout)
         if self._status is not None:
-            self._status.setText(tr("账号已切换，请重新生成角色图纸。"))
+            self._status.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.reset_account_state.status'))
 
     def _render_error(
         self,
         error: str,
         controller: BlueprintController,
     ) -> None:
-        if controller.accepts(
+        if controller is self._controller and controller.accepts(
             BlueprintDependencies.from_app_context(self._app_context)
         ):
             _, status = self._require_widgets()
-            status.setText(tr("生成图纸失败：{error}", error=error))
+            status.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.render_error.status', error=f'{error}'))
 
     def _render(
         self,
         data: dict[str, dict],
         controller: BlueprintController,
     ) -> None:
-        if not controller.accepts(
+        if controller is not self._controller or not controller.accepts(
             BlueprintDependencies.from_app_context(self._app_context)
         ):
             return
@@ -147,8 +151,7 @@ class BlueprintPage:
         )
         _, status = self._require_widgets()
         status.setText(
-            tr("已为 {roles} 名角色生成 {plans} 个图纸方案。",
-               roles=len(self._data), plans=plan_count)
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.render.status', value=f'{len(self._data)}', plan_count=f'{plan_count}')
         )
         self._draw()
 
@@ -157,7 +160,7 @@ class BlueprintPage:
         self._clear_content(content_layout)
         if not self._data:
             content_layout.addWidget(
-                QLabel(tr("暂无可生成图纸的角色，请点击“生成图纸”。"))
+                plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.draw.caption'))
             )
             return
         search_text = filter_text.strip()
@@ -184,7 +187,7 @@ class BlueprintPage:
                 )
             )
         if not shown:
-            content_layout.addWidget(QLabel(tr("没有匹配的角色图纸。")))
+            content_layout.addWidget(plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.draw.caption_2')))
 
     def _build_role_group(
         self,
@@ -195,10 +198,7 @@ class BlueprintPage:
     ) -> QGroupBox:
         blueprints = role_data["blueprints"]
         group = QGroupBox(
-            tr("{role}  —  {suit}  ({count} 套图纸)",
-               role=display_term(str(role_name)),
-               suit=display_term(str(role_data["suit_name"])),
-               count=len(blueprints))
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.build_role_group.group', role_name=f'{role_name}', value=f"{role_data['suit_name']}", value_2=f'{len(blueprints)}')
         )
         group.setStyleSheet(
             themed_style(
@@ -214,15 +214,15 @@ class BlueprintPage:
         plans_grid.setVerticalSpacing(10)
         for index, blueprint in enumerate(visible, start=1):
             plans_grid.addWidget(
-                self._build_plan_card(index, blueprint),
+                self._build_plan_card(index, blueprint, text_catalog=getattr(self, 'text_catalog', None)),
                 (index - 1) // 2,
                 (index - 1) % 2,
             )
         group_layout.addLayout(plans_grid)
         hidden_count = len(blueprints) - len(visible)
         if hidden_count > 0:
-            more = QLabel(
-                tr("仅展示前 4 套图纸；另有 {count} 套可行方案未展示。", count=hidden_count)
+            more = plain_label(
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.blueprints.build_role_group.more', hidden_count=f'{hidden_count}')
             )
             more.setStyleSheet(
                 themed_style("color:#8b949e;font-size:11px")
@@ -231,7 +231,7 @@ class BlueprintPage:
         return group
 
     @staticmethod
-    def _build_plan_card(index: int, blueprint: dict) -> QWidget:
+    def _build_plan_card(index: int, blueprint: dict, *, text_catalog=None) -> QWidget:
         plan_card = QWidget()
         row = QHBoxLayout(plan_card)
         row.setContentsMargins(0, 0, 0, 0)
@@ -245,7 +245,7 @@ class BlueprintPage:
         extras_layout = QVBoxLayout(extras)
         extras_layout.setContentsMargins(0, 0, 0, 0)
         extras_layout.setSpacing(2)
-        extras_layout.addWidget(QLabel(tr("方案 {index} · 额外形状", index=index)))
+        extras_layout.addWidget(plain_label(resolve_text_catalog(text_catalog).render('ui.blueprints.build_plan_card.caption', index=f'{index}')))
         image_row = QHBoxLayout()
         image_row.setSpacing(4)
         for shape_id in blueprint.get("extra_pieces", [])[:3]:
@@ -253,8 +253,8 @@ class BlueprintPage:
                 str(shape_id),
                 str(shape_id),
             )
-            image = QLabel()
-            image.setPixmap(warehouse_shape_pixmap(shape_label, "Gold"))
+            image = plain_label()
+            image.setPixmap(warehouse_shape_pixmap(shape_label, "Gold", text_catalog=text_catalog))
             image.setToolTip(shape_label)
             image.setFixedSize(52, 52)
             image.setScaledContents(True)
@@ -276,5 +276,7 @@ class BlueprintPage:
             if item.widget():
                 item.widget().deleteLater()
 
-    def _release_worker(self) -> None:
-        self._worker = None
+    def _release_worker(self, worker: WorkerThread) -> None:
+        if self._worker is worker:
+            self._worker = None
+        worker.deleteLater()

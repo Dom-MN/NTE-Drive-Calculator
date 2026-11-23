@@ -1,0 +1,6 @@
+{
+  "name": "bitflags",
+  "version": "2.13.1",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/bitflags/bitflags"
+}

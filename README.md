@@ -13,8 +13,6 @@
 [![Stars](https://img.shields.io/github/stars/hxwd94666/NTE-Drive-Calculator?label=stars&color=f4b400)](https://github.com/hxwd94666/NTE-Drive-Calculator/stargazers)
 
 
-[English](README.en.md) · 简体中文
-
 [下载安装](#download) · [功能亮点](#features) · [快速开始](#quick-start) · [反馈问题](#feedback)
 
 🐧QQ交流群：1029030672 🎮Discord群组：https://discord.gg/P3ZvMN7Hwj
@@ -98,7 +96,7 @@
 
 ## ⬇️下载安装
 
-推荐下载最新版安装包：
+推荐下载最新版安装包；需要解压即用时，选择发布页面中的**手动免安装 ZIP**（以该版本实际提供的文件为准）：
 
 - GitHub Release: <https://github.com/hxwd94666/NTE-Drive-Calculator/releases>
 - Mirror酱（付费）: <https://mirrorchyan.com/zh/projects?rid=NTE-Drive-Calc&channel=stable>
@@ -109,11 +107,38 @@
 
 安装时建议保留 `Install ViGEmBus virtual gamepad driver` 勾选。扫描功能需要虚拟手柄驱动来模拟背包翻页操作。
 
+### 免安装版：首次使用
+
+将手动免安装 ZIP **完整解压**到固定目录，打开其中的 `NTE_Drive_Calc/NTE_Drive_Calc.exe`；不要直接在压缩软件里运行，也不要只取出 EXE。账号、配装、设置等运行数据保存在程序目录内的 `userdata` 中。
+
+免安装不等于免驱动：使用扫描等功能时，仍需具备对应运行环境。
+
+<a id="portable-update"></a>
+
+### 免安装版：手动更新
+
+**常规更新不需要换目录：退出软件后，将新版完整包覆盖解压到原位置，保留 `userdata`。**
+
+1. 下载新版**手动免安装 ZIP**，先查看该版本是否有额外更新步骤；不要使用安装器或平台专用包替换。
+2. 退出 NDC，等待其后台任务结束。更新过程中不要运行程序。
+3. 备份原目录中的整个 `userdata` 文件夹，并保留旧版完整 ZIP，便于需要时恢复。
+4. 将新版 ZIP 完整解压到原位置，选择替换同名文件。确保新旧 `NTE_Drive_Calc.exe` 的路径一致，不要解压成 `NTE_Drive_Calc/NTE_Drive_Calc/NTE_Drive_Calc.exe`。
+5. 启动新版，确认账号、设置与已保存方案正常。程序会校验发行文件；需要升级数据格式时，会先建立数据恢复点，再执行升级。
+
+> **不要先清空旧目录，不要删除或覆盖 `userdata`，也不要只替换 EXE。** 新版发行包不携带用户数据，但清空整个目录仍会删除你的本地数据。
+
+- **解压中断或提示缺件、混版：**退出程序后重新完整解压同一新版包；仍有提示时保留数据并反馈，不自行删除未知 DLL 或维护记录。
+- **版本要求前置清理：**涉及旧引导 DLL 等文件时，按该版本说明在启动前处理；普通覆盖解压不保证清除所有旧文件。
+- **旧安装版转免安装版：**不是普通便携更新，不要直接套用上述步骤。先按[数据迁入说明](docs/integrations.md#便携数据迁入与恢复)迁入旧账号；若复用无清单旧程序目录，还需完成[前置接管](docs/integrations.md#无清单旧发行的前置接管)。
+- **需要退回旧版：**不要只换回旧 EXE。数据格式升级后，须使用兼容的旧版完整包及对应数据备份／恢复点，具体见[数据恢复说明](docs/integrations.md#便携数据迁入与恢复)。
+
+以上步骤针对**手动免安装版**。平台托管包由平台管理更新，并使用程序目录外的固定数据目录，不与手动包混用；平台接入验收状态见[免安装方案](docs/roadmap/portable-distribution.md#10-当前仍须完成的验收)。
+
 <a id="quick-start"></a>
 
 ## 🚀快速开始
 
-1. 安装并打开软件。
+1. 安装软件，或完整解压免安装包，然后打开软件。
 2. 打开游戏内驱动或卡带背包。
 3. 使用工作台的背包同步，或者计算的全量扫描获取数据。
 4. 获取数据后，在计算功能中选择需要配装的角色。
@@ -159,14 +184,17 @@
 ## 🧑‍💻本地开发
 
 > [!IMPORTANT]
-> 准备 Fork 开发前，请先加入 QQ 交流群 `1029030672` 并私聊群主。主仓库持续开发，提交通常按版本发布或开发交接整理；Fork 的 HEAD 可能不是当前协作基线。请先确认当前基线与合并方式，再开始开发。
+> 提交、合并或协调开发前，请先加入 QQ 交流群 `1029030672` 并私聊群主。主仓库持续开发，提交通常按版本发布或开发交接整理；Fork 的 HEAD 可能不是当前协作基线。请先确认当前基线与合并方式，再开始开发。
 
 项目使用 Python 3.11、SQLite 与 PySide6。详细设计见 [系统架构](docs/architecture.md) 与 [外部集成](docs/integrations.md)；开发文档从 [开发文档入口](docs/README.md) 进入。
+
+完整开发依赖中的 `vgamepad` 源分发在 Windows 构建时会检查 ViGEmBus，缺失时可能启动系统驱动安装器；
+虚拟环境不隔离此类系统改动。仅开发基础权重参考时使用下方最小环境，不为环境验证重复安装或复测已正常工作的驱动。
 
 安装 [uv](https://docs.astral.sh/uv/) 后，在仓库根目录执行：
 
 ```powershell
-uv sync --locked --group build --group dev
+uv sync --locked
 uv run python main.py
 ```
 
@@ -177,6 +205,46 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e . coverage mypy pytest ruff pyinstaller
 ```
 
+### Fork 的公开开发路线
+
+从选定的公开 tag/commit 开始，记录实际 HEAD 与工作区状态；维护者未发布工作区不是可复现的公开 ref。
+[完整基础权重参考与五类修改配方](docs/reference/fork-development.md)沿实际页面、冻结请求、Service、Domain 和 DAO，
+说明读、编辑、保存/重置、失败保留及离页，并提供不依赖真实账号或私有组件的合成用例。
+界面语言、OCR、静态资料和组件边界分别链接其权威说明，不另维护一套教程框架。
+
+#### 仅基础权重参考的独立环境
+
+以下命令以前述参考源码、合成夹具及配套锁文件已包含在同一选定 ref 中为前提；
+当前未提交 overlay 的验证不代表该公开 ref 已发布。
+
+在干净检出的根目录准备一个尚不存在的 `.venv-fork-reference`。本环境只覆盖上述完整基础权重参考，
+不用于启动完整应用，也不替代其他领域的 core/full、OCR、系统输入或发行构建环境。
+从同一锁文件导出参考实际使用的 Python/Qt/pytest 闭包；`--prune` 只去掉该参考未消费的根依赖，
+其余传递依赖仍由锁文件解析，不复制已有 site-packages，不构建源分发。
+
+```powershell
+New-Item -ItemType Directory -Force build/fork-reference | Out-Null
+uv venv --python 3.11 .venv-fork-reference
+uv export --locked --no-default-groups --group dev --no-emit-project `
+  --prune keyboard --prune mss --prune opencv-python --prune pillow `
+  --prune pyautogui --prune vgamepad --prune coverage --prune mypy --prune ruff `
+  --output-file build/fork-reference/requirements.txt
+uv pip install --python .venv-fork-reference/Scripts/python.exe --require-hashes --no-build `
+  -r build/fork-reference/requirements.txt
+$env:UV_PROJECT_ENVIRONMENT = (Resolve-Path .venv-fork-reference).Path
+```
+
+首次依赖获取需要相应公开 wheel；已有与锁文件哈希匹配的 wheelhouse 时，安装命令追加
+`--offline --no-index --find-links <wheelhouse>`，无需网络。缺包或哈希不符应保留错误，不借其他环境补读。
+随后按[参考指南](docs/reference/fork-development.md#3-一次可复现的输入--处理--结果与失败分支)的
+三个现有质量命令执行；`uv run --no-sync` 不隐式安装项目或依赖。
+结束参考或改做完整应用前，执行 `Remove-Item Env:UV_PROJECT_ENVIRONMENT -ErrorAction SilentlyContinue`，
+让普通开发命令回到其原有环境。
+
+独立参考环境通过只证明约定离线业务；它与选定公开 ref 的全新 checkout、完整产品环境、真实 Windows
+窗口及组件资源验收是不同证据。未提交工作树 overlay 不属于公开版本，须与基线 ref 分开记录。
+下面保留质量与构建命令的唯一入口，执行用例时不隐式安装依赖。
+
 执行测试：
 
 ```powershell
@@ -184,9 +252,12 @@ uv run python tools/quality/run_tests.py core -j 3
 uv run python tools/quality/run_tests.py full
 ```
 
+发行构建另选原有 build 组并核对组件与资源清单；下面是维护者入口，不是本例已执行的步骤。
+
 打包桌面程序：
 
 ```powershell
+uv sync --locked --group build
 uv run python build_exe.py
 ```
 

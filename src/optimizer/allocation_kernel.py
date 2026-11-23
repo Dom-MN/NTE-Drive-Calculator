@@ -9,15 +9,16 @@ v5 Context adapter cannot drift into separate recommendation algorithms.
 
 from __future__ import annotations
 
+from concurrent.futures import CancelledError
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from collections.abc import Callable
 import re
 from typing import Mapping, Sequence
 
-from src.i18n import display_term, tr
+from src.domain.localization.catalog import localized_text
 from src.models.equipment import Drive, Tape
-from src.domain.suit_identity import tape_matches_suit_target
+from src.domain.equipment.properties.suit_identity import tape_matches_suit_target
 from src.optimizer.dispatcher import DispatcherEngine
 from src.optimizer.scoring import ScoringEngine
 
@@ -97,6 +98,65 @@ def estimate_candidate_pool_limits(
     return drive_limit, tape_limit
 
 
+def _checkpoint(request):
+    if request.cancel_check is not None and request.cancel_check():
+        raise CancelledError("配装内核已取消")
+
+
+def relax_missing_core_filters(request: AllocationKernelRequest, plans: Mapping,
+                               blocked_roles: frozenset[str] = frozenset()) -> AllocationKernelRequest:
+    """仅放宽最早缺卡优先组的主词条；原请求和其他合法性约束不变。"""
+    _checkpoint(request)
+    missing = []
+    for role in request.role_order:
+        _checkpoint(request)
+        preference = request.stat_priority_configs.get(role) or {}
+        plan = plans.get(role) or {}
+        if (role not in blocked_roles and preference.get("soft_main_filter") and request.core_main_filters.get(role)
+                and plan.get("valid") is True and plan.get("assigned_tape") is None):
+            missing.append(role)
+    if not missing:
+        return request
+    earliest = missing[0]
+    group = next((set(group) for group in request.priority_groups if earliest in group), {earliest})
+    filters = dict(request.core_main_filters)
+    for role in missing:
+        if role in group:
+            filters.pop(role, None)
+    # 每轮至少移除一份硬过滤，最多原有角色数轮；不拼接跨轮方案以免UID冲突。
+    return replace(request, core_main_filters=filters)
+
+
+def execute_with_soft_main_fallback(request: AllocationKernelRequest, execute_once: Callable) -> dict:
+    """共用有界整轮回退；卡带偏好放宽不摧毁已经合法的驱动方案。"""
+    original = request
+    _checkpoint(request)
+    plans = execute_once(request)
+    blocked = frozenset()
+    while True:
+        relaxed = relax_missing_core_filters(request, plans, blocked)
+        if relaxed is request:
+            break
+        candidate = execute_once(relaxed)
+        _checkpoint(request)
+        changed = frozenset(set(request.core_main_filters) - set(relaxed.core_main_filters))
+        if any((plans.get(role) or {}).get("valid") is True
+               and (candidate.get(role) or {}).get("valid") is not True for role in request.role_order):
+            # 超暴击上限等回退候选可让原生搜索整轮无解；拒绝整轮而非拼接部分UID。
+            blocked |= changed
+            continue
+        request, plans = relaxed, candidate
+    _checkpoint(request)
+    for role in original.role_order:
+        if original.core_main_filters.get(role) and not request.core_main_filters.get(role):
+            plans[role]["main_filter_fallback"] = True
+            plans[role]["requested_core_main_filters"] = list(original.core_main_filters[role])
+        if role in blocked:
+            plans[role]["main_filter_fallback_rejected"] = True
+            plans[role]["requested_core_main_filters"] = list(original.core_main_filters[role])
+    return plans
+
+
 class AllocationKernel:
     """Invoke the existing scorer and dispatcher with an explicit contract."""
 
@@ -104,6 +164,9 @@ class AllocationKernel:
         self.scoring_engine = scoring_engine
 
     def execute(self, request: AllocationKernelRequest) -> dict:
+        return execute_with_soft_main_fallback(request, self._execute_pinned)
+
+    def _execute_pinned(self, request: AllocationKernelRequest) -> dict:
         """Return the historic AllocationResult while enforcing complete plans.
 
         Property limits are deliberately applied by rerunning the same kernel
@@ -111,9 +174,11 @@ class AllocationKernel:
         contract, not a second score or ranking formula.
         """
 
+        _checkpoint(request)
         has_limits = any(request.property_limits.get(role) for role in request.role_order)
         initial = self._execute_once(request, frozenset())
         initial_invalid = self._invalid_roles(request, initial)
+        _checkpoint(request)
         if not has_limits:
             if not initial_invalid:
                 return initial
@@ -128,6 +193,7 @@ class AllocationKernel:
         best: dict | None = None
         best_score = float("-inf")
         while pending and len(seen) < 256:
+            _checkpoint(request)
             excluded = pending.pop(0)
             if excluded in seen:
                 continue
@@ -137,6 +203,7 @@ class AllocationKernel:
                 use_full_drive_candidates=False,
             )
             invalid_roles = self._invalid_roles(request, result)
+            _checkpoint(request)
             if not invalid_roles:
                 # Preserve the historic first-result tie behaviour.
                 score = sum(float((result.get(role) or {}).get("score", 0.0)) for role in request.role_order)
@@ -146,8 +213,11 @@ class AllocationKernel:
                     return result
                 continue
             for role in invalid_roles:
+                _checkpoint(request)
                 for item in self._plan_items(result.get(role) or {}):
+                    _checkpoint(request)
                     pending.append(excluded | {item.uid})
+        _checkpoint(request)
         if best is not None:
             return best
 
@@ -159,6 +229,7 @@ class AllocationKernel:
             request, failed, self._invalid_roles(request, failed),
             full_global_candidates=False,
         )
+        _checkpoint(request)
         return failed
 
     def _execute_once(
@@ -168,7 +239,12 @@ class AllocationKernel:
         *,
         use_full_drive_candidates: bool = False,
     ) -> dict:
-        inventory = [item for item in request.inventory if item.uid not in excluded_uids]
+        _checkpoint(request)
+        inventory = []
+        for item in request.inventory:
+            _checkpoint(request)
+            if item.uid not in excluded_uids:
+                inventory.append(item)
         self.scoring_engine.roles_db = dict(request.roles_db)
         pools = self.scoring_engine.evaluate_global_inventory(
             inventory,
@@ -176,12 +252,14 @@ class AllocationKernel:
             tape_top_k_per_set_per_role=request.tape_screen_limit,
             tape_main_filters={key: list(value) for key, value in request.core_main_filters.items()},
             crit_priority_modes=dict(request.stat_priority_configs),
+            cancel_check=request.cancel_check,
         )
         if use_full_drive_candidates:
             # ``all_drives`` 包含同一固定背包中全部已评分驱动；常规
             # ``drives`` 则仍是每角色/形状 Top-K 的并集。
             pools = dict(pools)
             pools["drives"] = list(pools.get("all_drives") or pools.get("drives") or ())
+        _checkpoint(request)
         dispatcher = DispatcherEngine(
             dict(request.roles_db), dict(request.sets_db), dict(request.blueprints_db),
             core_set_targets=dict(request.core_set_targets),
@@ -198,7 +276,9 @@ class AllocationKernel:
             priority_groups=[list(group) for group in request.priority_groups] or None,
             crit_rate_caps=dict(request.crit_rate_caps or {}),
         )
+        _checkpoint(request)
         self._annotate_missing_core_reasons(request, pools, result)
+        _checkpoint(request)
         return result
 
     def _annotate_missing_core_reasons(
@@ -241,9 +321,7 @@ class AllocationKernel:
             ]
             if not set_cores:
                 plan["missing_core_reason"] = (
-                    tr("固定快照中没有套装为 {suit} 的卡带", suit=display_term(target_set))
-                    if target_set
-                    else tr("固定快照中没有任何可用卡带")
+                    localized_text(None, 'auto.optimizer.allocation_kernel.annotate_missing_core_reasons.fb6b86625', '固定快照中没有套装为 {value} 的卡带', value=f"{target_set or '任意套装'}")
                 )
                 continue
             allowed_mains = tuple(request.core_main_filters.get(role) or ())
@@ -259,8 +337,7 @@ class AllocationKernel:
             ]
             if not main_cores:
                 plan["missing_core_reason"] = (
-                    f"固定快照中没有同时满足 {target_set or '任意套装'}"
-                    f"与 {'/'.join(allowed_mains)} 主词条的卡带"
+                    localized_text(None, 'auto.optimizer.allocation_kernel.annotate_missing_core_reasons.f16d0a94a', '固定快照中没有同时满足 {value}与 {value_2} 主词条的卡带', value=f"{target_set or '任意套装'}", value_2=f"{'/'.join(allowed_mains)}")
                 )
                 continue
             screened = [
@@ -269,7 +346,7 @@ class AllocationKernel:
                 if tape_matches_suit_target(tape, target_set, request.sets_db)
             ]
             if not screened:
-                plan["missing_core_reason"] = tr(
+                plan["missing_core_reason"] = (
                     "满足套装和主词条的卡带均被副词条或评分等级硬过滤"
                 )
                 continue
@@ -278,7 +355,7 @@ class AllocationKernel:
             ]
             if not available:
                 plan["missing_core_reason"] = (
-                    f"满足条件的 {len(screened)} 张唯一卡带已分配给其他角色"
+                    localized_text(None, 'auto.optimizer.allocation_kernel.annotate_missing_core_reasons.fa7a4c244', '满足条件的 {count} 张唯一卡带已分配给其他角色', count=f'{len(screened)}')
                 )
             elif request.crit_rate_caps.get(role) is not None or request.property_limits.get(role):
                 plan["missing_core_reason"] = (
@@ -317,19 +394,18 @@ class AllocationKernel:
         )
         drives = [item for item in plan_items if isinstance(item, Drive)]
         if blueprint and len(drives) != expected_modules:
-            return tr("图纸需要 {expected} 个驱动，当前方案仅分配 {actual} 个",
-                      expected=expected_modules, actual=len(drives))
+            return localized_text(None, 'auto.optimizer.allocation_kernel.diagnostic_reason.f49c13440', '图纸需要 {expected_modules} 个驱动，当前方案仅分配 {count} 个', expected_modules=f'{expected_modules}', count=f'{len(drives)}')
         if len({item.uid for item in plan_items}) != len(plan_items):
-            return tr("方案包含重复驱动 UID，无法安全分配")
+            return "方案包含重复驱动 UID，无法安全分配"
         if self._violates_limits(
             role, plan_items, request.roles_db.get(role, {}),
             request.property_limits.get(role, ()),
         ):
-            return tr("未满足角色属性上下限")
+            return "未满足角色属性上下限"
 
         blueprints = list(request.blueprints_db.get(role) or ())
         if not blueprints:
-            return tr("角色没有可用图纸")
+            return "角色没有可用图纸"
         available_shapes = Counter(
             str(item.shape_id)
             for item in request.inventory
@@ -352,14 +428,13 @@ class AllocationKernel:
                 for candidate in blueprints
             )
             return (
-                f"缺少 {shape} 驱动：图纸至少需要 {required} 个，"
-                f"当前可用 {available_shapes.get(shape, 0)} 个（还缺 {count} 个）"
+                localized_text(None, 'auto.optimizer.allocation_kernel.diagnostic_reason.f9a6efe71', '缺少 {shape} 驱动：图纸至少需要 {required} 个，当前可用 {value} 个（还缺 {count} 个）', shape=f'{shape}', required=f'{required}', value=f'{available_shapes.get(shape, 0)}', count=f'{count}')
             )
 
         for group in request.priority_groups or ():
             if role in group and len(group) > 1:
-                return tr("同级组竞争后无剩余候选：所需形状驱动已被同级角色占用")
-        return tr("候选驱动未能同时满足图纸形状约束")
+                return "同级组竞争后无剩余候选：所需形状驱动已被同级角色占用"
+        return "候选驱动未能同时满足图纸形状约束"
 
     def _apply_invalid_diagnostics(
         self,

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from src.ui.common.text_catalog import TextActionButton, plain_label, plain_tooltip, resolve_text_catalog
 import json
 import re
 from collections.abc import Callable
@@ -15,17 +16,15 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QHBoxLayout,
-    QLabel,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from src.i18n import tr
 from src.app.context import AppContext
 from src.app.theme import current_style_sheet
-from src.features.scanning.file_lifecycle import IMAGE_EXTS
+from src.features.scanning.files.file_lifecycle import IMAGE_EXTS
 from src.utils.logger import logger
 
 __all__ = ["OnboardingGuide"]
@@ -35,7 +34,8 @@ class OnboardingGuide:
     """Own the tutorial dialog without installing methods on MainWindow."""
 
     def __init__(self, *, app_context: AppContext, parent: QWidget,
-                 on_help: Callable[[], None]) -> None:
+                 on_help: Callable[[], None], text_catalog=None) -> None:
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self._app_context = app_context
         self._parent = parent
         self._on_help = on_help
@@ -64,8 +64,7 @@ class OnboardingGuide:
         seen_file = self._app_context.account.user_config_dir / "guide_seen.json"
         if not seen_file.exists():
             def show_when_idle() -> None:
-                # A user-initiated preparation dialog takes precedence over the
-                # optional image tutorial. The menu can reopen it later.
+                # 用户手动准备弹窗优先于可选图片教程；本次跳过后仍可由菜单重新打开。
                 if QApplication.activeModalWidget() is None:
                     self.show(auto=True)
             QTimer.singleShot(500, show_when_idle)
@@ -75,29 +74,29 @@ class OnboardingGuide:
         if not images:
             QMessageBox.warning(
                 self._parent,
-                tr("使用教程"),
-                tr("未找到教程图片，请检查 config/templates/guide。"),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('navigation.main.build_ui.guide_btn_2'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.onboarding.show.qmessagebox')),
             )
             return
 
         dialog = QDialog(self._parent)
-        dialog.setWindowTitle(tr("使用教程"))
+        dialog.setWindowTitle(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('navigation.main.build_ui.guide_btn_2'))
         dialog.setMinimumSize(760, 660)
         dialog.setStyleSheet(current_style_sheet())
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        image_label = QLabel()
+        image_label = plain_label()
         image_label.setAlignment(Qt.AlignCenter)
-        # Let the image yield space to navigation/actions on scaled notebooks.
+        # 图片让出空间给翻页与确认入口，缩放屏幕上仍保持动作可操作。
         image_label.setMinimumSize(360, 240)
         layout.addWidget(image_label, 1)
 
         index = {"value": 0}
         previous_button = QPushButton("<")
         next_button = QPushButton(">")
-        page_label = QLabel()
+        page_label = plain_label()
         page_label.setAlignment(Qt.AlignCenter)
 
         def render() -> None:
@@ -129,21 +128,21 @@ class OnboardingGuide:
         navigation.addWidget(next_button)
         layout.addLayout(navigation)
 
-        dont_show = QCheckBox(tr("不再自动显示"))
+        dont_show = QCheckBox(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.onboarding.show.dont_show'))
         dont_show.setChecked(auto)
         layout.addWidget(dont_show)
         actions = QHBoxLayout()
         actions.addStretch()
-        help_button = QPushButton(tr("遇到问题"), dialog)
+        help_button = TextActionButton(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.onboarding.show.help_button'), dialog)
         help_button.setObjectName("onboardingHelpButton")
 
         def open_help() -> None:
             dialog.accept()
-            QTimer.singleShot(0, self._on_help)
+            QTimer.singleShot(0, self._parent, self._on_help)
 
         help_button.clicked.connect(open_help)
         actions.addWidget(help_button)
-        confirm = QPushButton(tr("确定"), dialog)
+        confirm = TextActionButton(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('selector.confirm'), dialog)
         confirm.setObjectName("onboardingConfirmButton")
         confirm.setDefault(True)
         confirm.clicked.connect(dialog.accept)

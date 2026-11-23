@@ -1,0 +1,6 @@
+{
+  "name": "thiserror",
+  "version": "1.0.69",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/dtolnay/thiserror"
+}

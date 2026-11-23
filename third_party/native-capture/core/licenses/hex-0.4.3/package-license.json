@@ -1,0 +1,6 @@
+{
+  "name": "hex",
+  "version": "0.4.3",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/KokaKiwi/rust-hex"
+}

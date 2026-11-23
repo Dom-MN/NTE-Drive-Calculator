@@ -1,0 +1,6 @@
+{
+  "name": "foldhash",
+  "version": "0.2.0",
+  "license": "Zlib",
+  "repository": "https://github.com/orlp/foldhash"
+}

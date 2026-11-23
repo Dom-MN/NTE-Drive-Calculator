@@ -21,10 +21,13 @@ Thumbs.db
 .env.*
 
 # Build outputs
-build/
+# 仅忽略根目录构建产物；领域内 build 目录属于项目源码。
+/build/
 dist/
 .coverage
 htmlcov/
+/.pytest_cache/
+/pytest-of-*/
 *.spec
 *.egg-info/
 
@@ -34,6 +37,8 @@ installer/output/
 installer/README.md
 
 # Runtime data
+# 数据根的本机进程锁，不是依赖锁文件；保留 uv.lock/Cargo.lock 的原跟踪规则。
+/.ndc-data.lock
 /logs/
 /scanned_images/
 /identify_captures/
@@ -80,6 +85,8 @@ nte_capture*.json
 /config/plugins.json
 /config/component_upgrade_pending
 /config/performance.json
+/config/quick_wheel.json
+/maintenance/data-recovery/
 
 # Private component source trees and sensitive development artifacts
 /analysis-core/
@@ -94,5 +101,3 @@ nte_capture*.json
 *.key
 *.pfx
 *.p12
-/build/slimming-evidence/rollback-test/build_exe.py
-/build/slimming-evidence/rollback-test/docs/integrations.md

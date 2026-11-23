@@ -2,55 +2,64 @@
   "schemaVersion": 1,
   "component": "calc-plugin-host",
   "layout": "native-plugins-v3",
-  "sourceCommit": "bf7ffc7f06f1766e008c6a974d94c4fd4aa310d9",
+  "sourceCommit": "f2763e4aab676c613dbfe51fb1877aba9d13ec1b",
   "sourceState": "working-tree",
-  "sourceTreeSha256": "65f0ed08f5117545c9424952cbfb6d88ddef6ecdb8a4563538a0faa8ad96aba7",
+  "sourceTreeSha256": "5c03199eb92ce3db615938e6f7fb5bc216b4569e0cc7254411d4cf8aeb11727c",
   "pluginPolicy": "calc-publisher-rsa3072-sha256-v1",
   "configuration": "Release",
+  "sdkTreeSha256": "5dbee82ef510d0922d330e982e63e8a9e39fa2cbb86d6f0220be658bf36553b7",
   "files": {
     "d3d12.dll": {
-      "sha256": "15fb3dfed69aedde7efe5a645af325abff8973301fd292c85b6981b0eb5f208c",
-      "size": 6453248
+      "sha256": "880fb8f28e2c9ebcf0857e66aeed9aa88b30f3e7351ba0f1a57614aaecefc514",
+      "size": 7466496
     },
     "plugins/NTE_PluginUser.dll": {
-      "sha256": "c5d323b712ad0019c7b74916dae59c041934e46141cdc4678ea4547a2beb7cae",
+      "sha256": "14f709259d73767f5e93d05cd42dbe8eaa90bcd6b786d47ec3f89bc3e21d4675",
       "size": 780800
     },
     "plugins/NTE_PluginUser.dll.sig": {
-      "sha256": "eb3b5faf1f36c6c2e934416679db175e6ab0adc5e29d719282c201714a005ccb",
+      "sha256": "fa7305e3b639ab06a567ce77d329d95058c5c0e48f05b8faf816a886ad7eea2e",
       "size": 384
     },
     "plugins/NTE_PluginCombat.dll": {
-      "sha256": "5105f4fa6042f7235aec6757c2f22559ad0690c5f950e8b8a4dddb9cf74155c9",
-      "size": 5317120
+      "sha256": "9861802cef4eedf42b35610e1351fb8fde3cc345219aaa99fde0a34b699c1843",
+      "size": 5578240
     },
     "plugins/NTE_PluginCombat.dll.sig": {
-      "sha256": "cc67a966c29950fa71d8b19a926bc80076676446898abd45eca586f534eab3f9",
+      "sha256": "fbfeafc349158fce6429ce1294af33a2229161196b29346934694f5f3495a74c",
       "size": 384
     },
     "plugins/NTE_PluginHUD.dll": {
-      "sha256": "3b44220d87b77e618281aec5124476d65c54ad05a9162a34719d172c9c543b68",
-      "size": 3563520
+      "sha256": "01956a828c32b0520eae0555edbbf26f7fd40f0b82d3e2ee9daa0febe57acf80",
+      "size": 3617792
     },
     "plugins/NTE_PluginHUD.dll.sig": {
-      "sha256": "ad57533f857fa79d035fef5ed5603f1ad4c1fb1105d2f012a6a6bc8f346429d8",
+      "sha256": "f5181785841fc2c34e6975c4bbe37fb1eb4e2f1498fb11fd64cd4ee1b319b26f",
       "size": 384
     },
     "plugins/NTE_PluginPerformance.dll": {
-      "sha256": "ecde84ee27434280d4479efaa89b9f2f284b96fb75652048fe0fa217c97d1dfb",
-      "size": 5221888
+      "sha256": "d0a42cb1fe9e5fc65f128d1afa52da8a1d4cad7ba0d2eeda93bfc0f47b5a4e89",
+      "size": 5360128
     },
     "plugins/NTE_PluginPerformance.dll.sig": {
-      "sha256": "f4b1ace3f494dd1128f0e9c29511a5f1f976c5c04dd5e76b916def0eb458cf0e",
+      "sha256": "8435af92e7f1419d0d084e2f05f903f8beca027e0ca596f709cf630c2f94de76",
+      "size": 384
+    },
+    "plugins/NTE_PluginTraining.dll": {
+      "sha256": "ec664bc92e21d457f6b0b0158ef83ace83079524f99a2dd56172f4aa1bad3c76",
+      "size": 420352
+    },
+    "plugins/NTE_PluginTraining.dll.sig": {
+      "sha256": "3ba15ec409038412539904d704d9bdcc9c7f2771a432b218dfa6f96e4324ee77",
       "size": 384
     }
   },
   "protection": {
     "tool": "VMProtect",
-    "policy_sha256": "2321e5f8ab0c92c15f0dd6ce9c2651ad10f885efdf61e2e4f09214b67aff0f35",
+    "policy_sha256": "ee10451eee34d2471e59b8c870d0ff1a7264fcd9aa26f7d3a8a6bf0aeda7ba3a",
     "binaries": {
       "d3d12.dll": {
-        "sha256": "15fb3dfed69aedde7efe5a645af325abff8973301fd292c85b6981b0eb5f208c",
+        "sha256": "880fb8f28e2c9ebcf0857e66aeed9aa88b30f3e7351ba0f1a57614aaecefc514",
         "functions": 10,
         "profile": {
           "name": "selected-functions-v1",
@@ -73,7 +82,7 @@
         }
       },
       "NTE_PluginUser.dll": {
-        "sha256": "c5d323b712ad0019c7b74916dae59c041934e46141cdc4678ea4547a2beb7cae",
+        "sha256": "14f709259d73767f5e93d05cd42dbe8eaa90bcd6b786d47ec3f89bc3e21d4675",
         "functions": 1,
         "profile": {
           "name": "selected-functions-v1",
@@ -96,7 +105,7 @@
         }
       },
       "NTE_PluginCombat.dll": {
-        "sha256": "5105f4fa6042f7235aec6757c2f22559ad0690c5f950e8b8a4dddb9cf74155c9",
+        "sha256": "9861802cef4eedf42b35610e1351fb8fde3cc345219aaa99fde0a34b699c1843",
         "functions": 6,
         "profile": {
           "name": "selected-functions-v1",
@@ -119,7 +128,7 @@
         }
       },
       "NTE_PluginHUD.dll": {
-        "sha256": "3b44220d87b77e618281aec5124476d65c54ad05a9162a34719d172c9c543b68",
+        "sha256": "01956a828c32b0520eae0555edbbf26f7fd40f0b82d3e2ee9daa0febe57acf80",
         "functions": 1,
         "profile": {
           "name": "selected-functions-v1",
@@ -142,7 +151,7 @@
         }
       },
       "NTE_PluginPerformance.dll": {
-        "sha256": "ecde84ee27434280d4479efaa89b9f2f284b96fb75652048fe0fa217c97d1dfb",
+        "sha256": "d0a42cb1fe9e5fc65f128d1afa52da8a1d4cad7ba0d2eeda93bfc0f47b5a4e89",
         "functions": 1,
         "profile": {
           "name": "selected-functions-v1",
@@ -154,6 +163,29 @@
           "schema": "nte.component-notice/1",
           "component": "NTE_PluginPerformance",
           "build_target": "nte_plugin_performance",
+          "project": "UETools-NTE",
+          "declaration_version": 1,
+          "purpose": "本组件用于装备计算、游戏理解和经授权的诊断与数据采集。",
+          "authorization": "使用、修改、分析和分发应遵守适用法律、组件许可证及有效授权；私有材料访问仅限被明确授权的范围。",
+          "prohibited_use": "本方不授权将本组件用于外挂、破坏游戏公平性、绕过未获授权的限制，或侵害游戏运营方、玩家及其他相关权利人的合法权益。",
+          "license_boundary": "本声明说明本方用途及授权边界，不替换第三方许可证，不撤销已经合法授予的权利；具体权限以适用许可证及有效授权为准。",
+          "identity_binding": "组件文件哈希、源码提交、构建输入及保护回执以随附组件清单为准。",
+          "data_kind": "authorization_notice"
+        }
+      },
+      "NTE_PluginTraining.dll": {
+        "sha256": "ec664bc92e21d457f6b0b0158ef83ace83079524f99a2dd56172f4aa1bad3c76",
+        "functions": 6,
+        "profile": {
+          "name": "selected-functions-v1",
+          "options": [
+            "StripDebugInfo"
+          ]
+        },
+        "notice": {
+          "schema": "nte.component-notice/1",
+          "component": "NTE_PluginTraining",
+          "build_target": "nte_plugin_training",
           "project": "UETools-NTE",
           "declaration_version": 1,
           "purpose": "本组件用于装备计算、游戏理解和经授权的诊断与数据采集。",

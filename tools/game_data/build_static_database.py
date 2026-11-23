@@ -108,6 +108,8 @@ class StaticDatabaseBuilder(
         self._import_fork_permanent_properties()
         self._import_encounter_catalogs()
         self._import_progression_catalog()
+        from tools.game_data.static_database_suit_permanent import populate_suit_permanent
+        populate_suit_permanent(self.connection)
         violations = [tuple(row) for row in self.connection.execute("PRAGMA foreign_key_check")]
         if violations:
             raise StaticDatabaseError(f"发现外键错误：{violations[:10]}")
@@ -129,7 +131,7 @@ def render_report(report: dict[str, Any]) -> str:
 
 
 def backup_existing_release_database(output: Path, backup: Path) -> None:
-    """Atomically preserve the release database before a rebuild replaces it."""
+    """以 SQLite 一致性备份保存既有库，完整性通过后原子替换备份。"""
 
     output = output.expanduser().resolve()
     backup = backup.expanduser().resolve()
@@ -172,6 +174,7 @@ def build_database(
     manifest_path: Path | None = None,
     builder_type: type[StaticDatabaseBuilder] = StaticDatabaseBuilder,
     populate_templates: bool = True,
+    export_quality_config: Path | None = None,
 ) -> dict[str, Any]:
     content_root = resolve_content_root(source)
     output = output.expanduser().resolve()
@@ -197,6 +200,12 @@ def build_database(
                 overrides_path=overrides_path,
                 include_source_payloads=include_source_payloads,
             )
+            if export_quality_config is not None:
+                from tools.game_data.static_export_quality import reviewed_blueprint_gaps
+                quality_config = json.loads(export_quality_config.read_text(encoding="utf-8"))
+                if quality_config.get("dataset_id") != dataset_id:
+                    raise StaticDatabaseError("解包质量配置 dataset 不一致")
+                builder.reviewed_blueprint_gaps = reviewed_blueprint_gaps(quality_config)
             counts = builder.build()
             fork_permanent_property_audit = tuple(
                 builder.fork_permanent_property_audit
@@ -233,8 +242,13 @@ def build_database(
         "database_counts": counts,
         "fork_permanent_property_audit": fork_permanent_property_audit,
         "excluded_roles": getattr(builder, "excluded_roles", []),
+        "unavailable_likeability": getattr(builder, "unavailable_likeability", []),
         "foreign_key_violations": [],
+        "graduation_template_gaps": [],
     }
+    if populate_templates:
+        with closing(sqlite3.connect(output)) as audit:
+            report["graduation_template_gaps"] = graduation_template_gaps(audit)
     (report_dir / "static_database_report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -265,6 +279,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--as-of", type=date.fromisoformat, default=date.today())
     parser.add_argument("--overrides", type=Path, default=DEFAULT_OVERRIDES)
     parser.add_argument("--config-dir", type=Path, default=PROJECT_ROOT / "config")
+    parser.add_argument("--export-quality-config", type=Path,
+                        help="隔离经审查的特定蓝图缺口，仍保留来源哈希与未知状态")
     parser.add_argument(
         "--backup-existing-to",
         type=Path,
@@ -300,6 +316,7 @@ def main() -> int:
         backup_existing_to=backup_existing_to,
         include_source_payloads=not args.omit_source_payloads,
         manifest_path=args.manifest,
+        export_quality_config=args.export_quality_config,
     )
     print(f"SQLite: {Path(args.output).resolve()}")
     print(f"Report: {Path(args.report_dir).resolve()}")

@@ -6,6 +6,40 @@ from __future__ import annotations
 from tools.game_data.static_database_build_support import *
 
 
+def fork_refinement_curve_value(curve: dict, level: int) -> float:
+    """按来源插值模式取档位；稀疏线性曲线不能降格为前值保持。"""
+    keys = sorted((float(p['Time']), float(p['Value'])) for p in curve.get('Keys', []))
+    if (not keys or any(not math.isfinite(x) for p in keys for x in p)
+            or len({p[0] for p in keys}) != len(keys)):
+        raise StaticDatabaseError('弧盘精炼曲线点缺失、重复或非有限')
+    for time, value in keys:
+        if time == level:
+            return value
+    for left, right in zip(keys, keys[1:]):
+        if left[0] < level < right[0]:
+            mode = enum_tail(curve.get('InterpMode'))
+            if mode == 'RCIM_Constant':
+                return left[1]
+            if mode == 'RCIM_Linear':
+                return left[1] + (right[1]-left[1]) * (level-left[0]) / (right[0]-left[0])
+            raise StaticDatabaseError(f'弧盘精炼曲线插值未支持：{mode}')
+    boundary, field = (keys[0], 'PreInfinityExtrap') if level < keys[0][0] else (keys[-1], 'PostInfinityExtrap')
+    if enum_tail(curve.get(field)) == 'RCCE_Constant':
+        return boundary[1]
+    raise StaticDatabaseError(f'弧盘精炼曲线外推未支持：{field}')
+
+def _fork_parameter_name_id(parameter: Any) -> str:
+    """仅兼容两种已观测官方字段名；身份冲突、空值与类型错误仍中止候选。"""
+    if not isinstance(parameter, dict):
+        raise StaticDatabaseError("弧盘精炼参数不是对象")
+    values = [parameter[key] for key in ("NameID", "NameId") if key in parameter]
+    if not values or any(not isinstance(value, str) or not value.strip() for value in values):
+        raise StaticDatabaseError("弧盘精炼参数缺少正式曲线身份")
+    if len(set(values)) != 1:
+        raise StaticDatabaseError("弧盘精炼参数 NameID/NameId 身份冲突")
+    return values[0]
+
+
 class CombatImportMixin:
     def _import_forks(self) -> None:
         canonical_star_packs: dict[str, str] = {}
@@ -179,36 +213,25 @@ class CombatImportMixin:
                     self.source_row_id("fork_stars", row_key),
                 ),
             )
-            for ordinal, parameter in enumerate(row.get("DataList", [])):
+            parameters = row.get("DataList", [])
+            if not isinstance(parameters, list):
+                raise StaticDatabaseError(f"弧盘精炼参数列表无效：{row_key}")
+            for ordinal, parameter in enumerate(parameters):
+                name_id = _fork_parameter_name_id(parameter)
                 self.connection.execute(
                     "INSERT INTO fork_star_parameter VALUES (?,?,?,?,?)",
                     (
                         pack_id,
                         star_level,
                         ordinal,
-                        parameter["NameID"],
+                        name_id,
                         bool_int(parameter.get("bIsPercent")),
                     ),
                 )
         for name_id in sorted(self.rows["fork_buff_curves"]):
             curve = self.rows["fork_buff_curves"][name_id]
-            keys = sorted(
-                (
-                    (float(point["Time"]), float(point["Value"]))
-                    for point in curve.get("Keys", [])
-                ),
-                key=lambda point: point[0],
-            )
-            if not keys:
-                raise StaticDatabaseError(
-                    f"弧盘精炼参数曲线没有数值点：{name_id}"
-                )
             for refinement_level in range(1, 6):
-                value = keys[0][1]
-                for time, candidate in keys:
-                    if time > refinement_level:
-                        break
-                    value = candidate
+                value = fork_refinement_curve_value(curve, refinement_level)
                 self.connection.execute(
                     """
                     INSERT INTO fork_refinement_parameter_value(
@@ -492,6 +515,7 @@ class CombatImportMixin:
             "character_awaken_skill_level_bonus",
             "character_likeability_bonus",
             "character_likeability_bonus_property",
+            "character_likeability_gap",
             "character_panel_growth",
             "character_progression_profile",
             "character_upgrade_level",
@@ -575,6 +599,7 @@ class CombatImportMixin:
             "feast_stage",
             "feast_stage_difficulty",
             "feast_option",
+            "feast_option_effect",
             "feast_stage_option",
             "divination_buff",
             "clone_activity_category",

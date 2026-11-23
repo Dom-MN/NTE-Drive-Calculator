@@ -1,21 +1,11 @@
-# 图形程序入口，负责运行时 DLL 准备和桌面界面启动。
-"""Packaged-runtime bootstrap for the NTE Drive Calc desktop application."""
+# 图形程序入口，按显式启动选择进入桌面界面。
+"""桌面程序显式启动入口；普通导入不准备后端或创建账号。"""
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
-
-
-# 打包环境下优先注册 OpenVINO DLL 路径，必须在 import openvino 之前。
-if getattr(sys, "frozen", False) and sys.platform == "win32":
-    _meipass = Path(sys._MEIPASS)
-    _openvino_libraries = _meipass / "openvino" / "libs"
-    if _openvino_libraries.is_dir():
-        os.add_dll_directory(str(_openvino_libraries))
-        os.environ["OPENVINO_LIB_PATHS"] = str(_openvino_libraries)
 
 
 ROOT_DIR = Path(__file__).parent.resolve()
@@ -24,10 +14,13 @@ if str(ROOT_DIR) not in sys.path:
 
 
 def main() -> None:
-    """Start the supported desktop GUI; the legacy JSON CLI is retired."""
+    """解析启动选择后再准备运行环境；退役 CLI 不执行桌面初始化。"""
     parser = argparse.ArgumentParser(description="NTE 卡带驱动配装工具")
+    from src.integrations.distribution.maintenance_cli import add_maintenance_arguments, run_maintenance
+    add_maintenance_arguments(parser)
     parser.add_argument("--cli", action="store_true", help="旧命令行模式（已移除）")
     parser.add_argument("--gui", action="store_true", help="桌面 GUI 模式（默认）")
+    parser.add_argument("--admin-restarted", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--ime-compat", action="store_true",
         help="仅本进程禁用输入法以规避第三方 IME 原生崩溃；应用内中文输入将不可用",
@@ -36,18 +29,32 @@ def main() -> None:
     if args.cli:
         parser.error("旧 JSON 命令行分配器已移除，请直接启动桌面 GUI。")
 
+    # 后端 DLL 及句柄归 OCR 首次初始化；非识别启动不受未选库或残留目录影响。
     if args.ime_compat and sys.platform == "win32":
         _enable_ime_compatibility()
-
-    # 标记为真实 GUI 启动：src.ui.app 在导入期据此决定是否询问语言。
-    os.environ.setdefault("NTE_GUI_LAUNCH", "1")
     from src.ui.app import run_gui
+    from src.ui.startup.process_privileges import StartupPrivilegeError
 
-    run_gui()
+    try:
+        if run_maintenance(args):
+            return
+        from src.ui.startup.startup_data_selection import choose_first_external_root
+        if choose_first_external_root():
+            run_gui()
+    except Exception as error:
+        # Qt 尚未创建时也必须有明确提示；不把数据目录故障表现为无窗口退出。
+        message = (str(error) if isinstance(error, StartupPrivilegeError) else
+                   f"启动已停止：{error}\n请修复所示位置或恢复完整程序包后重试；未选择替代数据目录。")
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, message, "NTE Drive Calc", 0x10)
+        else:
+            print(message, file=sys.stderr)
+        raise SystemExit(1) from error
 
 
 def _enable_ime_compatibility() -> None:
-    """Disable TSF/IMM for this process before Qt creates a top-level window."""
+    """在 Qt 创建窗口前按进程禁用 TSF/IMM，兼容有问题的输入法。"""
 
     import ctypes
 

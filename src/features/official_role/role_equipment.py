@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from src.ui.common.text_catalog import plain_label, plain_tooltip, resolve_text_catalog
 from PySide6.QtCore import Qt
 from shiboken6 import isValid
 from PySide6.QtWidgets import (
@@ -16,25 +17,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.i18n import tr, display_term
 from src.app.theme import themed_style
-from src.domain.allocation_rating import allocation_grade, loadout_total_grade
-from src.features.inventory.warehouse import warehouse_item_view
-from src.features.inventory.warehouse_result_card import WarehouseResultCard
-from src.services.official_role_equipment_scoring_service import (
-    score_official_role_equipment,
-)
-from src.services.official_role_page_service import (
-    calculate_official_role_equipment_gain,
-    calculate_official_role_item_gain,
-)
-from src.services.official_equipment_bonus_service import calculate_official_equipment_stats
-from src.ui.controllers.official_role_replacement_controller import (
-    show_official_role_replacement,
-)
-from src.ui.widgets import (
-    NoWheelComboBox,
-)
+from src.domain.equipment.scoring.allocation_rating import allocation_grade
+from src.features.inventory.warehouse.display.cards import warehouse_item_view
+from src.features.inventory.warehouse.display.result_card import WarehouseResultCard
+from src.services.official_role.equipment.marginal_scoring import calculate_official_role_hidden_equipment_score
+from src.services.official_role.panel.attributes import calculate_official_role_equipment_gain
+from src.services.official_role.equipment.replacement import calculate_official_role_item_gain
+from src.services.official_role.native_damage import role_damage_calculator
+from src.domain.equipment.properties.official_stats import calculate_official_equipment_stats
+from src.features.official_role.replacement_controller import show_official_role_replacement
+from src.ui.common.widgets import NoWheelComboBox
 from .role_calculation import (
     _attribute_name,
     _calculation_detail,
@@ -60,7 +53,7 @@ _WEIGHT_PROPERTY_CHOICES = (
     ("倾陷强度", "UnbalIntensityBase"),
 )
 _WEIGHT_LABEL_BY_PROPERTY = {
-    property_id: display_term(label) for label, property_id in _WEIGHT_PROPERTY_CHOICES
+    property_id: label for label, property_id in _WEIGHT_PROPERTY_CHOICES
 }
 
 
@@ -74,14 +67,14 @@ def _equipment_item_card(
     direct_damage_score: float | None = None,
     replacement_callback=None,
 ) -> QWidget:
-    view = warehouse_item_view(item)
+    view = warehouse_item_view(item, text_catalog=getattr(window, 'text_catalog', None))
     icon_path = detail.get("item_icon_paths", {}).get(
         str(item.get("item_id") or "")
     )
     if icon_path:
         view["item_icon_path"] = icon_path
     resolved_score = (
-        _equipment_weight_score(window, detail, item, core=core)
+        _equipment_weight_score(detail, item)
         if score is None
         else float(score)
     )
@@ -96,7 +89,7 @@ def _equipment_item_card(
             ),
             0,
         )
-    return WarehouseResultCard(
+    card = WarehouseResultCard(
         view,
         score=resolved_score,
         grade=allocation_grade(resolved_score, area),
@@ -104,21 +97,23 @@ def _equipment_item_card(
         split_metrics=True,
         replacement_callback=replacement_callback,
         parent=window if isinstance(window, QWidget) else None,
+        text_catalog=getattr(window, 'text_catalog', None),
     )
+    card.setToolTip(plain_tooltip(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.equipment_item_card.card') + card.toolTip()))
+    return card
 
 
 def _equipment_weight_score(
-    window,
     detail: dict,
     item: dict,
-    *,
-    core: bool,
 ) -> float:
-    return score_official_role_equipment(
-        getattr(window, "scoring_engine", None),
-        detail=detail,
-        item=item,
-        shape_areas=getattr(window, "_shape_areas", {}),
+    # detail 是本轮草稿投影，权重与边际表一致；不依赖计算页延迟加载的引擎。
+    # 此分数只用于展示，不写回基础权重或方案的冻结 assignment_scores。
+    return calculate_official_role_hidden_equipment_score(
+        detail,
+        item,
+        property_weights=detail.get("property_weights") or {},
+        main_property_weights=detail.get("main_property_weights") or {},
     )
 
 
@@ -152,7 +147,10 @@ def _show_replacement_optimizer(
             restore_scroll_value=restore_scroll_value,
         )
 
-    options = {"on_saved": refresh_after_save}
+    options = {"on_saved": refresh_after_save,
+               "static_database_path": detail["static_database_path"],
+               "static_schema_version": detail["static_schema_version"],
+               "static_release": detail["static_release"]}
     if context_key != "saved":
         options["context_key"] = context_key
     if detail.get("replacement_candidates_loaded", True):
@@ -162,7 +160,7 @@ def _show_replacement_optimizer(
     from .dependencies import OfficialRoleDependencies
     controller = _role_controller(window)
     if status_label is not None:
-        status_label.setText(tr("正在准备替换候选…"))
+        status_label.setText(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.show_replacement_optimizer.status_label'))
         status_label.show()
 
         def clear_status() -> None:
@@ -178,11 +176,13 @@ def _show_replacement_optimizer(
         if (getattr(window, "_current_official_role_id", None) != int(detail["character"]["character_id"])
                 or not window._official_role_page.isVisible()):
             return
+        options.update(static_database_path=enriched["static_database_path"],
+                       static_schema_version=enriched["static_schema_version"], static_release=enriched["static_release"])
         show_official_role_replacement(window, enriched, target, prepared_candidates=candidates, **options)
 
     controller.request_replacement(
         detail, context_key, target, prepared,
-        lambda error: QMessageBox.warning(window, tr("替换候选准备失败"), error),
+        lambda error: QMessageBox.warning(window, resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.show_replacement_optimizer.qmessagebox'), error),
     )
 
 
@@ -230,20 +230,20 @@ def _build_equipment_cards_group(
         if int(item.get("uid_slot") or 0) or int(item.get("uid_serial") or 0)
     } if context_key != "theory" else {}
 
-    group = QGroupBox(tr("卡带 / 驱动详情 ({count} 件)", count=item_count))
+    group = QGroupBox(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.build_equipment_cards_group.group', item_count=f'{item_count}'))
     group.setObjectName("officialRoleEquipmentCards")
     layout = QVBoxLayout(group)
     layout.setSpacing(8)
-    status = QLabel(group)
+    status = plain_label(group)
     status.hide()
     layout.addWidget(status)
     if context_key == "theory":
-        layout.addWidget(QLabel(
-            tr("官方推荐主属性：") + (
+        layout.addWidget(plain_label(
+            resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.build_equipment_cards_group.caption_3') + (
                 "、".join(
                     _attribute_name(detail, property_id)
                     for property_id in context.get("core_main_property_ids") or ()
-                ) or tr("未提供")
+                ) or resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.build_equipment_cards_group.caption_4')
             )
         ))
 
@@ -256,10 +256,10 @@ def _build_equipment_cards_group(
                 WarehouseResultCard(
                     {
                         "kind": kind,
-                        "display_name": display_term(str(
+                        "display_name": str(
                             detail.get("item_names", {}).get(item_id, item_id)
-                            or (display_term("卡带") if kind == "core" else display_term("驱动"))
-                        )),
+                            or ("卡带" if kind == "core" else "驱动")
+                        ),
                         "item_name": str(item_id or ""),
                         "item_icon_path": detail.get("item_icon_paths", {}).get(
                             str(item_id or "")
@@ -276,52 +276,54 @@ def _build_equipment_cards_group(
                     grade=None,
                     direct_damage_score=None,
                     parent=window if isinstance(window, QWidget) else None,
+                    text_catalog=getattr(window, 'text_catalog', None),
                 ),
                 index // 3,
                 index % 3,
                 Qt.AlignLeft | Qt.AlignTop,
             )
         if not theory_items:
-            grid.addWidget(QLabel(tr("官方方案未提供卡带或驱动。")), 0, 0)
+            grid.addWidget(plain_label(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.build_equipment_cards_group.caption')), 0, 0)
     else:
         if not items:
-            grid.addWidget(QLabel(tr("暂无卡带或驱动。")), 0, 0)
-        for index, item in enumerate(items):
-            display_item = calculation_by_uid.get(
-                (int(item.get("uid_slot") or 0), int(item.get("uid_serial") or 0)),
-                item,
-            )
-            replacement_callback = None
-            if allow_replacement and callable(replacement_handler):
-                replacement_callback = (
-                    lambda target=dict(item), key=context_key: replacement_handler(
-                        target, key
-                    )
+            grid.addWidget(plain_label(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.build_equipment_cards_group.caption_2')), 0, 0)
+        with role_damage_calculator(detail) as calculator:
+            for index, item in enumerate(items):
+                display_item = calculation_by_uid.get(
+                    (int(item.get("uid_slot") or 0), int(item.get("uid_serial") or 0)),
+                    item,
                 )
-            elif allow_replacement and (
-                context_key == "saved" or context_key.startswith("saved:")
-            ):
-                replacement_callback = (
-                    lambda target=dict(item), key=context_key: _show_replacement_optimizer(
-                        window, detail, target, context_key=key, status_label=status,
+                replacement_callback = None
+                if allow_replacement and callable(replacement_handler):
+                    replacement_callback = (
+                        lambda target=dict(item), key=context_key: replacement_handler(
+                            target, key
+                        )
                     )
-                )
-            gain = calculate_official_role_item_gain(detail, context_key, item)
-            grid.addWidget(
-                _equipment_item_card(
-                    window,
-                    detail,
-                    display_item,
-                    core=str(display_item.get("kind") or "") == "core",
-                    direct_damage_score=(
-                        float(gain["gain_percent"]) if gain else None
+                elif allow_replacement and (
+                    context_key == "saved" or context_key.startswith("saved:")
+                ):
+                    replacement_callback = (
+                        lambda target=dict(item), key=context_key: _show_replacement_optimizer(
+                            window, detail, target, context_key=key, status_label=status,
+                        )
+                    )
+                gain = calculate_official_role_item_gain(detail, context_key, item, calculator=calculator)
+                grid.addWidget(
+                    _equipment_item_card(
+                        window,
+                        detail,
+                        display_item,
+                        core=str(display_item.get("kind") or "") == "core",
+                        direct_damage_score=(
+                            float(gain["gain_percent"]) if gain else None
+                        ),
+                        replacement_callback=replacement_callback,
                     ),
-                    replacement_callback=replacement_callback,
-                ),
-                index // 3,
-                index % 3,
-                Qt.AlignLeft | Qt.AlignTop,
-            )
+                    index // 3,
+                    index % 3,
+                    Qt.AlignLeft | Qt.AlignTop,
+                )
     grid.setColumnStretch(3, 1)
     layout.addLayout(grid)
     return group
@@ -330,7 +332,7 @@ def _build_equipment_cards_group(
 def _aggregate_equipment_stats(detail: dict, context_key: str) -> list[tuple[str, str]]:
     if context_key == "theory":
         return [
-            (_attribute_name(detail, property_id), tr("目标词条"))
+            (_attribute_name(detail, property_id), "目标词条")
             for property_id in detail["equipment_contexts"]["theory"].get("property_ids") or ()
         ]
     property_percent = {
@@ -371,7 +373,7 @@ def _build_drive_summary_group(
     show_context_selector: bool = True,
     replacement_handler=None,
 ) -> QGroupBox:
-    group = QGroupBox(tr("空幕加成"))
+    group = QGroupBox(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.build_drive_summary_group.group'))
     group.setObjectName("officialRoleDriveGroup")
     layout = QVBoxLayout(group)
     layout.setSpacing(8)
@@ -380,7 +382,7 @@ def _build_drive_summary_group(
     # on the previous parentless context combo created a real top-level native
     # window for one event-loop turn whenever a role tab was built.
     layout.addLayout(top)
-    count_label = QLabel()
+    count_label = plain_label()
     top.addWidget(count_label)
     top.addStretch()
     context_combo = NoWheelComboBox(group)
@@ -395,17 +397,13 @@ def _build_drive_summary_group(
         editor["equipment_context_key"] = str(context_combo.currentData())
     # Eleven Chinese characters plus combo padding keeps it compact.
     context_combo.setFixedWidth(
-        context_combo.fontMetrics().horizontalAdvance(tr("已保存配装方案选择器"))
+        context_combo.fontMetrics().horizontalAdvance("已保存配装方案选择器")
         + context_combo.fontMetrics().horizontalAdvance("中")
         + 24
     )
     top.addWidget(context_combo)
     context_combo.setVisible(show_context_selector)
-    score_label = QLabel(tr("配装评分: --"))
-    score_label.setObjectName("officialRoleLoadoutScore")
-    score_label.setStyleSheet("color:#58a6ff;font-weight:bold;font-size:13px;")
-    top.addWidget(score_label)
-    margin_label = QLabel(tr("直伤收益: --"))
+    margin_label = plain_label(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.build_drive_summary_group.margin_label'))
     margin_label.setStyleSheet("color:#ffaa00;font-weight:bold;font-size:13px;")
     top.addWidget(margin_label)
     summary_host = QWidget()
@@ -419,48 +417,24 @@ def _build_drive_summary_group(
         calculation_detail = _calculation_detail(detail, editor)
         modules = _equipment_items(detail, context_key, core=False) if context_key != "theory" else list((detail.get("equipment_plan") or {}).get("module_item_ids") or ())
         cores = _equipment_items(detail, context_key, core=True) if context_key != "theory" else ([1] if detail["equipment_contexts"]["theory"].get("core_item_id") else [])
-        count_label.setText(tr("已装配驱动: {count}    空幕: {core}",
-                           count=len(modules),
-                           core=tr("已装配") if cores else tr("未装配")))
-        score_context = calculation_detail["equipment_contexts"][context_key]
-        score_items = list(
-            score_context.get("calculation_items")
-            or score_context.get("items")
-            or ()
-        )
-        if getattr(window, "scoring_engine", None) is None or not score_items:
-            score_label.setText(tr("配装评分: --"))
-        else:
-            total_score = sum(
-                _equipment_weight_score(
-                    window,
-                    calculation_detail,
-                    item,
-                    core=str(item.get("kind") or "") == "core",
-                )
-                for item in score_items
-            )
-            score_label.setText(
-                tr("配装评分: {score:.1f} · {grade}",
-                   score=total_score, grade=loadout_total_grade(total_score))
-            )
+        count_label.setText(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.refresh_summary.count_label', value=f'{len(modules)}', value_2=f"{('已装配' if cores else '未装配')}"))
         gain = calculate_official_role_equipment_gain(calculation_detail, context_key)
         if gain:
-            margin_label.setText(tr("直伤收益: {value}%", value=f"{gain['gain_percent']:+.2f}"))
+            margin_label.setText(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.refresh_summary.margin_label', value=f"{gain['gain_percent']:+.2f}"))
         else:
-            margin_label.setText(tr("直伤收益: --"))
+            margin_label.setText(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.build_drive_summary_group.margin_label'))
         rows = _aggregate_equipment_stats(calculation_detail, context_key)
         if not rows:
-            summary_layout.addWidget(QLabel(tr("（暂无驱动/空幕，请先同步背包或保存配装方案）")))
+            summary_layout.addWidget(plain_label(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.refresh_summary.caption')))
         else:
-            info_group = QGroupBox(tr("汇总属性（实时计算）"))
+            info_group = QGroupBox(resolve_text_catalog(getattr(window, 'text_catalog', None)).render('ui.official_role.refresh_summary.info_group'))
             info_group.setStyleSheet(themed_style("QGroupBox{border:1px solid #30363d;border-radius:5px;padding:8px}"))
             info_layout = QVBoxLayout(info_group)
             for name, value in rows:
                 row = QHBoxLayout()
-                row.addWidget(QLabel(display_term(str(name))))
+                row.addWidget(plain_label(name))
                 row.addStretch()
-                label = QLabel(value)
+                label = plain_label(value)
                 label.setStyleSheet("color:#58a6ff;font-weight:700;")
                 row.addWidget(label)
                 info_layout.addLayout(row)
@@ -490,6 +464,6 @@ def _build_drive_summary_group(
         return accepted
 
     context_combo.currentIndexChanged.connect(change_context)
-    _register_calculation_refresh(editor, refresh_summary)
+    refresh_summary = _register_calculation_refresh(editor, refresh_summary)
     refresh_summary()
     return group

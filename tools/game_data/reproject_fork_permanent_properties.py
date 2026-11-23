@@ -1,5 +1,5 @@
-# 在静态候选副本中重建 v32 弧盘常驻属性及毕业模板。
-"""Rebuild only the v32 fork-permanent projection in a copied static candidate."""
+# 在静态候选副本中重建弧盘常驻属性及毕业模板，具体迁移身份以代码为准。
+"""只在复制的静态候选中重建弧盘常驻投影，迁移身份以代码为准。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.storage.sqlite.fork_permanent_projection import (
+from src.storage.sqlite.catalog.fork_permanent_projection import (
     FORK_PERMANENT_EVIDENCE_SQL,
     FORK_REFINEMENT_LEVEL_SQL,
     FORK_SOURCE_COVERAGE_SQL,
@@ -31,16 +31,10 @@ from tools.game_data.build_graduation_templates import populate_graduation_templ
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
 from tools.game_data.static_database_build_support import (
     IMPORTER_VERSION,
-    SCHEMA_VERSION,
     file_sha256,
 )
 from tools.game_data.static_database_buff_imports import BuffImportMixin
-
-
-SCHEMA_039 = (
-    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema"
-    / "039_game_static_fork_permanent_review.sql"
-)
+from tools.game_data.fork_reprojection_schema import ensure_reprojection_schema
 
 
 def reproject_candidate(
@@ -50,7 +44,7 @@ def reproject_candidate(
     *,
     config_dir: Path = PROJECT_ROOT / "config",
 ) -> dict[str, Any]:
-    """Copy one normalized candidate, replace its projection, and verify it."""
+    """复制规范化候选后重建指定投影并验证，保留输入原件和失败回退。"""
 
     source = source.expanduser().resolve()
     output = output.expanduser().resolve()
@@ -75,22 +69,7 @@ def reproject_candidate(
             importer_version = int(connection.execute(
                 "SELECT importer_version FROM dataset"
             ).fetchone()[0])
-            schema_version = int(connection.execute(
-                "SELECT COALESCE(MAX(version), 0) FROM schema_migration"
-            ).fetchone()[0])
-            if schema_version not in (38, SCHEMA_VERSION):
-                raise RuntimeError(f"候选静态库 schema 不是可升级版本：{schema_version}")
-            if schema_version == 38:
-                connection.executescript(SCHEMA_039.read_text(encoding="utf-8"))
-                connection.execute(
-                    "INSERT INTO schema_migration VALUES (?, ?)",
-                    (SCHEMA_VERSION, datetime.now(timezone.utc).isoformat()),
-                )
-                connection.execute(
-                    "UPDATE dataset SET importer_version = ?", (IMPORTER_VERSION,)
-                )
-                connection.commit()
-                schema_version = SCHEMA_VERSION
+            source_schema_version, schema_version = ensure_reprojection_schema(connection)
             importer = BuffImportMixin()
             importer.connection = connection
             importer._import_buff_definitions(include_links=False)
@@ -224,6 +203,7 @@ def reproject_candidate(
         "input_sha256": file_sha256(source).upper(),
         "output_filename": output.name,
         "output_sha256": file_sha256(output).upper(),
+        "source_schema_version": source_schema_version,
         "schema_version": schema_version,
         "importer_version": importer_version,
         "resolved_forks": len({value.fork_id for value in resolved}),

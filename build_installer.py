@@ -4,12 +4,13 @@ Build the Windows installer for NTE Drive Calc.
 
 Requirements:
     - A PyInstaller app bundle in dist/NTE_Drive_Calc
-    - Inno Setup 6 installed, --iscc provided, or INNO_SETUP_ISCC pointing to ISCC.exe
+    - Inno Setup 6 or newer installed, --iscc provided, or INNO_SETUP_ISCC pointing to ISCC.exe
 
 Typical usage:
     .\.venv\Scripts\python.exe build_installer.py
     .\.venv\Scripts\python.exe build_installer.py --skip-app-build
     .\.venv\Scripts\python.exe build_installer.py --generate-only
+    .\.venv\Scripts\python.exe build_installer.py --output-root build/release-candidate
 """
 
 from __future__ import annotations
@@ -18,15 +19,28 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
 
 from tools import build_cli
+from tools.release.app_bundle_validation import validate_app_bundle
+from tools.release.managed_paths import plain_member_stat
+from tools.release.installer_integrity import (
+    ELEVATED_BUILD_ARGUMENT,
+    builder_is_admin,
+    disable_console_quick_edit,
+    finalize_installer_artifact,
+    prepare_installer_output,
+    request_elevated_build,
+)
 from src.app.version import windows_numeric_version
-from src.integrations.game_component_bundle import inspect_game_component_bundle
-from src.integrations.ocr_model_resources import validate_packaged_ocr_models
+from src.integrations.components.game_component_bundle import inspect_game_component_bundle
+from src.integrations.components.native_plugin_bundle import NATIVE_PLUGIN_LAYOUTS, SPLIT_PLUGIN_LAYOUT, native_deployment_paths
+from src.integrations.vision.recognition.ocr.model_resources import validate_packaged_ocr_models
 from tools.release.game_component_bundle_build import source_component_manifest, validate_packaged_component_bundle
 from tools.release.installer_asset_dedup import (
     InstallerAssetCopy,
@@ -36,6 +50,7 @@ from tools.release.installer_asset_dedup import (
 
 
 ROOT = Path(__file__).parent.resolve()
+OUTPUT_ROOT = ROOT
 THIRD_PARTY_DIR = ROOT / "third_party"
 DIST_APP = ROOT / "dist" / "NTE_Drive_Calc"
 APP_EXE = DIST_APP / "NTE_Drive_Calc.exe"
@@ -64,6 +79,47 @@ APP_ID = "{{D7DA28BE-8A19-4E05-9216-3F16C4C2C820}"
 CORE_CONFIG_FILES = ("stats.json",)
 STALE_AMBIENT_ICU_DLLS = ("icuuc.dll", "icudt78.dll")
 LOCAL_CONFIG_ENV = "NTE_LOCAL_CONFIG"
+
+
+def _configure_output_root(requested: Path | None) -> None:
+    """应用包、暂存与安装器共用普通输出根，源码及工具来源仍归 ROOT。"""
+    global OUTPUT_ROOT, DIST_APP, APP_EXE, APP_INTERNAL, APP_NTE_CORE, APP_ANALYSIS_CORE
+    global APP_ANALYSIS_CORE_MANIFEST, APP_USER_SCHEMA, APP_STATIC_DATABASE, APP_STATIC_MANIFEST
+    global APP_SHARED_DATABASE_SEED, APP_SHAPE_BONUS_BASELINE
+    global INSTALLER_DIR, OUTPUT_DIR, INSTALL_STAGE_INTERNAL, ISS_PATH
+    output = build_cli.select_output_root(ROOT, requested)
+    # stage helper 的固定路径契约相对本次输出根；预检不以 resolve 隐去重解析点。
+    internal = output / "dist/NTE_Drive_Calc/_internal"
+    for member, predicate in (
+        (output / "dist/NTE_Drive_Calc/_internal", stat.S_ISDIR),
+        (output / "build/installer-stage/_internal", stat.S_ISDIR),
+        (output / "installer/output", stat.S_ISDIR),
+        (output / "installer/NTE_Drive_Calc.iss", stat.S_ISREG),
+        (output / "dist/NTE_Drive_Calc/NTE_Drive_Calc.exe", stat.S_ISREG),
+        *((internal / relative, stat.S_ISREG) for relative in (
+            "nte-core.exe", "nte-analysis-core.exe", "analysis-core-meta/component.json",
+            "src/storage/sqlite/schema/001_user_data.sql", "data/game_static.sqlite3",
+            "data/manifest.json", "data/app_shared.sqlite3", "data/migrations/shape_bonus_defaults_2.0.2.json",
+        )),
+    ):
+        try:
+            info = plain_member_stat(ROOT, member)
+        except FileNotFoundError:
+            continue
+        if not predicate(info.st_mode):
+            raise ValueError(f"输出成员类型不符：{member}")
+    OUTPUT_ROOT = output
+    DIST_APP = output / "dist" / "NTE_Drive_Calc"
+    APP_EXE, APP_INTERNAL = DIST_APP / "NTE_Drive_Calc.exe", DIST_APP / "_internal"
+    APP_NTE_CORE, APP_ANALYSIS_CORE = APP_INTERNAL / "nte-core.exe", APP_INTERNAL / "nte-analysis-core.exe"
+    APP_ANALYSIS_CORE_MANIFEST = APP_INTERNAL / "analysis-core-meta/component.json"
+    APP_USER_SCHEMA = APP_INTERNAL / "src/storage/sqlite/schema/001_user_data.sql"
+    APP_STATIC_DATABASE, APP_STATIC_MANIFEST = APP_INTERNAL / "data/game_static.sqlite3", APP_INTERNAL / "data/manifest.json"
+    APP_SHARED_DATABASE_SEED = APP_INTERNAL / "data/app_shared.sqlite3"
+    APP_SHAPE_BONUS_BASELINE = APP_INTERNAL / "data/migrations/shape_bonus_defaults_2.0.2.json"
+    INSTALLER_DIR = output / "installer"
+    OUTPUT_DIR, ISS_PATH = INSTALLER_DIR / "output", INSTALLER_DIR / "NTE_Drive_Calc.iss"
+    INSTALL_STAGE_INTERNAL = output / "build/installer-stage/_internal"
 
 
 def _run(cmd: list[str], cwd: Path = ROOT) -> None:
@@ -110,11 +166,20 @@ def _find_iscc(explicit_path: Path | None = None) -> Path | None:
             raise FileNotFoundError(f"Inno Setup compiler not found: {explicit_path}")
         return explicit_path
 
-    candidates = [
-        os.environ.get("INNO_SETUP_ISCC"),
-        shutil.which("ISCC.exe"),
-        str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Inno Setup 6" / "ISCC.exe"),
-    ]
+    # Inno Setup 安装程序不改 PATH；除环境变量与 PATH 外，再查机器级与用户级默认安装目录下的
+    # “Inno Setup <主版本>”，取最高版本（最低 6），不把查找写死为某一个大版本。
+    roots = [Path(os.environ[name]) for name in ("ProgramFiles", "ProgramFiles(x86)") if os.environ.get(name)]
+    if os.environ.get("LOCALAPPDATA"):
+        roots.append(Path(os.environ["LOCALAPPDATA"]) / "Programs")
+    installed = sorted(
+        ((int(match.group(1)), folder / "ISCC.exe")
+         for root in roots if root.is_dir()
+         for folder in root.glob("Inno Setup *")
+         if (match := re.fullmatch(r"Inno Setup (\d+)", folder.name)) and int(match.group(1)) >= 6),
+        key=lambda item: item[0], reverse=True,
+    )
+    candidates = [os.environ.get("INNO_SETUP_ISCC"), shutil.which("ISCC.exe"),
+                  *(str(path) for _version, path in installed)]
     for candidate in candidates:
         if candidate and Path(candidate).exists():
             return Path(candidate)
@@ -181,26 +246,7 @@ def _app_process_running() -> bool:
 def _validate_app_bundle() -> None:
     """安装前检查 PyInstaller 产物，避免生成启动后才报缺文件的安装包。"""
 
-    required = {
-        "主程序": APP_EXE,
-        "PyInstaller 运行目录": APP_INTERNAL,
-        "nte-core 本地组件": APP_NTE_CORE,
-        "战报分析本地组件": APP_ANALYSIS_CORE,
-        "战报分析组件清单": APP_ANALYSIS_CORE_MANIFEST,
-        "游戏组件整包清单": APP_INTERNAL / "component-bundle.json",
-        "用户数据库结构": APP_USER_SCHEMA,
-        "发行版静态数据库": APP_STATIC_DATABASE,
-        "发行版静态数据库清单": APP_STATIC_MANIFEST,
-        "公共额外形状默认库": APP_SHARED_DATABASE_SEED,
-        "旧版额外形状迁移基线": APP_SHAPE_BONUS_BASELINE,
-    }
-    missing = [f"{label}：{path}" for label, path in required.items() if not path.exists()]
-    if missing:
-        raise RuntimeError("PyInstaller 产物不完整，缺少：\n" + "\n".join(missing))
-    validate_packaged_component_bundle(
-        APP_INTERNAL, source_manifest_path=source_component_manifest(ROOT),
-    )
-    validate_packaged_ocr_models(APP_INTERNAL)
+    validate_app_bundle(APP_EXE, APP_INTERNAL, source_manifest_path=source_component_manifest(ROOT))
 
 
 def _ensure_app_bundle(skip_app_build: bool) -> None:
@@ -216,7 +262,10 @@ def _ensure_app_bundle(skip_app_build: bool) -> None:
                 "or use --skip-app-build to package the existing app bundle."
             )
 
-        _run([sys.executable, str(ROOT / "build_exe.py")])
+        command = [sys.executable, str(ROOT / "build_exe.py")]
+        if OUTPUT_ROOT != ROOT:
+            command.extend(["--output-root", str(OUTPUT_ROOT)])
+        _run(command)
 
     _validate_app_bundle()
 
@@ -249,13 +298,18 @@ def _write_iss(
     package_internal = internal_source or APP_INTERNAL
     asset_copy_lines = inno_asset_copy_lines(package_internal, asset_copies or [])
     stale_runtime_dlls = list(STALE_AMBIENT_ICU_DLLS)
-    if inspect_game_component_bundle(APP_INTERNAL).layout == "native-capture-v1":
+    native_layout = inspect_game_component_bundle(APP_INTERNAL).layout
+    if native_layout in NATIVE_PLUGIN_LAYOUTS:
         # Old installers could include this game proxy as an ambient dependency.
         # It is not a Calc runtime DLL; clean only the old application-local copy.
         stale_runtime_dlls.append("dwmapi.dll")
+    if native_layout == SPLIT_PLUGIN_LAYOUT:
+        # The current package isolates its payload. Retire only exact old app-local
+        # files on upgrade; never remove the plugins directory or game-side files.
+        stale_runtime_dlls.extend(("NTE_Capture.dll", *native_deployment_paths(SPLIT_PLUGIN_LAYOUT).values()))
     stale_runtime_delete_lines = "\n".join(
         f'Type: files; Name: "{{app}}\\_internal\\{name}"'
-        for name in stale_runtime_dlls
+        for name in (relative.replace("/", "\\") for relative in stale_runtime_dlls)
     )
     if vigem_is_exe:
         vigem_install_filename = "{app}\\drivers\\ViGEmBus_Setup.exe"
@@ -425,7 +479,8 @@ Name: "{{autodesktop}}\\{{#MyAppName}}"; Filename: "{{app}}\\{{#MyAppExeName}}";
 [Run]
 Filename: "{vigem_install_filename}"; Parameters: "{vigem_install_params}"; StatusMsg: "正在安装或修复 ViGEmBus 虚拟手柄驱动..."; Flags: waituntilterminated; Tasks: installvigem; Check: ShouldInstallViGEmBus
 Filename: "{{cmd}}"; Parameters: "/C sc start ViGEmBus >NUL 2>NUL & exit /B 0"; StatusMsg: "正在启动 ViGEmBus 驱动服务..."; Flags: runhidden waituntilterminated; Tasks: installvigem; Check: IsWin64
-Filename: "{{app}}\\{{#MyAppExeName}}"; Description: "{{cm:LaunchProgram,{{#StringChange(MyAppName, '&', '&&')}}}}"; Flags: nowait postinstall skipifsilent runascurrentuser
+; 明确请求管理员 Shell 启动，不把安装器进程的接受/存活当成应用权限已就绪。
+Filename: "{{app}}\\{{#MyAppExeName}}"; WorkingDir: "{{app}}"; Verb: "runas"; Description: "{{cm:LaunchProgram,{{#StringChange(MyAppName, '&', '&&')}}}}"; Flags: shellexec nowait postinstall skipifsilent runascurrentuser
 
 [Code]
 function ShouldInstallViGEmBus: Boolean;
@@ -460,6 +515,7 @@ end;
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build NTE Drive Calc installer.")
+    parser.add_argument("--output-root", type=Path, help="输出至仓库 build 下的独立子目录；默认仓库根。")
     parser.add_argument(
         "--config",
         type=Path,
@@ -484,9 +540,22 @@ def main() -> int:
         default=None,
         help="Path to a ViGEmBus .exe or .msi installer; may also use NTE_VIGEM_INSTALLER.",
     )
+    parser.add_argument(ELEVATED_BUILD_ARGUMENT, action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
+    # 成品须由管理员构建；先于耗时的打包步骤请求一次 UAC 确认，在新的管理员窗口里重跑。
+    if not args.generate_only and not args.elevated_build and not builder_is_admin():
+        if request_elevated_build(sys.argv):
+            build_cli.info("构建需要管理员权限：已请求系统确认，构建会在新打开的管理员窗口中继续，请在那里查看结果。")
+            return 0
+        build_cli.fail("构建需要管理员权限，但系统确认已取消或未能启动；未创建目录，未修改任何文件。")
+        return 1
+
     try:
+        _configure_output_root(args.output_root)
+        if not args.generate_only:
+            if prepare_installer_output(OUTPUT_DIR):
+                build_cli.info("已修正安装器输出目录的 Low 继承标签；输出位置不变。")
         local_config = _load_local_config(args.config)
         args.iscc = _configured_path(
             args.iscc,
@@ -500,9 +569,15 @@ def main() -> int:
             local_config,
             "vigem_installer",
         )
+        # 编译器缺失时在耗时的应用打包之前就停止，而不是打包完成后才发现。
+        iscc = None if args.generate_only else _find_iscc(args.iscc)
+        if not args.generate_only and not iscc:
+            build_cli.warn("Inno Setup compiler was not found.")
+            build_cli.warn("Install Inno Setup 6 or newer, or set INNO_SETUP_ISCC to ISCC.exe.")
+            return 2
         _ensure_app_bundle(skip_app_build=args.skip_app_build)
         asset_copies = prepare_installer_asset_stage(
-            APP_INTERNAL, INSTALL_STAGE_INTERNAL, ROOT,
+            APP_INTERNAL, INSTALL_STAGE_INTERNAL, OUTPUT_ROOT,
         )
         validate_packaged_component_bundle(
             INSTALL_STAGE_INTERNAL, source_manifest_path=source_component_manifest(ROOT),
@@ -525,17 +600,12 @@ def main() -> int:
             build_cli.ok("Generate-only mode complete.")
             return 0
 
-        iscc = _find_iscc(args.iscc)
-        if not iscc:
-            build_cli.warn("Inno Setup compiler was not found.")
-            build_cli.warn("Install Inno Setup 6, or set INNO_SETUP_ISCC to ISCC.exe.")
-            build_cli.warn("Then run: .\\.venv\\Scripts\\python.exe build_installer.py --skip-app-build")
-            return 2
-
         _run([str(iscc), str(ISS_PATH)])
         setup = OUTPUT_DIR / f"NTE_Drive_Calc_Setup_{args.version}.exe"
         if not setup.exists():
             raise RuntimeError(f"Installer build finished, but output was not found: {setup}")
+        if finalize_installer_artifact(setup):
+            build_cli.info("已修正安装器成品的完整性标签为 High，回读校验通过。")
         build_cli.ok(f"Installer complete: {setup}")
         return 0
     except subprocess.CalledProcessError as exc:
@@ -547,4 +617,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    if ELEVATED_BUILD_ARGUMENT in sys.argv[1:]:
+        # 仅 UAC 重开的独立窗口：关闭快速编辑，避免误点进入“选择”模式挂起构建输出。
+        disable_console_quick_edit()
+    code = main()
+    if ELEVATED_BUILD_ARGUMENT in sys.argv[1:]:
+        # 管理员窗口在构建结束时停住，便于查看结果；只影响 UAC 重开的独立窗口。
+        try:
+            input("构建结束，按回车键关闭窗口…")
+        except EOFError:
+            pass
+    raise SystemExit(code)

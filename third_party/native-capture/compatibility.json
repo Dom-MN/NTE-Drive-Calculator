@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "core_rebuilt": false,
-  "core_sha256": "1f875858409ad47eed83ded7991d7a3133eb4afafebf2c2b09cd52802c7b2fed",
-  "capture_sha256": "5105f4fa6042f7235aec6757c2f22559ad0690c5f950e8b8a4dddb9cf74155c9",
-  "proxy_sha256": "15fb3dfed69aedde7efe5a645af325abff8973301fd292c85b6981b0eb5f208c",
+  "core_rebuilt": true,
+  "core_sha256": "03f778f2308db4e94efb08351d628af669edc121a287e535da94a8152203b787",
+  "capture_sha256": "9861802cef4eedf42b35610e1351fb8fde3cc345219aaa99fde0a34b699c1843",
+  "proxy_sha256": "880fb8f28e2c9ebcf0857e66aeed9aa88b30f3e7351ba0f1a57614aaecefc514",
   "protocol_version": 1,
   "provider_capabilities": [
     "hud.configure.v1",
@@ -29,7 +29,8 @@
     "combat.abyss.v2",
     "combat.abyss.restart_scope.v1",
     "combat.rounds.v1",
-    "performance.trace.v1"
+    "performance.trace.v1",
+    "calc.quick_wheel.v2"
   ],
   "core_capabilities": [
     "capture",
@@ -59,17 +60,14 @@
     "native_performance_v1",
     "native_battle_lifecycle_v1",
     "native_performance_trace_v1",
-    "native_battle_equipped_v1"
+    "native_battle_equipped_v1",
+    "native_quick_wheel_v2"
   ],
   "validation": {
-    "build": "Release x64 candidate, selected-function protection and four final-byte signatures verified. Core and Loader reused unchanged.",
-    "focused": "23 HUD tests, performance channel/accounting, and Hook retirement fixtures passed. MCP tooling tested separately and excluded from this bundle.",
-    "isolated_final": "Exact signed five-DLL set passed loading, tamper rejection, dependencies, HUD lifecycle, trace completion and SDK-not-ready refusal. Actual performance DLL passed raw/diagnostic output, drain, reload and output failure tests.",
-    "game_developer": "Not run for this candidate.",
-    "game_protected": "Not run for this candidate; HUD behavior and runtime performance require game acceptance.",
-    "frames": "No new real-game frame measurements.",
-    "defender": "No new explicit antivirus scan for this candidate.",
-    "core_equipped": "Production mapping passed synthetic coverage checks and archived first-hit equipment projection (4 members, 32 items); live acceptance pending."
+    "build": "Merged Core 0.4.8 Release cli build with embedded core resources; independent analysis and protected DLLs unchanged.",
+    "focused": "Seven menu regressions, thirteen native clock cases (overlap), embedded-resource case and offline version/packet hello/shutdown verified.",
+    "game_protected": "No game deployment or current-build live acceptance; retained DLL/signature identities unchanged.",
+    "packet": "Embedded core resource catalog verified; offline handshake/shutdown passed."
   },
   "limits": [
     "Counterfactual modifier and formula evidence remains partial; capability advertisement does not prove runtime coverage.",
@@ -78,11 +76,13 @@
     "Conflicting configurations across halves cannot yet be replayed as multiple versions.",
     "Retail SDK removed OnAbyssStateChangeLogCallBack; only existing supported callbacks are captured.",
     "All-items collection proves the observed client containers, not complete server account assets.",
-    "Final protected host, plugins and Calc require real-game acceptance."
+    "Runtime acceptance covers native read-only synchronization and HUD binding; other protected features and visual presentation require separate acceptance."
   ],
-  "user_sha256": "c5d323b712ad0019c7b74916dae59c041934e46141cdc4678ea4547a2beb7cae",
-  "performance_sha256": "ecde84ee27434280d4479efaa89b9f2f284b96fb75652048fe0fa217c97d1dfb",
+  "user_sha256": "14f709259d73767f5e93d05cd42dbe8eaa90bcd6b786d47ec3f89bc3e21d4675",
+  "performance_sha256": "d0a42cb1fe9e5fc65f128d1afa52da8a1d4cad7ba0d2eeda93bfc0f47b5a4e89",
   "layout": "native-plugins-v3",
-  "hud_sha256": "3b44220d87b77e618281aec5124476d65c54ad05a9162a34719d172c9c543b68",
-  "core_reused": true
+  "hud_sha256": "01956a828c32b0520eae0555edbbf26f7fd40f0b82d3e2ee9daa0febe57acf80",
+  "core_reused": false,
+  "training_sha256": "ec664bc92e21d457f6b0b0158ef83ace83079524f99a2dd56172f4aa1bad3c76",
+  "sdk_tree_sha256": "5dbee82ef510d0922d330e982e63e8a9e39fa2cbb86d6f0220be658bf36553b7"
 }

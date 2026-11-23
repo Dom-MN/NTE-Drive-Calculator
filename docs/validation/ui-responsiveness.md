@@ -1,9 +1,10 @@
 # Calc UI 响应性验证记录
 
-状态：本轮代码优化、隔离专项和同条件前后对比已完成；不等同于所有页面或发行包已实机验收。
+状态：保留历史优化对比；当前基础权重基准已恢复并完成新的冷/热与资源代理测量。
+历史表不解释当前源码，当前基准不等同于整应用、低配真机或发行包验收。
 交付行为见[功能契约](../features.md#页面响应性与后台任务)，边界及目标见[优化方案](../roadmap/ui-responsiveness.md)。
 
-## 测量条件与口径
+## 历史优化：测量条件与口径
 
 - 同一台 Windows 机器，Python 3.11.9、Qt offscreen。两侧使用同一冻结的 SQLite 一致性副本、发行配置、工坊模板及图片目录。
 - 优化前源码保留开发开始时的工作区状态，包括其他开发者的未提交改动；不是拿另一个 Release 或不同账号作比较。
@@ -70,25 +71,138 @@ Ruff `E9/F63/F7/F821/F401`、差异空白及本轮 Python 文件 800 行门禁�
 
 本轮没有为使旧测试通过而放宽来源边界、删除测试或恢复废弃入口。失败定位及基线输出单独保留。
 
+## 当前基础权重基准（v2）
+
+旧工具调用已删除的页面入口，实际运行退出 1；现使用真实 BasicWeightPage、Controller、Service 和 DAO，
+以实际控件编辑/点击完成保存、重置。不改生产业务、评分或界面。
+
+- 冻结公开静态库、stats.json 和合成工坊模板；账号库由 DAO 新建，worker 以 SQLite 一致性备份建立独立写入副本，不读取真实账号。
+- 30 个独立进程 cold 样本；另一个进程内做 30 轮热刷新、保存/重置及 30 次代次刷新。每个新进程绑定一个逻辑 CPU、Qt offscreen；不清空操作系统磁盘缓存。
+- 保存等待读写 lane 物理结束、通知和清洁草稿；重置还等随后读取及投影。逐轮核对 DAO 精确值、另一角色不变和旧 owner 物理销毁。
+- 就绪时间从排队页面动作开始，包含创建/读取/投影，不包含导入、QApplication 创建及夹具准备。10 ms 心跳从准备后的新 tick 起计，结束包含完成后下一 tick。
+- P95/P99 用 nearest-rank；30 样本的 P99 接近最大值，热轮次不是独立进程样本。
+
+| 当前场景 | 样本数 | 就绪 P95（ms） | 就绪 P99（ms） | 动作窗口最大额外心跳延迟（ms） |
+| --- | ---: | ---: | ---: | ---: |
+| 进程冷态首次进入 | 30 | 113.545 | 120.453 | 12.248 |
+| 同 owner 无变化热刷新 | 30 | 13.399 | 14.154 | 2.700 |
+| 热保存 | 30 | 40.229 | 41.842 | 3.311 |
+| 热重置及后续读取 | 30 | 104.147 | 111.712 | 6.885 |
+
+31 个 worker 全部退出 0，初始/最终模型分别一致，输入/源码哈希不变。突发 30 次刷新新增 Service 读取为 0，
+但计数不是物理磁盘 I/O。最终页面、owner、宿主销毁，控件剩余 0；热重置静止点原生线程保持 13，
+关闭后仍有进程级线程/句柄，未回到导入后基线。工作集及包含导入的生命周期峰值不是动作峰值或无泄漏证明。
+动作窗口没有超过 200 ms 的额外心跳停顿，不保证真机绘制、滚动或所有功能流畅。
+
+首轮第 28 次保存因浮点预期未按真实页面三位小数取整而失败，保留原记录；工具修正后仍对 DAO 精确断言。
+真实保存故障在受控子进程验证，避免污染 pytest 日志 sinks 或导入器。10 项专项与 Ruff 硬门禁通过。
+三层逻辑超时探针连同 venv launcher 的六个已观测物理进程全部收尾；不是任意逃逸进程隔离。
+本批恢复当前可复现基线，不声称提升生产性能；历史源码缺少完整可重放输入，不拼成伪前后对比。
+
+## 当前机器真实窗口检查
+
+按维护者指定，当前电脑作为本轮低配验收对象；结论只覆盖该机器当时负载，不外推通用最低配置。
+复用同一基础权重入口与合成数据库，通过显式 `--qt-platform windows` 运行，核对实际 Qt 平台和窗口已显示；
+默认仍为 `offscreen`。本次为 1 个进程冷态样本、另一个进程内 30 轮操作及 30 次代次刷新，24 个合成角色，
+单屏 125% 缩放。未触及真实账号、游戏、驱动或安装包。
+
+| 场景 | 就绪最大值（ms） | 额外心跳延迟最大值（ms） | 结果 |
+| --- | ---: | ---: | --- |
+| 首次打开（1 个样本） | 589.160 | 347.928 | 超过预先设定的 200 ms 停顿门槛，保留未闭合 |
+| 热保存（30 轮） | 53.542 | 8.192 | 保存值、其他角色不变与物理收尾检查通过 |
+| 热重置及读取（30 轮） | 257.081 | 13.265 | 默认值恢复及物理收尾检查通过 |
+| 代次刷新（30 轮） | 192.816 | 10.303 | 旧 owner 销毁、单 owner 和冻结值检查通过 |
+
+首次停顿主要位于固定控件构造。限定源码检查未发现构造中的显式数据库/文件读取或无界循环；
+一次后续带 profile 的冷进程未复现，既不证明字体/Qt 缓存是原因，也不覆盖原失败，不据此修改生产代码。
+热轮次无超过 200 ms 的动作停顿；窗口、页面和任务 owner 已销毁，但进程级线程/缓存仍存在，不称为无泄漏证明。
+以上仅为基础权重宿主证据；整窗口的独立检查见下节，不能相互覆盖原失败。
+
+### 正式组合根与三主题的有限实窗检查
+
+同一指定电脑使用正式 `prepare_application_runtime`、GUI 启动入口及 `MainWindow`，每个主题新建隔离账号；
+保留真实目录读取、页面、保存和关闭链。离线/关闭自动同步与更新使用正式配置；仅截断游戏环境观察、
+升级引导观察和线上工坊刷新，不经过 UAC，也不将这些未执行链计为通过。单屏 125%，三份窗口均在可用屏幕内。
+
+| 有限样本 | 结果与边界 |
+| --- | --- |
+| 原色、黑色、白色各一次启动 | 导入前至目录就绪 7.15–9.15 s；窗口构造 2.27–2.45 s，不属于下面的心跳统计 |
+| 每主题首次进入 7 个本地页面 | 计算、角色、配装、仓库、工具、设置、基础权重可导航，所属 Qt 任务结束；空库存不作求解/分析成功证据 |
+| 整窗口权重保存一次 | DAO 精确值 2.125、另一角色不变、重进计算目录校验完成；保存就绪 61.56 ms，后续目录校验 1.90 s |
+| 窗口显示后的有限操作 | 三次主流程额外心跳最大 122.38–138.37 ms，不包括窗口构造，不是 30 轮热路径 P95 或整应用不卡顿证明 |
+| 关闭 | 四次窗口含局部复查均真实 close，窗口销毁、Qt 任务和观察/性能线程终结；未用隐藏窗口代替物理回收 |
+
+首轮黑色主题在“空格切回主页且任务空闲”的联合条件超时，原进程退出 1；当时缺少焦点和路由记录，
+暂不判为已定位的生产键盘缺陷。只复查该按钮时，实际焦点/激活、pressed/released/clicked 和主页切换均成立；
+原色、白色主流程同样通过该操作。原失败仍保留，不重跑整套流程追求全绿。
+人工查看三主题权重页与黑色工作台的窗口抓图，文字及主要操作未见遮挡；这些样本不覆盖全页状态、混合 DPI、持续同步或安装包。
+
+同机另用 55 件合成库存完成真实按钮、随附分析组件、预览构建及槽位保存，选出 8 件唯一装备；冻结来源、逐件评分与目标槽位一致。
+计算就绪 1.27 s，保存就绪 0.69 s，操作期间最大额外心跳 168.01 ms；保存回调含可响应的模态事件循环，不能将回调总时长解释为连续卡顿。
+再启动原隔离账号，不复制库存、不重算或重存，配装读取就绪 455.20 ms，冻结方案与显示评分一致。
+实际 End 滚动及 15 次 Tab 到末张装备卡按钮，卡片/按钮完整位于屏幕内 viewport，命中与焦点成立，抓图可见；读取后方案、槽位和库存未改变。
+读取首跑脚本过早访问未初始化缓存标记，原退出 1 保留；修正异步等待后只复跑该链。两次业务检查均真实关闭并回收任务，分配组件两个进程退出 0。
+上述单角色、单屏 125% 样本不是大库存吞吐、混合 DPI 或全部键盘操作证明。原始结果及本批脚本位于本机 `build/post-refactor-review/performance/windows-application/`。
+
+同一黑色 Windows 窗口完成三轮正式同步 Service → DAO → 页面通知，外部输入仅为受控合成租约。
+55 件完整库存快照依次为 2/3/4；角色原生观察及实际页面等级为 71/72/73，账号显式档案保持缺席；权重保存为 2.125/2.25/2.375。
+两页草稿与 Cancel 均保留，显式保存或放弃后目录更新，其他角色不变。每页 lane、全页面 worker 及同步 worker 峰值各为 1，
+每轮静止及最终三个同步线程、三个租约、事件处理器均归零，正式关闭 34.58 ms。最大额外心跳 172.04 ms，回调最大 10.02 ms；
+页面完整就绪 221–508 ms，不记为 150 ms 全就绪达标。工作集约 437→468 MB、全局线程 41→43、句柄 1587→1633，不能据三轮断言无泄漏。
+前两次脚本错误分别混淆了观察记录与显式档案、复用了上一代租约的就绪事件；原退出 1 和输入完整保留，未修改生产代码取得通过。
+本例不启动真实游戏、驱动、Core 或网络，不验证自动同步的游戏能力前置。
+
 ## 复测与回退
 
 四个入口均要求显式隔离标记及数据库一致性副本；使用冻结的配置和图片输入，不直接指向活动账号。
 
 ```powershell
-# 每个脚本分别运行优化前源码及当前源码，保持 FIXTURE 不变。
+# 以下历史入口先核对其真实消费者与完整源码；当前权重入口另见下方。
 .venv/Scripts/python.exe tools/quality/benchmark_ui_responsiveness.py --source-root SOURCE --fixture FIXTURE --output RESULT_DIR/role.json --iterations 30
 .venv/Scripts/python.exe tools/quality/benchmark_dashboard_responsiveness.py --source-root SOURCE --fixture FIXTURE --output RESULT_DIR/home.json --iterations 30
-.venv/Scripts/python.exe tools/quality/benchmark_weight_responsiveness.py --source-root SOURCE --fixture FIXTURE --output RESULT_DIR/weight.json --iterations 30
 .venv/Scripts/python.exe tools/quality/benchmark_catalog_responsiveness.py --source-root SOURCE --fixture FIXTURE --output RESULT_DIR/catalog.json --iterations 30
 .venv/Scripts/python.exe tools/quality/benchmark_ui_responsiveness.py --source-root SOURCE --fixture FIXTURE --output RESULT_DIR/models.json --models-only
 ```
 
+当前权重基准要求新建合成夹具，不给真实账号副本补标记。公开依赖及发行静态资料齐备后，
+在检出根目录执行（目录/结果路径必须不存在）：
+
+```powershell
+@'
+from pathlib import Path
+import json, shutil
+from tools.quality.benchmark_weight_responsiveness import isolate_source
+root = Path.cwd().resolve()
+isolate_source(root)
+from src.storage.sqlite.user_data_dao import UserDataDao
+fixture = root / 'build/weight-benchmark-fixture'
+fixture.mkdir(parents=True)
+(fixture / 'config').mkdir()
+shutil.copy2(root / 'data/game_static.sqlite3', fixture / 'game_static.sqlite3')
+shutil.copy2(root / 'config/stats.json', fixture / 'config/stats.json')
+(fixture / 'config/workshop_weight_template.json').write_text(json.dumps({
+    'schema_version': 1, 'payload_sha256': 'synthetic-weight-performance-v1',
+    'characters': {'1046': {'character_id': 1046, 'properties': [
+        {'property_id': 'CritBase', 'weight': 1.25, 'main_weight': 1.25}]}}}), encoding='utf-8')
+(fixture / 'ui-benchmark-fixture.json').write_text(json.dumps({
+    'isolated': True, 'synthetic': True}), encoding='utf-8')
+for name in ('user.sqlite3', 'shared.sqlite3'):
+    with UserDataDao(fixture / name, account_id='weight-benchmark'):
+        pass
+'@ | .venv/Scripts/python.exe -
+.venv/Scripts/python.exe tools/quality/benchmark_weight_responsiveness.py --fixture build/weight-benchmark-fixture --output build/weight-benchmark-v2.json --iterations 30 --cold-iterations 30 --one-cpu
+```
+
+保留聚合、逐 worker JSON、stdout/stderr、退出状态和冻结哈希。执行 wrapper 记录与 --output 使用不同路径，避免同名覆盖。
+换静态资料、模板、源码或终点后建立新基线，不覆盖已有输出。
+
 本机证据包含逐项统计 JSON/CSV、冻结源码、逐文件 SHA-256、补丁、完整验证记录和默认只预览的回退脚本。
 回退只恢复本轮代码，检查当前文件哈希，保护后续修改及其他开发者改动；不恢复账号数据库。
-补丁应用和实际回退仅在隔离副本执行。本轮没有在真实工作区撤销优化、提交、推送或打包。
+补丁应用和实际回退仅在隔离副本执行。历史性能批次没有在真实工作区撤销优化、提交或推送；后续本轮实际构建见下方交付记录。
 
 ## 尚未执行的发行门禁
 
-未运行 core/full、安装包构建、真实同步/游戏或 GPU 测量。
-三主题、键盘操作、混合 DPI、持续监听下整应用交互及内存长期趋势仍待实机核对，
+本节历史优化对比不替代 core/full；本轮集中结果、后续实际 EXE／安装器构建及隔离烟测见
+复审交付边界。系统安装、真实游戏同步或 GPU 测量仍未完成。
+三主题、键盘与合成同步交错仅覆盖上节场景；其余页面状态、混合 DPI、真实持续监听及内存长期趋势仍单列，
 统一清单见[Windows 页面响应性验收](windows.md#页面响应性实机验收)。本机隔离结果不替代这些门禁，也不标记所有卡顿已解决。

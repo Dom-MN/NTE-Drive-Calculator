@@ -1,0 +1,6 @@
+{
+  "name": "proc-macro2",
+  "version": "1.0.106",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/dtolnay/proc-macro2"
+}

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = 45
+SCHEMA_VERSION = 53
 BASE_SCHEMA_VERSION = 1
 DEFAULT_SCHEMA_PATH = Path(__file__).with_name("schema") / "001_user_data.sql"
 USER_MIGRATIONS = {
@@ -59,6 +59,14 @@ USER_MIGRATIONS = {
     43: Path(__file__).with_name("schema") / "044_user_data_v43.sql",
     44: Path(__file__).with_name("schema") / "045_user_data_v44.sql",
     45: Path(__file__).with_name("schema") / "046_user_data_v45.sql",
+    46: Path(__file__).with_name("schema") / "047_user_data_v46.sql",
+    47: Path(__file__).with_name("schema") / "048_user_data_v47.sql",
+    48: Path(__file__).with_name("schema") / "049_user_data_v48.sql",
+    49: Path(__file__).with_name("schema") / "050_user_data_v49.sql",
+    50: Path(__file__).with_name("schema") / "051_user_data_v50.sql",
+    51: Path(__file__).with_name("schema") / "052_user_data_v51.sql",
+    52: Path(__file__).with_name("schema") / "053_user_data_v52.sql",
+    53: Path(__file__).with_name("schema") / "054_user_data_v53.sql",
 }
 SYNC_METHODS = frozenset({"nte_core", "gamepad"})
 SNAPSHOT_SOURCES = frozenset({"nte_core", "vision", "gamepad", "import"})
@@ -70,7 +78,7 @@ BATTLE_REPORT_MAX_MANUAL_RECORDS = 50
 
 
 class UserDataError(RuntimeError):
-    """用户数据库无效或版本不兼容。"""
+    """用户数据库访问、结构或版本校验失败。"""
 
 
 class UserDataValidationError(UserDataError, ValueError):
@@ -103,17 +111,17 @@ def _json_object(value: Mapping[str, Any], label: str) -> str:
             allow_nan=False,
         )
     except (TypeError, ValueError) as error:
-        raise UserDataValidationError(f"{label} 无法序列化") from error
+        raise UserDataValidationError(f"{label} 无法序列化") from error  # ui-text: internal
 
 
 def _microseconds(value: Any, label: str) -> int | None:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise UserDataValidationError(f"{label} 必须是数字")
+        raise UserDataValidationError(f"{label} 必须是数字")  # ui-text: internal
     normalized = float(value)
     if not math.isfinite(normalized):
-        raise UserDataValidationError(f"{label} 必须是有限数字")
+        raise UserDataValidationError(f"{label} 必须是有限数字")  # ui-text: internal
     return int(round(normalized * 1_000_000.0))
 
 
@@ -161,15 +169,15 @@ def _mark_duplicate_modules(items: Sequence[dict[str, Any]]) -> None:
 
 def _plain_object(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, Mapping):
-        raise UserDataValidationError(f"{label} 必须是对象")
+        raise UserDataValidationError(f"{label} 必须是对象")  # ui-text: internal
     return dict(value)
 
 
 def _integer(value: Any, label: str, *, minimum: int | None = None) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
-        raise UserDataValidationError(f"{label} 必须是整数")
+        raise UserDataValidationError(f"{label} 必须是整数")  # ui-text: internal
     if minimum is not None and value < minimum:
-        raise UserDataValidationError(f"{label} 不能小于 {minimum}")
+        raise UserDataValidationError(f"{label} 不能小于 {minimum}")  # ui-text: internal
     return value
 
 
@@ -181,12 +189,12 @@ def _finite_number(
     maximum: float | None = None,
 ) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise UserDataValidationError(f"{label} 必须是数字")
+        raise UserDataValidationError(f"{label} 必须是数字")  # ui-text: internal
     normalized = float(value)
     if not math.isfinite(normalized):
-        raise UserDataValidationError(f"{label} 必须是有限数字")
+        raise UserDataValidationError(f"{label} 必须是有限数字")  # ui-text: internal
     if minimum is not None and normalized < minimum:
-        raise UserDataValidationError(f"{label} 不能小于 {minimum:g}")
+        raise UserDataValidationError(f"{label} 不能小于 {minimum:g}")  # ui-text: internal
     if maximum is not None and normalized > maximum:
-        raise UserDataValidationError(f"{label} 不能大于 {maximum:g}")
+        raise UserDataValidationError(f"{label} 不能大于 {maximum:g}")  # ui-text: internal
     return normalized

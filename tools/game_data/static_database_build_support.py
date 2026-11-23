@@ -3,8 +3,7 @@
 """从准备好的 Content 数据目录构建版本化 NTE 静态 SQLite 数据库。
 
 游戏官方文件和中间数据始终保存在项目外。本工具读取已有数据目录，镜像所需来源
-记录，标准化角色、装备和弧盘数据，并生成审计报告；不会改变应用当前基于 JSON 的
-运行逻辑。
+记录，标准化角色、装备和弧盘数据，并生成候选审计报告；本模块不执行正式发行晋升。
 """
 
 from __future__ import annotations
@@ -43,7 +42,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.domain.recommended_weights import DEFAULT_RECOMMENDED_WEIGHTS
+from src.domain.characters.recommended_weights import DEFAULT_RECOMMENDED_WEIGHTS
 
 SCHEMA_PATHS = (
     PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "002_game_static.sql",
@@ -84,9 +83,15 @@ SCHEMA_PATHS = (
     PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "037_game_static_season_evidence.sql",
     PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "038_game_static_analysis_projection.sql",
     PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "039_game_static_fork_permanent_review.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "040_game_static_summon_season.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "041_game_static_feast_mechanisms.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "042_game_static_reference_characters.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "043_game_static_likeability_gap.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "044_game_static_feast_targets.sql",
+    PROJECT_ROOT / "src" / "storage" / "sqlite" / "schema" / "045_game_static_suit_permanent.sql",
 )
-SCHEMA_VERSION = 39
-IMPORTER_VERSION = 51
+SCHEMA_VERSION = 45
+IMPORTER_VERSION = 64
 
 TABLE_PATHS = {
     "character": "DataTable/Character/DT_Character.json",
@@ -146,6 +151,7 @@ TABLE_PATHS = {
     "likeability_modify": "DataTable/PackData/ModifyData/DT_LikeabilityModifyData.json",
     "feast_stages": "DataAssets/DataAssetSet/BossDIY/DT_DiyBossStage.json",
     "feast_options": "DataAssets/DataAssetSet/BossDIY/DT_DiyBossOptions.json",
+    "feast_mechanism_text": "Text/ST_UI_hpy.json",
     "divination_text": "DataAssets/DataAssetSet/Divination/ST_Divnationbuff.json",
     "divination_curves": "DataAssets/DataAssetSet/Divination/CT_DivnationBuff.json",
     "clone_system": "DataTable/CloneSystem/CloneSystemDataTable.json",
@@ -183,6 +189,7 @@ TABLE_PATHS = {
 }
 
 STRING_TABLE_SOURCES = frozenset({
+    "feast_mechanism_text",
     "divination_text",
     "string_actor_name",
     "string_clone",
@@ -266,6 +273,20 @@ class StaticDatabaseError(RuntimeError):
     """必要的来源数据关系无法标准化。"""
 
 
+def lottery_character_ids(properties: dict[str, Any]) -> list[Any]:
+    # 新版导出使用 Ids；只接受已证实的两个拼写，冲突时拒绝晋升。
+    old = properties.get("CharacterIDs")
+    current = properties.get("CharacterIds")
+    if old is not None and current is not None and old != current:
+        raise StaticDatabaseError("卡池 CharacterIDs / CharacterIds 字段冲突")
+    value = current if current is not None else old
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise StaticDatabaseError("卡池角色列表不是数组")
+    return value
+
+
 def canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -280,6 +301,25 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def graduation_template_gaps(connection: sqlite3.Connection) -> list[dict[str, Any]]:
+    """只消费借用连接中的已证实缺项；图鉴用途不声明满练度毕业能力。"""
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "character_likeability_gap" not in tables:
+        return []
+    if "dataset_scope" not in tables:
+        raise StaticDatabaseError("毕业缺项报告缺少静态用途身份")
+    scope = connection.execute("SELECT scope FROM dataset_scope").fetchone()
+    if scope is None or scope[0] not in {"game", "reference", "role_page"}:
+        raise StaticDatabaseError("毕业缺项报告的静态用途未识别")
+    if scope[0] != "game":
+        return []
+    return [{"character_id": row[0], "reason": "likeability_source_unavailable", "source_row_id": row[1]}
+            for row in connection.execute(
+                "SELECT g.character_id,g.source_row_id FROM character_likeability_gap g "
+                "WHERE NOT EXISTS(SELECT 1 FROM character_graduation_template t WHERE t.character_id=g.character_id) "
+                "ORDER BY g.character_id")]
 
 
 def write_static_manifest(
@@ -350,7 +390,7 @@ def resolved_text_parts(
     sources: dict[str, dict[str, Any]],
     value: Any,
 ) -> tuple[str | None, str | None, str | None]:
-    """Resolve a localized text through its authoritative StringTable key."""
+    """按正式 StringTable 键解析文本；显示文本不替代关联身份。"""
 
     text, table_id, key = text_parts(value)
     if table_id and key:
@@ -434,7 +474,7 @@ def parse_plan_grid(rows: Any) -> tuple[list[tuple[int, int, str | None]], list[
 
 
 def show_time(row: dict[str, Any]) -> str | None:
-    """Return the official mainland availability time for one character row."""
+    """读取单个角色正式大陆服开放时间，缺失或格式错误保留未知。"""
 
     element = row.get("ElementData")
     if not isinstance(element, dict) or not element.get("bCheckShowTime"):

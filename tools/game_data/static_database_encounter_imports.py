@@ -7,6 +7,7 @@ import re
 from datetime import timedelta
 
 from tools.game_data.static_database_build_support import *
+from tools.game_data.static_database_feast_imports import FeastImportMixin
 
 
 _DIVINATION_PROPERTIES = {
@@ -22,6 +23,18 @@ _DIVINATION_PROPERTIES = {
 }
 
 _AUDITED_OUTER_REALM_BUFF_COMPONENTS = {
+    # 测试服 P13/P14 的六属性穿透由各自 GE Modifier 逐条核对；数值仍读同版曲线。
+    "Abyss_13": tuple(("whole_battle", "DamagePenetrate" + element,
+        "Buff_Abyss_Phase_013_Penetrate", None, None, 1)
+        for element in ("Cosmos", "Nature", "Incantation", "Chaos", "Psyche", "Lakshana")) + (
+        ("observed_recipient_effect", "DamageUpGeneralBase", "Buff_Abyss_Phase_013_Up", "Buff_Abyss_Phase_013_CD", None, 1),
+    ),
+    "Abyss_14": (("whole_battle", "DefIgnore", "Buff_Abyss_Phase_014_DefIgnore", None, None, 1),) + tuple(
+        ("observed_recipient_effect", "DamagePenetrate" + element,
+         "Buff_Abyss_Phase_014_Penetrate", "Buff_Abyss_Phase_014_CD", None, 1)
+        for element in ("Cosmos", "Nature", "Incantation", "Chaos", "Psyche", "Lakshana")),
+    "Abyss_15": (("whole_battle_summon", "DamageUpGeneralBase", "Buff_Abyss_Phase_015_SummonDmgUp", None, None, 1),),
+
     "Abyss_10": (
         ("whole_battle_qte", "DamageUpGeneralBase", "Buff_Abyss_Phase_010_Up", None, None, 1),
         ("observed_recipient_effect", "AtkUp", "Buff_Abyss_Phase_010_Atk", "Buff_Abyss_Phase_010_CD", None, 1),
@@ -72,35 +85,6 @@ _AUDITED_OUTER_REALM_BUFF_COMPONENTS = {
 }
 
 
-def _boss_id(preview_path: str) -> str:
-    match = re.search(r"/Monster/([^/]+)/", preview_path, re.IGNORECASE)
-    if match is None:
-        raise StaticDatabaseError(f"争锋赏宴预览模型无法解析怪物 ID：{preview_path}")
-    return f"{match.group(1)}_BP_DiyBoss"
-
-
-def _option_effect(option_id: str, buff_path: str | None) -> tuple[str, str | None]:
-    normalized = (buff_path or option_id).casefold()
-    if "timeop" in option_id.casefold():
-        return "time_limit", None
-    if "_hp_" in normalized or option_id.casefold().startswith("lifeop"):
-        return "health_up", None
-    if "_atk_" in normalized or option_id.casefold().startswith("attack"):
-        return "attack_up", None
-    elements = {
-        "resistcosmos": "cosmos",
-        "resistnature": "nature",
-        "resistincantation": "incantation",
-        "resistchaos": "chaos",
-        "resistphyche": "psyche",
-        "resistlakshana": "lakshana",
-    }
-    for marker, damage_type in elements.items():
-        if marker in normalized:
-            return "resistance_up", damage_type
-    return "unknown", None
-
-
 def _mainland_timestamp(value: object) -> str | None:
     if not isinstance(value, dict):
         return None
@@ -119,121 +103,14 @@ def _mainland_timestamp(value: object) -> str | None:
     )
 
 
-class EncounterImportMixin:
+class EncounterImportMixin(FeastImportMixin):
     def _import_encounter_catalogs(self) -> None:
         self._import_outer_realm_rotations()
         self._import_outer_realm_buffs()
         self._import_monster_boss_support()
         self._import_high_risk_commissions()
-        options = self.rows["feast_options"]
-        for option_id, row in sorted(options.items()):
-            node = row.get("OptionNode") or {}
-            buffs = node.get("BossBuffs") or ()
-            buff_path = asset_path(buffs[0]) if buffs else None
-            effect_kind, damage_type = _option_effect(option_id, buff_path)
-            add_percent = node.get("AddPercent")
-            self.connection.execute(
-                "INSERT INTO feast_option VALUES (?,?,?,?,?,?,?,?,?)",
-                (
-                    option_id,
-                    enum_tail(row.get("OptionType")) or "unknown",
-                    effect_kind,
-                    damage_type,
-                    (
-                        float(add_percent) / 100.0
-                        if isinstance(add_percent, (int, float))
-                        else None
-                    ),
-                    optional_int(node.get("LimitSeconds")),
-                    int(node.get("Score") or 0),
-                    buff_path,
-                    self.source_row_id("feast_options", option_id),
-                ),
-            )
-
-        for stage_id, row in sorted(self.rows["feast_stages"].items()):
-            name, _, _ = text_parts(row.get("DescName"))
-            if not name:
-                raise StaticDatabaseError(f"争锋赏宴关卡缺少名称：{stage_id}")
-            boss_id = _boss_id(str(asset_path(row.get("PreviewActorClass")) or ""))
-            resolved = self.connection.execute(
-                """
-                SELECT monster_id FROM monster_instance_profile
-                WHERE static_table = 'monster_static_big_world'
-                  AND lower(monster_id) = lower(?)
-                """,
-                (boss_id,),
-            ).fetchone()
-            if resolved is None:
-                raise StaticDatabaseError(f"争锋赏宴怪物未进入实例目录：{boss_id}")
-            boss_id = str(resolved[0])
-            source_row_id = self.source_row_id("feast_stages", stage_id)
-            self.connection.execute(
-                "INSERT INTO feast_stage VALUES (?,?,?,?,?)",
-                (
-                    stage_id,
-                    name,
-                    boss_id,
-                    bool_int(row.get("bSpecialHighDifficulty")),
-                    source_row_id,
-                ),
-            )
-            displays = {
-                int(item["Key"]): item["Value"]
-                for item in row.get("DifficultyDisplayData") or ()
-            }
-            for difficulty in row.get("DifficultyMap") or ():
-                difficulty_id = int(difficulty["Key"])
-                value = difficulty["Value"]
-                description, _, _ = text_parts(value.get("Desc"))
-                display = displays.get(difficulty_id, {})
-                boss_name, _, _ = text_parts(display.get("Desc"))
-                variant = self.connection.execute(
-                    """
-                    SELECT threshold_level, profile_set, pack_id
-                    FROM monster_instance_profile_variant
-                    WHERE static_table = 'monster_static_big_world'
-                      AND monster_id = ? AND variant_kind = 'clone_level'
-                    ORDER BY threshold_level LIMIT 1 OFFSET ?
-                    """,
-                    (boss_id, difficulty_id - 1),
-                ).fetchone()
-                if variant is None:
-                    raise StaticDatabaseError(
-                        f"争锋赏宴难度缺少怪物属性包：{stage_id}/{difficulty_id}"
-                    )
-                self.connection.execute(
-                    "INSERT INTO feast_stage_difficulty VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    (
-                        stage_id,
-                        difficulty_id,
-                        description or str(difficulty_id),
-                        boss_name or boss_id,
-                        int(value.get("BaseScore") or 0),
-                        float(value.get("ScoreRate") or 0.0),
-                        int(variant[0]),
-                        str(variant[1]),
-                        str(variant[2]),
-                        asset_path(display.get("BossIconMini")),
-                    ),
-                )
-            for category_ordinal, category in enumerate(row.get("OptionChoices") or ()):
-                category_name, _, _ = text_parts(category.get("CategoryDesc"))
-                for option_ordinal, option_id in enumerate(category.get("Options") or ()):
-                    if option_id not in options:
-                        raise StaticDatabaseError(
-                            f"争锋赏宴选项不存在：{stage_id}/{option_id}"
-                        )
-                    self.connection.execute(
-                        "INSERT INTO feast_stage_option VALUES (?,?,?,?,?)",
-                        (
-                            stage_id,
-                            category_ordinal,
-                            option_ordinal,
-                            category_name or f"选项 {category_ordinal + 1}",
-                            option_id,
-                        ),
-                    )
+        self._import_official_activity_catalog()
+        self._import_feast_catalog()
 
         texts = self.rows["divination_text"]
         for curve_id, (name, property_id, is_percent) in _DIVINATION_PROPERTIES.items():
@@ -255,10 +132,9 @@ class EncounterImportMixin:
                     self.source_row_id("divination_curves", curve_id),
                 ),
             )
-        self._import_official_activity_catalog()
 
     def _import_monster_boss_support(self) -> None:
-        """Import formal Boss membership without deriving it from an ID or name."""
+        """仅导入正式 Boss 成员关系，不从编号或名字推断。"""
 
         for template_name, row in sorted(self.rows["monster_boss_support"].items()):
             self.connection.execute(
@@ -371,7 +247,7 @@ class EncounterImportMixin:
                 "WHERE inference_ordinal IS NOT NULL"
             )
         }
-        # Retain supported historical/future definitions for explicitly selected periods.
+        # 仅为显式选择的时期保留已支持的历史/未来定义。
         active_configs |= set(_AUDITED_OUTER_REALM_BUFF_COMPONENTS) & {
             str(row[0]) for row in self.connection.execute("SELECT level_config_id FROM outer_realm_rotation")
         }
@@ -421,7 +297,7 @@ class EncounterImportMixin:
                         limit,
                         curve_id,
                         self.source_row_id("abyss_buff_curves", curve_id),
-                        (gameplay_effect_path.split(".", 1)[0] + "_effect")
+                        (gameplay_effect_path.split(".", 1)[0] + ("_Penetrate" if config_id == "Abyss_14" else "_effect"))
                         if trigger_kind == "observed_recipient_effect" else None,
                     ),
                 )
@@ -528,9 +404,7 @@ class EncounterImportMixin:
                     f"轨外配置存在冲突的大陆服生效区间：{config_id}"
                 )
             rotations_by_config[config_id] = rotation
-        # Maintainer-confirmed sequence: season 10 fills the exact gap between
-        # the officially dated seasons 9 and 11. Preserve this as an annotation,
-        # never as a fabricated quest row or a generic numeric-ID fallback.
+        # 维护者确认的第10期只填正式9/11期之间的精确空档，保持注记，不伪造任务行或通用ID回退。
         supplemental = False
         if "Abyss_10" not in rotations_by_config and "Abyss_10" in self.rows["abyss_seasons"]:
             before, after = rotations_by_config.get("Abyss_9"), rotations_by_config.get("Abyss_11")
@@ -547,10 +421,7 @@ class EncounterImportMixin:
             (config_id, *values)
             for config_id, values in rotations_by_config.items()
         ]
-        # The static dataset's ``as_of`` is an effective Mainland calendar day,
-        # i.e. data built for that day's post-reset game state.  A rotation
-        # ending during the reset window on the same date is therefore already
-        # historical and must not displace the current + next pair.
+        # as_of 表示大陆服该日重置后的状态；同日重置时结束的轮次已属历史，不挤占当前/下期。
         cutoff_date = self.as_of.isoformat()
         inference_ids = {
             row[0]: ordinal

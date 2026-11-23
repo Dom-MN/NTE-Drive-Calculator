@@ -8,7 +8,7 @@ from src.models.equipment import DriveShape
 class PuzzleCombinatorics:
     def __init__(self, shapes_db: Dict[str, DriveShape]):
         self.shapes_db = shapes_db
-        # Exclude virtual tape shape from physical puzzle
+        # 卡带的 15 格是评分当量，不占物理底盘；只枚举真实驱动形状。
         self.shape_list = [shape for shape in shapes_db.values() if shape.shape_id != "TAPE_15"]
 
     def generate_piece_combinations(
@@ -28,7 +28,7 @@ class PuzzleCombinatorics:
         remain_area = 20 - set_area
 
         if remain_area < 0:
-            raise ValueError(f"套装总面积 ({set_area}格) 已超过底盘上限 (20格)！")
+            raise ValueError(f"套装总面积 ({set_area}格) 已超过底盘上限 (20格)！")  # ui-text: internal
         if remain_area == 0:
             return [[]]
 
@@ -50,7 +50,7 @@ class PuzzleCombinatorics:
         find_combinations(remain_area, [], 0)
 
         if not all_valid_combos:
-            raise ValueError(f"无法用现有的形状库凑出刚好等于 {remain_area} 格的散件组合！")
+            raise ValueError(f"无法用现有的形状库凑出刚好等于 {remain_area} 格的散件组合！")  # ui-text: internal
 
         combo_scores = []
         for combo in all_valid_combos:

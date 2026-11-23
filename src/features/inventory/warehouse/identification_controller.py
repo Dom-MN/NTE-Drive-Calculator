@@ -1,0 +1,296 @@
+# 编排仓库卡片鉴定、同类装备对比和结果对话框。
+"""Warehouse identification and comparison controller helpers."""
+
+from __future__ import annotations
+
+from src.ui.common.enum_text import ui_enum_text
+from src.ui.common.text_catalog import TextActionButton, plain_label, plain_tooltip, resolve_text_catalog
+from typing import Any
+from functools import partial
+
+from PySide6.QtCore import QModelIndex, Qt
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QGroupBox,
+    QHBoxLayout,
+    QMessageBox,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.app.theme import themed_style
+from src.app.window_geometry import fit_dialog_to_available_screen
+from src.services.identification.matching_settings import MatchingSettingsService
+from src.app.workers import WorkerThread
+from src.features.identification.page import build_identify_result_row
+from src.features.inventory.warehouse.display.cards import warehouse_item_compare_category
+from src.services.inventory.browsing.warehouse_identification_service import WarehouseIdentificationService
+from src.services.identification.equipment_service import (
+    EquipmentIdentificationService,
+)
+
+
+def _identify_snapshot_items(
+    *,
+    database_path: Any,
+    config_dir: Any,
+    snapshot_id: int,
+    static_database_path: Any,
+    uids: tuple[str, ...],
+) -> tuple[dict[str, Any], ...]:
+    """Load and score fixed-snapshot items without calling another controller."""
+    loader = WarehouseIdentificationService(database_path)
+    matcher = EquipmentIdentificationService.from_paths(
+        config_dir=config_dir,
+        user_database_path=database_path,
+        static_database_path=static_database_path,
+    )
+    results = tuple(matcher.identify_items([loader.load_item(snapshot_id, uid) for uid in uids]))
+    MatchingSettingsService(database_path).require_identity(matcher.context.settings_identity)
+    return results
+
+
+def show_warehouse_item_identification(
+    owner: Any,
+    index: QModelIndex | None,
+    *, text_catalog=None,
+) -> None:
+    item = (
+        index.data(Qt.ItemDataRole.UserRole)
+        if index is not None
+        else None
+    )
+    snapshot_id = getattr(owner, "_warehouse_snapshot_id", None)
+    if not isinstance(item, dict) or not isinstance(snapshot_id, int):
+        return
+    active_worker = getattr(owner, "_warehouse_identification_worker", None)
+    if active_worker is not None and active_worker.isRunning():
+        return
+    _submit_identification(owner, snapshot_id, (str(item.get("uid") or ""),),
+        lambda result: show_warehouse_identification_dialog(owner, dict(item), result[0], text_catalog=text_catalog), text_catalog=text_catalog)
+
+
+def select_warehouse_compare_item(
+    owner: Any,
+    index: QModelIndex | None,
+    *, text_catalog=None,
+) -> None:
+    item = (
+        index.data(Qt.ItemDataRole.UserRole)
+        if index is not None
+        else None
+    )
+    snapshot_id = getattr(owner, "_warehouse_snapshot_id", None)
+    if not isinstance(item, dict) or not isinstance(snapshot_id, int):
+        return
+    category = warehouse_item_compare_category(item)
+    first = getattr(owner, "_warehouse_compare_first", None)
+    if first is None:
+        owner._warehouse_compare_first = {
+            "item": dict(item),
+            "category": category,
+        }
+        owner.warehouse_hint.setText(
+            resolve_text_catalog(text_catalog).render('ui.inventory.select_warehouse_compare_item.warehouse_hint', value=f"{item.get('display_name') or item.get('title')}")
+        )
+        owner.warehouse_hint.show()
+        return
+    first_item = first["item"]
+    if str(first_item.get("uid")) == str(item.get("uid")):
+        QMessageBox.information(
+            owner, resolve_text_catalog(text_catalog).render('ui.inventory.select_warehouse_compare_item.qmessagebox'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.inventory.select_warehouse_compare_item.qmessagebox_2'))
+        )
+        return
+    if first["category"] != category:
+        QMessageBox.warning(
+            owner, resolve_text_catalog(text_catalog).render('ui.inventory.select_warehouse_compare_item.qmessagebox'), plain_tooltip(resolve_text_catalog(text_catalog).render('ui.inventory.select_warehouse_compare_item.qmessagebox_3'))
+        )
+        return
+    active_worker = getattr(owner, "_warehouse_identification_worker", None)
+    if active_worker is not None and active_worker.isRunning():
+        return
+    owner._warehouse_compare_first = None
+    _submit_identification(owner, snapshot_id,
+        (str(first_item.get("uid") or ""), str(item.get("uid") or "")),
+        lambda result: show_warehouse_identification_comparison(owner, dict(first_item), dict(item), result, text_catalog=text_catalog), text_catalog=text_catalog)
+
+
+def _submit_identification(owner, snapshot_id, uids, deliver, *, text_catalog=None):
+    context = owner.app_context
+    database = context.account.user_database_path
+    generation = context.generation
+    def current():
+        return context.generation == generation and context.account.user_database_path == database
+    def received(results):
+        if not current():
+            return
+        try:
+            for result in results:
+                MatchingSettingsService(database).require_identity(result["matching_settings_identity"])
+        except Exception:
+            # 旧结果不继续显示，配装和仓库事实保持不变。
+            owner.warehouse_hint.setText(owner.role_suit_matching.catalog.render("matching.stale"))
+            owner.warehouse_hint.show()
+            return
+        deliver(results)
+    worker = WorkerThread(target=partial(_identify_snapshot_items, database_path=database,
+        config_dir=context.paths.config_dir, static_database_path=context.paths.equipment_allocation_database_path,
+        snapshot_id=snapshot_id, uids=uids), parent=owner)
+    owner._warehouse_identification_worker = worker
+    worker.result_ready.connect(received)
+    worker.error.connect(lambda error: QMessageBox.warning(owner, resolve_text_catalog(text_catalog).render('ui.inventory.submit_identification.qmessagebox'), ui_enum_text(text_catalog, str(error))) if current() else None)
+    worker.start()
+
+
+def _matching_controls(owner, dialog, layout, content, results):
+    matching = owner.role_suit_matching
+    notice = plain_label()
+    notice.setTextFormat(Qt.PlainText)
+    notice.setWordWrap(True)
+    if any(result.get("matching_status") == "incomplete" for result in results):
+        notice.setText(matching.catalog.render("matching.incomplete"))
+    notice.setVisible(bool(notice.text()))
+    layout.addWidget(notice)
+    # 两种鉴定弹窗共用紧凑页脚；打开套装编辑不接受或关闭当前结果窗口。
+    footer = QHBoxLayout()
+    footer.addStretch()
+    button = TextActionButton(matching.catalog.render("matching.title"))
+    button.setObjectName("btnNew")
+    button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+    button.setToolTip(plain_tooltip(matching.catalog.render("matching.scope_hint")))
+    button.clicked.connect(lambda: matching.open(dialog))
+    footer.addWidget(button)
+    buttons = QDialogButtonBox(QDialogButtonBox.Close)
+    buttons.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+    buttons.rejected.connect(dialog.reject)
+    footer.addWidget(buttons)
+    layout.addLayout(footer)
+    database = owner.app_context.account.user_database_path
+    def invalidated(request):
+        if request.database == database:
+            content.setEnabled(False)
+            notice.setText(matching.catalog.render("matching.stale"))
+            notice.show()
+    matching.changed.connect(invalidated)
+    dialog.finished.connect(lambda _: matching.changed.disconnect(invalidated))
+
+
+def show_warehouse_identification_dialog(
+    owner: Any,
+    item: dict[str, Any],
+    result: dict[str, Any],
+    *, text_catalog=None,
+) -> None:
+    del item
+    dialog = QDialog(owner)
+    dialog.setWindowTitle(resolve_text_catalog(text_catalog).render('ui.inventory.show_warehouse_identification_dialog.dialog'))
+    dialog.resize(560, 520)
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(16, 16, 16, 12)
+    layout.setSpacing(10)
+    scroll = QScrollArea(dialog)
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(
+        Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    content = QWidget()
+    content_layout = QVBoxLayout(content)
+    content_layout.setContentsMargins(2, 2, 2, 2)
+    content_layout.setSpacing(8)
+    match_group = QGroupBox(resolve_text_catalog(text_catalog).render('ui.inventory.show_warehouse_identification_dialog.match_group'))
+    match_layout = QVBoxLayout(match_group)
+    match_layout.setSpacing(8)
+    rows = list(result.get("rows") or []) if isinstance(result, dict) else []
+    if rows:
+        for rank, row in enumerate(rows, start=1):
+            match_layout.addWidget(
+                build_identify_result_row(
+                    rank,
+                    row,
+                    game_ui_asset_root=owner.app_context.paths.game_ui_asset_root,
+                    catalog=owner.role_suit_matching.catalog,
+                )
+            )
+    else:
+        empty = plain_label(owner.role_suit_matching.catalog.render(
+            "matching.incomplete" if result.get("matching_status") == "incomplete" else "matching.unmatched"))
+        empty.setWordWrap(True)
+        empty.setStyleSheet(themed_style("color:#8b949e"))
+        match_layout.addWidget(empty)
+    content_layout.addWidget(match_group)
+    content_layout.addStretch()
+    scroll.setWidget(content)
+    layout.addWidget(scroll, 1)
+    _matching_controls(owner, dialog, layout, scroll, (result,))
+    fit_dialog_to_available_screen(dialog, dialog.size())
+    dialog.exec()
+    dialog.deleteLater()
+
+
+def show_warehouse_identification_comparison(
+    owner: Any,
+    left: dict[str, Any],
+    right: dict[str, Any],
+    results: tuple[dict[str, Any], dict[str, Any]],
+    *, text_catalog=None,
+) -> None:
+    dialog = QDialog(owner)
+    dialog.setWindowTitle(resolve_text_catalog(text_catalog).render('ui.inventory.show_warehouse_identification_comparison.dialog'))
+    dialog.resize(1120, 620)
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(16, 16, 16, 12)
+    columns = QHBoxLayout()
+    columns.setSpacing(12)
+    for title, item, result in (
+        ("左栏", left, results[0]),
+        ("右栏", right, results[1]),
+    ):
+        group = QGroupBox(
+            f"{title} · {item.get('display_name') or item.get('title')}"
+        )
+        group_layout = QVBoxLayout(group)
+        scroll = QScrollArea(group)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(2, 2, 2, 2)
+        rows = (
+            list(result.get("rows") or [])
+            if isinstance(result, dict)
+            else []
+        )
+        if rows:
+            for rank, row in enumerate(rows, start=1):
+                content_layout.addWidget(
+                    build_identify_result_row(
+                        rank,
+                        row,
+                        game_ui_asset_root=(
+                            owner.app_context.paths.game_ui_asset_root
+                        ),
+                        catalog=owner.role_suit_matching.catalog,
+                    )
+                )
+        else:
+            empty = plain_label(owner.role_suit_matching.catalog.render(
+                "matching.incomplete" if result.get("matching_status") == "incomplete" else "matching.unmatched"))
+            empty.setWordWrap(True)
+            empty.setStyleSheet(themed_style("color:#8b949e"))
+            content_layout.addWidget(empty)
+        content_layout.addStretch()
+        scroll.setWidget(content)
+        group_layout.addWidget(scroll)
+        columns.addWidget(group, 1)
+    container = QWidget()
+    container.setLayout(columns)
+    layout.addWidget(container, 1)
+    _matching_controls(owner, dialog, layout, container, results)
+    fit_dialog_to_available_screen(dialog, dialog.size())
+    dialog.exec()
+    dialog.deleteLater()

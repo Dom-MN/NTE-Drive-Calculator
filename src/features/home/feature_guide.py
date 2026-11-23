@@ -1,8 +1,7 @@
 # 以无音效的普通弹窗展示工作台功能入口与简短操作说明。
 from __future__ import annotations
 
-from src.i18n import tr
-
+from src.ui.common.text_catalog import TextActionButton, plain_label, resolve_text_catalog
 from dataclasses import dataclass
 from collections.abc import Callable
 
@@ -14,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from src.app.theme import themed_style
 from src.app.window_geometry import fit_dialog_to_available_screen
+from src.ui.common.enum_text import ui_enum_text
 
 
 @dataclass(frozen=True)
@@ -105,22 +105,25 @@ FEATURE_GUIDES = (
 
 
 class FeatureGuideDialog(QDialog):
-    """Use a plain QDialog rather than an audible system message box."""
+    """普通帮助使用无系统提示音的 QDialog，导航仅消费显式点击。"""
 
-    def __init__(self, parent: QWidget, guide: FeatureGuide, navigate: Callable[[str], None]):
+    def __init__(self, parent: QWidget, guide: FeatureGuide, navigate: Callable[[str], None], *, text_catalog=None):
         super().__init__(parent)
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self.setObjectName("featureGuideDialog")
-        self.setWindowTitle(tr("{title} · 功能说明", title=tr(guide.title)))
+        # 引导表保留中文原文作身份；展示时经冻结目录投影为译文。
+        tr = lambda text: ui_enum_text(self.text_catalog, text)  # noqa: E731
+        self.setWindowTitle(tr(guide.title) + resolve_text_catalog(text_catalog).render('ui.home.init.self_3'))
         self.setWindowModality(Qt.WindowModal)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 16)
         layout.setSpacing(14)
 
-        heading = QLabel(tr(guide.title), self)
+        heading = plain_label(tr(guide.title), self)
         heading.setObjectName("featureGuideDialogTitle")
         heading.setStyleSheet(themed_style("font-size:18px;font-weight:700;color:#f0f6fc"))
         layout.addWidget(heading)
-        entry = QLabel(tr("入口：{entry}", entry=tr(guide.entry)), self)
+        entry = plain_label(resolve_text_catalog(text_catalog).render('ui.home.init.entry') + tr(guide.entry), self)
         entry.setObjectName("featureGuideEntry")
         entry.setWordWrap(True)
         layout.addWidget(entry)
@@ -134,13 +137,11 @@ class FeatureGuideDialog(QDialog):
         content_layout.setSpacing(10)
         for section in guide.sections:
             if section.title:
-                title = QLabel(tr("{title}：", title=tr(section.title)), content)
+                title = plain_label(tr(section.title) + "：", content)
                 title.setStyleSheet(themed_style("font-weight:700;color:#58a6ff"))
                 content_layout.addWidget(title)
             for index, line in enumerate(section.lines, 1):
-                label = QLabel(
-                    tr("{index}. {line}", index=index, line=tr(line))
-                    if section.numbered else tr(line), content)
+                label = plain_label(f"{index}. {tr(line)}" if section.numbered else tr(line), content)
                 label.setWordWrap(True)
                 label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
                 content_layout.addWidget(label)
@@ -154,30 +155,59 @@ class FeatureGuideDialog(QDialog):
             button = QPushButton(tr(text), self)
             button.clicked.connect(lambda _checked=False, target=key: self._navigate(navigate, target))
             actions.addWidget(button)
-        close = QPushButton(tr("关闭"), self)
+        close = TextActionButton(resolve_text_catalog(text_catalog).render('common.close'), self)
         close.setDefault(True)
         close.clicked.connect(self.reject)
         actions.addWidget(close)
         layout.addLayout(actions)
-        fit_dialog_to_available_screen(self, QSize(650, 480 if guide.title == "弃置锁定" else 360))
+        if guide.title in {"弃置锁定", "空幕鉴定", "倒带推荐", "边际计算"}:
+            self._fit_compact_content(layout, heading, entry, scroll, content_layout, actions)
+        else:
+            fit_dialog_to_available_screen(self, QSize(650, 360))
+
+    def _fit_compact_content(self, layout, heading, entry, scroll, content_layout, actions):
+        """先约束宽度，再按实际换行测高度；长说明仍由原正文视口滚动。"""
+        self.ensurePolished()
+        layout.activate()
+        margins = layout.contentsMargins()
+        labels = [heading, entry, *scroll.widget().findChildren(QLabel)]
+        natural_width = max(label.fontMetrics().horizontalAdvance(label.text()) for label in labels)
+        preferred_width = max(440, min(650, natural_width + margins.left() + margins.right() + 8))
+        fitted = fit_dialog_to_available_screen(self, QSize(preferred_width, 360))
+        # 按实际内容宽度测量，标题与入口不受正文滚动条影响。
+        body_width = max(1, self.contentsRect().width() - margins.left() - margins.right())
+        # QScrollArea 不向外传播正文的 heightForWidth，不能拿它的固定 sizeHint 猜空白。
+        # 预留主题滚动条宽度，避免初次布局按旧 sizeHint 先加滚动条、再挤窄正文的循环。
+        text_width = max(1, body_width - 2 * scroll.frameWidth() - scroll.verticalScrollBar().sizeHint().width())
+        content_height = content_layout.heightForWidth(text_width)
+        if content_height < 0:
+            content_height = content_layout.sizeHint().height()
+        entry_height = entry.heightForWidth(body_width)
+        if entry_height < 0:
+            entry_height = entry.sizeHint().height()
+        height = (margins.top() + margins.bottom() + 3 * layout.spacing()
+                  + heading.sizeHint().height() + entry_height + actions.sizeHint().height()
+                  + content_height + 2 * scroll.frameWidth()
+                  + self.height() - self.contentsRect().height())
+        fit_dialog_to_available_screen(self, QSize(fitted.width(), height))
 
     def _navigate(self, navigate: Callable[[str], None], key: str) -> None:
         self.accept()
         navigate(key)
 
 
-def add_feature_guides(layout: QVBoxLayout, parent: QWidget, navigate: Callable[[str], None]) -> None:
-    """Show six small buttons on one row without executing the feature."""
+def add_feature_guides(layout: QVBoxLayout, parent: QWidget, navigate: Callable[[str], None], *, text_catalog=None) -> None:
+    """只打开功能说明；不通过帮助按钮启动同步、装配或其他业务。"""
     row = QHBoxLayout()
     row.setSpacing(10)
     for guide in FEATURE_GUIDES:
-        button = QPushButton(tr(guide.title), parent)
+        title = ui_enum_text(text_catalog, guide.title)
+        button = QPushButton(title, parent)
         button.setObjectName("featureGuideButton")
-        button.setAccessibleName(tr("{title}说明", title=tr(guide.title)))
-        # 88px fitted a four-character Chinese label; English needs the room.
-        button.setMinimumWidth(88)
+        button.setAccessibleName(title + resolve_text_catalog(text_catalog).render('ui.home.add_feature_guides.button'))
+        button.setFixedWidth(88)
         button.clicked.connect(
-            lambda _checked=False, item=guide: FeatureGuideDialog(parent, item, navigate).exec()
+            lambda _checked=False, item=guide: FeatureGuideDialog(parent, item, navigate, text_catalog=text_catalog).exec()
         )
         row.addWidget(button)
     row.addStretch()

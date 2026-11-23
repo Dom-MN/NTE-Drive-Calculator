@@ -3,8 +3,7 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
-
+from src.ui.common.text_catalog import plain_label, resolve_text_catalog
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +13,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QLabel,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -22,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from src.app.theme import themed_style
 from src.features.static_catalog.contracts import CatalogDomain
-from src.services.game_ui_asset_catalog import GameUiAssetCatalog
+from src.integrations.game_assets.catalog import GameUiAssetCatalog
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,8 +82,10 @@ class CatalogMenuCard(QFrame):
         art: QPixmap | None,
         available: bool,
         parent: QWidget | None = None,
+        text_catalog=None,
     ) -> None:
         super().__init__(parent)
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self._entry = entry
         self._available = available
         self.setObjectName(f"staticCatalogMenuCard_{entry.domain_key}")
@@ -114,16 +114,16 @@ class CatalogMenuCard(QFrame):
         root.setSpacing(10)
         copy = QVBoxLayout()
         copy.setSpacing(4)
-        kicker = QLabel(tr(self._entry.kicker), self)
+        kicker = plain_label(self._entry.kicker, self)
         kicker.setStyleSheet(themed_style(
             f"color:{self._entry.accent};font-size:9px;font-weight:800;letter-spacing:1px"
         ))
-        title = QLabel(tr(self._entry.title), self)
+        title = plain_label(self._entry.title, self)
         title.setStyleSheet(themed_style("color:#f0f6fc;font-size:17px;font-weight:900"))
-        description = QLabel(tr(self._entry.description), self)
+        description = plain_label(self._entry.description, self)
         description.setWordWrap(True)
         description.setStyleSheet(themed_style("color:#8b949e;font-size:11px;line-height:1.35"))
-        state = QLabel(tr("进入  ›") if self._available else tr("当前发行不可用"), self)
+        state = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.build.state') if self._available else resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.build.state_2'), self)
         state.setStyleSheet(themed_style(
             f"color:{self._entry.accent if self._available else '#6e7681'};"
             "font-size:11px;font-weight:800;margin-top:4px"
@@ -134,7 +134,7 @@ class CatalogMenuCard(QFrame):
         copy.addWidget(state)
         root.addLayout(copy, 1)
 
-        art_label = QLabel(self)
+        art_label = plain_label(self)
         art_label.setFixedSize(68, 76)
         art_label.setAlignment(Qt.AlignCenter)
         if art is not None and not art.isNull():
@@ -142,7 +142,7 @@ class CatalogMenuCard(QFrame):
                 68, 76, Qt.KeepAspectRatio, Qt.SmoothTransformation
             ))
         else:
-            art_label.setText(tr(self._entry.glyph))
+            art_label.setText(self._entry.glyph)
             art_label.setStyleSheet(themed_style(
                 f"color:{self._entry.accent};background:#0d1117;"
                 f"border:1px solid {self._entry.accent};border-radius:12px;"
@@ -175,8 +175,10 @@ class StaticCatalogMenu(QWidget):
         *,
         game_ui_asset_root: str | Path | None,
         parent: QWidget | None = None,
+        text_catalog=None,
     ) -> None:
         super().__init__(parent)
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self.setObjectName("staticCatalogMenu")
         self._asset_catalog = (
             GameUiAssetCatalog(game_ui_asset_root)
@@ -210,8 +212,7 @@ class StaticCatalogMenu(QWidget):
         available = {domain.key for domain in domains if domain.key != "coverage"}
         self._content.addWidget(self._hero())
         for group_key, title, subtitle in MENU_GROUPS:
-            heading = QLabel(tr("{title}  ·  {subtitle}",
-                                title=tr(title), subtitle=tr(subtitle)), self)
+            heading = plain_label(f"{title}  ·  {subtitle}", self)
             heading.setWordWrap(True)
             heading.setStyleSheet(themed_style(
                 "color:#c9d1d9;font-size:12px;font-weight:800;margin-top:1px"
@@ -228,6 +229,7 @@ class StaticCatalogMenu(QWidget):
                     art=self._art(entry),
                     available=entry.domain_key in available,
                     parent=self,
+                    text_catalog=getattr(self, 'text_catalog', None),
                 )
                 card.activated.connect(self.domain_selected)
                 cards.append(card)
@@ -267,13 +269,13 @@ class StaticCatalogMenu(QWidget):
         layout = QHBoxLayout(hero)
         layout.setContentsMargins(14, 7, 10, 7)
         copy = QVBoxLayout()
-        eyebrow = QLabel("NTE · GAME DATA ARCHIVE", hero)
+        eyebrow = plain_label("NTE · GAME DATA ARCHIVE", hero)
         eyebrow.setStyleSheet(themed_style(
             "color:#58a6ff;font-size:10px;font-weight:900;letter-spacing:2px"
         ))
-        title = QLabel(tr("游戏资料库"), hero)
+        title = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('navigation.page.static_catalog'), hero)
         title.setStyleSheet(themed_style("color:#f0f6fc;font-size:21px;font-weight:900"))
-        subtitle = QLabel(tr("选择一个档案领域。每个入口只呈现与该领域有关的正式数据和关系。"), hero)
+        subtitle = plain_label(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.static_catalog.hero.subtitle'), hero)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(themed_style("color:#8b949e;font-size:12px"))
         copy.addWidget(eyebrow)
@@ -283,7 +285,7 @@ class StaticCatalogMenu(QWidget):
         layout.addLayout(copy, 1)
         art = self._resolve_art("character", ("1036",))
         if art is not None and not art.isNull():
-            label = QLabel(hero)
+            label = plain_label(hero)
             label.setFixedSize(76, 66)
             label.setAlignment(Qt.AlignBottom | Qt.AlignHCenter)
             label.setPixmap(art.scaled(76, 76, Qt.KeepAspectRatio, Qt.SmoothTransformation))

@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from src.storage.sqlite.fork_permanent_projection import (
+from src.storage.sqlite.catalog.fork_permanent_projection import (
     FORK_PERMANENT_EVIDENCE_SQL,
     FORK_REFINEMENT_LEVEL_SQL,
     FORK_SOURCE_COVERAGE_SQL,
@@ -41,7 +41,7 @@ class CatalogImportMixin:
         self._validate_fork_refinement_links()
 
     def _import_fork_permanent_properties(self) -> None:
-        """Project complete unconditional curves and retain an audit for misses."""
+        """只投影完整无条件曲线；逐件记录未命中原因，不用零值补齐。"""
 
         resolved, audit = resolve_projection_rows(
             cursor_dicts(self.connection.execute(FORK_PERMANENT_EVIDENCE_SQL)),
@@ -111,10 +111,12 @@ class CatalogImportMixin:
         for table, table_asset_path in (
             ("equipment_buff_curves", "/Game/DataTable/Equipment/CT_Equipmentbuff"),
             ("fork_buff_curves", "/Game/DataTable/Fork/CT_ForkBuff"),
+            ("abyss_buff_curves", "/Game/DataAssets/DataAssetSet/Abyss/CT_AbyssBuff"),
         ):
             rows.extend(
                 (table_asset_path, str(curve_id), curve, self.source_row_id(table, curve_id))
-                for curve_id, curve in self.rows[table].items()
+                # 角色页窄目录不读取深渊表；完整库/参考图鉴拥有该来源时必须同步正式曲线。
+                for curve_id, curve in self.rows.get(table, {}).items()
             )
         for table_asset_path, curve_id, curve, source_row_id in rows:
             self.connection.execute(
@@ -377,6 +379,13 @@ class CatalogImportMixin:
                     raise StaticDatabaseError(
                         f"推荐弧盘不是对象：{character_id}/{ordinal}"
                     )
+                fork_id = recommendation.get("ForkItemId")
+                # 当前官方表以 FName None 明确表示空推荐，不创建虚假弧盘身份。
+                # 缺字段或非空但无对应弧盘仍须失败，不能把解析缺项当成空推荐。
+                if fork_id == "None":
+                    continue
+                if not isinstance(fork_id, str) or not fork_id:
+                    raise StaticDatabaseError(f"推荐弧盘身份缺失：{character_id}/{ordinal}")
                 self.connection.execute(
                     """
                     INSERT INTO character_cultivation_fork_recommendation
@@ -385,7 +394,7 @@ class CatalogImportMixin:
                     (
                         character_id,
                         ordinal,
-                        str(recommendation.get("ForkItemId") or ""),
+                        fork_id,
                         _localized_text(recommendation.get("Desc")),
                         optional_text(recommendation.get("SourceID")),
                     ),

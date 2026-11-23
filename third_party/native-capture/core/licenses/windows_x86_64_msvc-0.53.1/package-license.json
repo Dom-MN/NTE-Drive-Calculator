@@ -1,0 +1,6 @@
+{
+  "name": "windows_x86_64_msvc",
+  "version": "0.53.1",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/microsoft/windows-rs"
+}

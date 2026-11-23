@@ -1,7 +1,5 @@
 # 外部集成与扩展
 
-*[English](en/integrations.md) · 简体中文*
-
 本文说明外部能力进入项目时的边界。业务所有权与生命周期见 [系统架构](architecture.md)，真实环境步骤
 见 [Windows 验收](validation/windows.md)。
 
@@ -11,7 +9,7 @@
 组件冒烟验证须将 Core 放入独立目录再启动，避免从可执行文件的父目录意外读取开发资源。
 缺少必需资源的启动失败显示为采集组件缺失，不能只显示标准输出关闭。
 
-`src/integrations/nte_core.py` 负责 stdio 协议、进程、事件和错误适配，不负责评分、配装或 UI。当前产品
+`src/integrations/native_core/nte_core.py` 负责 stdio 协议、进程、事件和错误适配，不负责评分、配装或 UI。当前产品
 使用的能力包括：
 
 - `capture.detect`；
@@ -27,8 +25,8 @@
 仓库状态写回中，明确未派发的 `source_changed` 与 `EQUIPMENT_PLUGIN_BUSY` 只对当前指令按 10–640ms 的短退避重试；
 `source_changed` 重试前仅在异常路径核对提供方和对象域仍属于本批次。超时、结果未知、上下文变化及其他失败不重试。
 同一装备的多步状态严格串行；全部指令完成后，只通过新的完整背包快照统一核对最终状态。
-极速装配另有当前指令退避与释放读取锁后的完整观测恢复，实施策略和验收状态见
-[极速装配来源恢复](roadmap/equipment-apply-source-recovery.md)。该策略不修改 Core/DLL 的来源校验或派发协议。
+极速装配另有当前指令退避与释放读取锁后的完整观测恢复，现有行为见
+[极速装配与游戏界面自动装配](features.md#8-极速装配与游戏界面自动装配)。该策略不修改 Core/DLL 的来源校验或派发协议。
 
 设置页的 nte-core 抓包诊断只调用 `capture.detect`，并以 Windows 只读探测补充 Npcap 驱动服务、已启用
 适配器、Npcap 安装痕迹和常见 `wpcap.dll`/`Packet.dll` 位置的摘要。它不创建抓包会话，不读写网络配置，
@@ -62,7 +60,7 @@ Core 已脱敏字段，战报数据库不保存网络包、端点或 PCAP。设�
 保留供逐击合计审计，不新增页面业务指标、不单独投影为历史字段，也不进入伤害、DPS、角色贡献或生命上限
 结算公式。抓包来源的正式生命上限结算消费最终完整轴的逐击 `max_hp_reduction`；DLL 来源由独立分析核心
 核对完整结算分量、生命与上限采样阶段，再生成独立派生结算。具体数值与置信度见
-[生命上限结算](reference/damage-calculation.md#战报最大生命下降结算)，不把原始上限变化直接当成实际伤害。
+[生命上限结算](reference/damage/README.md)，不把原始上限变化直接当成实际伤害。
 每场采集在握手后冻结 `core_version`、协商协议、数据版本和 nte-core EXE SHA-256，并随战报持久化；同为
 battle contract v5 但 Core 构建不同的记录不得仅凭 contract version 视为同一解析语义。原始
 summary 和逐击 JSON 保持 Core 返回值；对照采集仅在保存的 record 顶层增加独立的
@@ -111,6 +109,16 @@ v5 的 `null` 压缩区间不会伪装成 Q 或 type6。
 `combat-clock` 插件的时停变化及区间规则；时钟不可用、区间缺口等必须保留未知或不完整标记，不能
 把恢复连接当作整场完整。双路同时采集的游戏内覆盖、时序及性能仍需实机验收。
 
+### 同版采集目录与来源验收
+
+`tools/game_data/export_native_sync_catalogs.py --source <Content> --resources <集成仓库/res/data> --output <隔离候选>`
+从同批官方表重建角色身份、装备数值、形状与角色图纸，供低风险抓包的 JSON/内嵌目录消费；当前原生入口另从 Calc 静态库投影。
+旧目录仅提供经正式 ID 核对的显示翻译和图标，不提供本批计算数值。属性按来源正式 ID 全集导出，报告来源/输出数量、新增 ID 及输出哈希；单位缺失不补假值，新属性缺可靠外语译文时显式显示正式 ID 并登记兜底。
+仅补角色名字不足以支持背包：合法图纸和完整形状仍须通过实际投影校验。NPC／试用／变身行不按物理表行数自动登记为永久角色。
+实际执行物与资源选择分别核对，外置 JSON 可能优先于内嵌资源；握手或目录加载通过不代表新版背包报文已完成解析和正式提交。
+目录候选不改变运行时。安装与采集组件构建在独立集成仓库完成；成套晋升时核对正式原生包与 Calc 采集入口指向同一 EXE，版本相同仍核对哈希。分析组件另行核对静态 schema、协议和页面能力。
+缺新版背包样本时保留[待验收项](roadmap.md)，不以原生或旧样本验证代替抓包验收。
+
 ### DLL 原始快照排错保存
 
 Core 声明 `native_snapshot_inline_raw_v1` 时，背包与角色正式分页同时携带同页原始记录。自动同步与战报准备
@@ -125,6 +133,9 @@ Core 声明 `native_snapshot_inline_raw_v1` 时，背包与角色正式分页同
 
 Calc 在共享原生连接核对时通过 `native.diagnostics.configure {enabled: bool}` 应用当前诊断授权和账号设置；
 未开启时不创建快照文件。该控制只作用于 Core 本机归档，不改变 DLL 的采集开关。
+Core 未声明归档能力而设置已开启时，记录本次未保存排错数据的警告，保留原设置并继续已授权业务；
+同一连接与设置状态不重复警告，重连后重新协商。缺少可选归档能力不阻断背包、角色同步或战报。
+声明支持却返回协议错误、连接故障等情况仍按原生会话故障处理，不将组件不一致静默视为可选能力缺失。
 
 启用后，Core 在原始响应校验和业务投影之前保存实际请求到的 `character`、`inventory`、`team`、`environment`
 域请求、状态、refresh 元数据及原始分页，并关联转换错误；失败和不完整响应也保留。它不额外触发游戏扫描，
@@ -217,20 +228,52 @@ complete、sourceCoverage 和 integrityReasons。试用采集尚未验证完整�
 ### 1.1 nte-analysis-core
 
 `nte-analysis-core.exe` 是独立 Rust 分析组件，与采集用 `nte-core.exe` 分别构建、部署和管理进程。
-计算页的计算按钮要求组件声明并实际支持 `allocation_v1`。应用门面核对组件清单、哈希与能力后，
-将已排除锁定 UID 的冻结库存、角色配置、图纸、属性目录和组合预算交给独立进程；Rust 负责评分、
-候选筛选、角色优先分配、同级匹配、同分预留和约束修复。Python 保留图纸生成、结果渲染及原有
-预览保存边界，响应恢复前核对角色、图纸、装备身份和 UID 唯一性。缺失或失败明确报告组件错误，
-不回退 Python 分配。取消和超时终止并回收本次分析进程；协议不读取账号库，也不写入装备状态。
+
+Windows 的单次页面／分配作业可持有明确 owner 的资源读取租约：文件拒写拒替换，逐层固定非重解析祖先目录，
+首次完整核对组件字节及清单后，在租约存活期间复用核验；账号代次、取消、响应身份及战报输入摘要检查不省略。
+资源检查仍通过存活文件句柄核对时间元数据，变化时回到完整路径身份核对；仅凭路径、mtime 或缓存命中不跳过首次哈希。
+线程／上下文不共享租约，结束或异常立即释放，下一次请求重新核验；无 Windows 文件 pin 时仍逐次核对。
+持有静态读取单元的调用方可借用其尚未关闭的 pin 做最终来源、清单、旁车与路径绑定复核，不重复打开并哈希整库；
+脱离该 owner 的预览／保存继续完整核验，旧读取单元关闭后不再有效。
+Windows 静态读取先检查原始路径及祖先的重解析属性，再统一短目录名等价拼写为规范路径；
+文件 pin、清单、SQLite、借用读取和提交复核共用此路径身份。不因长短路径写法不同误拒绝普通本机文件，
+也不以规范化绕过原始符号链接、目录联接、非固定磁盘、旁车、占用或发行字节校验。
+默认调用与 `--progress` 保留一次性进程；声明 `analysis_worker_v1` 时，存活的同任务 `verified_session` 可复用一个串行工作进程。会话握手固定数据集和随机身份，长度帧先校验大小、请求严格递增并回显序号；正文保持原请求字节，原有战报前后身份请求不合并。每次 Rust 请求仍独立冻结事实和预算。退出租约、取消、超时或异常时 kill/wait 并关闭管道、回收 IO 线程；失败不重发，不跨账号/线程/任务复用。没有应用级常驻进程或账号事实缓存。
+
+完整伤害作业的原始装备和评分投影共用同一次一致快照读取，合法性及正式属性校验保留；
+冻结、模型输入准备、编码、组件执行、解码与验收按常量阶段计时。声明 `analysis_stage_timings_v1` 的组件另返回图纸、B0、后处理、结果核对和轴投影/重放/比较的数值阶段。父子耗时不相加，不把传输或整体墙钟冒充搜索核耗时。
+
+
+队伍轴伤毕业的基准、当前评价、养成建议、装备/词条建议及固定轴比例按各自操作能力接入随附分析组件；EXE、清单、许可和来源声明成套绑定。固定轴比例使用显式策略请求，旧未选择策略的请求不增加该响应字段；动作/资源可执行性仍单列未证实。新能力不成为既有打包或战报功能的额外硬门禁，也不声明全角色完整毕业能力。协议与身份语义见[队伍轴伤基准协议](reference/team-axis-graduation-protocol.md)，候选来源、正式EXE和剩余验收见[验证记录](validation/team-axis-graduation.md#26-release候选正式exe与成套晋升)。
+
+普通角色优先要求 `allocation_v2`，交付冻结库存、角色配置、图纸、评分目录与组合上限，由 Rust 执行基础分配；
+普通图纸经 `allocation_blueprints_v1` 生成；独立工具保留各自正式入口，不作为失败回退。
+直伤与轴伤策略要求 `damage_allocation_v1`：一次冻结作业内生成图纸、计算候选池上限、原角色优先 B0、
+有界整轮软主词条回退、正式落位、标准直伤/完整轴评价与有预算的联合搜索。
+`equipment_scoring_v1` 是公共基础分数、评级和别名查询矩阵；ScoringEngine 仅适配和缓存同一 Rust 核，
+鉴定与库存评分成批提交，不逐件启动进程。完整伤害作业直接返回基础分/评级证明，展示不另开数值作业。
+直伤输入含套装无条件常驻来源时另要求 `allocation_suit_permanent_v1`：冻结核心套装、驱动形状及效果证据，
+在候选换核心或形状后重算常驻增量。随附执行物与清单成套更新；当前组件版本、能力、来源和 EXE SHA-256 只以 `third_party/analysis-core/component.json` 为准，静态身份以其发行清单为准。不含该来源的四份冻结金样与旧组件数值一致。
+该能力与 `allocation_suit_crit_v1`、`battle_suit_permanent_v1` 一并交付，已覆盖最终候选暴击、个人模板、队伍建议和战报同源去重；
+完整范围和剩余门禁见[套装常驻接入](roadmap.md)。构建身份、哈希和未提交源码状态以清单为准，
+不以相同引擎版本号推断内容相同；源码随附组件更新不等于已安装应用更新。
+冻结队伍/固定 A 预检和轴身份复核仍独立只读执行，不属于逐候选 RPC；缺所需能力明确提示更新，不运行 Python 公式替代。
+随附组件的双队能力按 `component.json` 与实际程序核验，已覆盖 `battle_axis_group_postprocess_v3` 的合成八人保存专项；
+执行文件、引擎和哈希仍以组件清单为事实源，不从源码支持推断实际部署。
+伤害作业返回的 B0 装备与方案只在集成边界生成内容 SHA 摘要供队伍轻量结果溯源，
+不是另算伤害或保存整份 B0。队伍简报与历史查询仅核对组件身份，不启动伤害作业；
+具体专项范围与真实环境缺口见[队伍简报验证](roadmap/teams.md)。
+Python 保留结果渲染及原有预览保存边界，响应恢复前核对角色、图纸、装备身份和 UID 唯一性。缺失或失败明确报告组件错误，
+不回退 Python 分配。取消和超时终止并回收本次分析进程；基础分配协议不读取账号库，也不写入装备状态。
 此入口只覆盖计算按钮链路，其他固定 Context 的工具入口不因部署自动切换算法。
-计算入口采用 `allocation_v1` 路由的请求/响应版本 2，要求组件清单与实际进程同时声明 `allocation_v2`。失败响应可附带可选的 `failure_diagnostic`：内部诊断版本、汇总状态，以及 `remaining`/`group_start` 两种冻结范围的状态、说明、扩展数、返回候选数和截断标记，不包含诊断候选装备 UID 或配装数组。未触发独立诊断时字段缺省；已有客户端继续读取 `reason`，无需新增请求字段。主搜索的 `search_status`、预算及候选标记保持原义，诊断状态独立，不修改 `valid` 或正式装备分配。候选数量仅指有界补救返回的候选，不代表穷尽组合总数；诊断发现可行组合也不自动提交为成功方案。组件源码、二进制、清单及静态身份须配套核对；编译部署不代替行为验收。用户行为见[计算说明](features.md)，前序问题背景见[开发方案](roadmap/allocation-correctness.md)。
+计算入口采用 `allocation_v1` 路由的请求/响应版本 2，要求组件清单与实际进程同时声明 `allocation_v2`。失败响应可附带可选的 `failure_diagnostic`：内部诊断版本、汇总状态，以及 `remaining`/`group_start` 两种冻结范围的状态、说明、扩展数、返回候选数和截断标记，不包含诊断候选装备 UID 或配装数组。未触发独立诊断时字段缺省；已有客户端继续读取 `reason`，无需新增请求字段。主搜索的 `search_status`、预算及候选标记保持原义，诊断状态独立，不修改 `valid` 或正式装备分配。候选数量仅指有界补救返回的候选，不代表穷尽组合总数；诊断发现可行组合也不自动提交为成功方案。组件源码、二进制、清单及静态身份须配套核对；编译部署不代替行为验收。用户行为见[计算说明](features.md)，当前剩余事项见[队伍收益与全局配装](roadmap.md#2-计算与配装)。
 它不链接或启动采集 Core，不接入游戏、抓包或网络。正式战报页面消费组件声明的 `battle_page_v1` 能力；
 只更新 Python 源码不会启用未部署的能力，能力缺失或版本、哈希不匹配必须报告组件错误。
 总览、逐击、Buff 反事实、边际收益、装备副本比较及导出时的分析投影统一通过原生页面入口，缺失或失败均不回退旧计算。
 旧 Python 页面、逐击、边际和副本比较方法已标记 `DEPRECATED`，仅保留离线差分用途；
 `load_legacy_for_differential` 是显式旧入口，正式界面和导出不得调用。
 
-整页协议使用 UTF-8 JSON stdin/stdout，一个页面请求由一个短期进程完成。请求冻结账号、generation、
+整页协议使用有界 UTF-8 JSON；一次性传输或同任务会话遵循上述生命周期，每个页面请求独立冻结账号、generation、
 战报编号、账号库与静态库路径、语义配置、分析范围、角色和用户候选，不传 Python 预计算的逐击或 Buff。
 语义配置 `gameplay_effect_semantics.json` 只读取随应用发布的配置目录，不读取用户可写配置目录中的同名文件。
 发行资源缺失时明确报告配套安装不完整，修复资源后可重试；不得以空规则继续分析。
@@ -265,6 +308,15 @@ Python 继续准备编辑器养成配置、库存候选和装备选择，并通�
 缓存属于同一历史服务且切换战报清空，每次命中重新解码领域对象。冷计算前后输入摘要变化时取消结果，
 失败与未完成响应不入缓存；未声明该能力的组件继续正常计算。单纯展示选择的持久化不会改变原生摘要，
 目标推断快照等实际输入变化会使旧缓存失效。
+
+队伍战报匹配复用现有 `battle_axis_team_v1`，消费正式冻结四人身份、范围、缺口原因和
+`source_input_digest`，不从出伤摘要或 Python 原始载荷解析补造队友。组件身份、dataset 和所需能力分别核验，
+缺队伍能力时历史仍可浏览，匹配显示未就绪；单项失败不吞掉其余候选。
+该轻量流程不调用伤害重放或固定队友装备预检，不启动采集 Core，也不要求当前库存。
+有 `battle_page_identity_v1` 时每次缓存复用先读取正式摘要；无此能力则不复用判定缓存、逐次核验。
+队伍匹配缓存和上述战报页面响应缓存是两个独立 owner，不共享容量或凭证；成员相关的原请求分区不会被改写后跨队复用。
+单项调用上限为 15 秒，取消沿既有进程回收；确认后摘要仍进入正式轴预检。
+本轮只消费随附协议与执行物，未新增分析组件能力、构建或晋升组件。
 
 声明 `battle_parallel_v1` 的组件可在独立进程内并行计算 Buff 移除组和空幕候选。数据库输入由 owner
 准备，各 worker 独占可变投影状态，最后按原顺序组装完整结果，逐击浮点运算和求和顺序保持不变。
@@ -309,27 +361,202 @@ Rust 不写账号库；自动目标推断以完整版本化 `derived_snapshot` �
 代替端到端收益。无界面验证不包含 Qt 绘制、账号切换和实际交互，正式部署仍须完成
 [Windows 验证](validation/windows.md)与组件升级、回滚检查。
 
+
+正式角色面板的连续直伤通过 `direct_damage_v1` 批量接口执行；输入来自冻结有效面板，返回未取整伤害及完整乘区并绑定原请求字节 SHA-256。它不是逐击 `direct_v1` 的别名，后者的取整和暴击分支保持不变。边际扰动、毕业模板主词条、同角色全部去件收益和替换候选按批提交；同一求值 owner 以完整不可变数值键去重，最多4096行。后台可将已验收结果物化为当前编辑器的不可变读模型，退出前关闭客户端、worker和静态读取；前端只按精确数值键消费结果，缺项报错，不在GUI线程补发请求或回退Python。新草稿冻结可编辑输入组并在原页面读取任务中求值，只应用仍存活账号/来源和最新请求的回执；读模型不进入账号保存或分享。带 runtime 静态身份的角色详情缺能力或身份不匹配时停止；无 runtime 身份的静态构建和离线差分保留原纯值参考公式。
+
+固定轴服务在一次评价内让前验摘要、完整求值和后验摘要共用存活资源租约与worker，仍分别读取事务和完整事实摘要，不合并或删除核对。独立内核候选共享冻结的只读目标/evidence和record，装备覆盖、基线与输出仍独占，显式修改采用copy-on-write；不跨请求保存账号事实。
+
+### 1.2 分配结果后处理作业
+
+正式入口为 `damage_allocation_v1`，Calc 只读收集冻结账号、静态身份、库存、角色/优先组、原棋盘/形状、
+实际装备原值、模型输入、配装锁、预算与选择的轴。输入图纸及 B0 必须为空，Rust 在一次作业内生成；
+用户配置、原基础评分和历史战报均不改写。
+
+- 直伤采用统一 100% 攻击倍率及期望暴击；同级组按相对 B0 收益率，跨组按原优先顺序并守个人 B0 下限。
+- 轴伤通过正式 T/S/R 证据约束所选队内子集，先固定/预留 R，再生成 S 的 B0；目标比较完整冻结域全队收益，
+  不按个人比例平均，不把固定队员伤害视为常量。固定装备关联不闭合或选到队外角色时在 B0 前拦截。
+- 两种联合搜索均比较单件、同成员双件、双角色互换与空闲补位、单/双成员换图纸；完整动作合法且目标改善才一起接受。
+  组目标、访问顺序和有限邻域的用户语义以[功能说明](features.md#计算结果后处理)为准。
+- 分项节点/组合/输出预算约束图纸，访问/评价/轮次预算约束搜索，未用份额有限转借，共享总时长。
+  基线枚举沿原组合上限，在阶段与回退轮之间复核时间；在原进程超时内最多预留 1 秒给终态验收/编码/传输，
+  不给搜索续时、不重开作业。搜索已终止且完整结果存在时不会因最终查时再次丢弃；未完成准备仍受截止时间约束。
+  取消由 Calc 终止并回收该分析进程，不触碰采集 Core。
+- 响应绑定输入摘要、模型/组件身份、来源、B0、最终装备、基础分/评级、实际落位证明及预算覆盖。
+  Calc 验收原值身份、集合、矩阵和冻结摘要；保存使用原生坐标，不运行 Python 摆盘、评分或伤害重算。
+  基础分与伤害目标独立保存，图纸/搜索计数单位分开；截断不声称完整邻域最优。
+
+底层单阶段协议仍用于独立协议/核测试；Calc 正式伤害策略不再把它们拼装为第二条生产计算路径。
+组件必须按程序、清单、来源说明、许可和通知成套核对；新旧组件缺能力不自动回退。
+
+
 ## 2. 视觉、OCR 与游戏输入
+
+库支持声明位于 `src/integrations/vision/recognition/ocr/backend_support.py`，与设备偏好分离。
+源码开发通过 `NTE_OCR_PROFILE` 选择 `default`（OpenVINO + ORT DirectML）、`openvino`、
+`onnx_cpu` 或 `onnx_directml`，未设置时保留原双库行为。既有 `NTE_OCR_BACKEND` 的
+OpenVINO、CPU、DirectML、自动与低负载等偏好仍保留，只在本次支持集合内产生候选。
+例如 ONNX 单库收到扫描现有的 OpenVINO/低负载偏好仍能执行 CPU；DirectML 设备失败只可
+退到同一 ORT 分发的 CPU，不引入第二份 CPU 分发。排除库不做 provider/显卡探测、导入或
+安装模型校验。每次初始化冻结一个支持对象，失败期间更改环境不扩展本次集合。
+桌面入口不预先注册 OpenVINO DLL 目录；后端加载及句柄归首次 OCR 初始化所有，非识别启动不再因这一步预注册而被未选库或残留库目录阻断。
+
+构建沿用同一源码声明，收集输入由 `tools/release/ocr_build_inputs.py` 统一产生：选中库的
+hidden imports、配置、原生库与 metadata，排除库的模块 exclusion，一份共享模型和字典。
+选中缺项失败，不再警告后继续生成不完整 OCR 包。profile 在隔离构建目录生成并随包放入
+`assets/ocr/backend_support.json`；冻结程序仅使用随包声明，缺失/格式错误不回落源码默认，
+环境不能把单库发行扩展为双库。裁剪与校验接收同一支持对象，仅处理所选 OpenVINO 精确清单；
+同时核对所选 ORT 共同原生成员及 DirectML 插件，排除库混入在任何删除前拒绝。
+根构建入口 [build_exe.py](../build_exe.py) 只在显式运行 `main()` 时准备和构建，普通导入没有这些副作用；
+PyInstaller 的 dist/work/spec 与 UPX 搜索根显式绑定仓库目录，不随调用者工作目录变化。
+安装器入口 [build_installer.py](../build_installer.py) 消费同一正式 OCR 资源校验模块。输入专项与冻结入口探针不替代实际 EXE 或安装器验收。
+
+### OCR 独立依赖环境
+
+OCR 依赖归 `ocr-openvino`、`ocr-onnx-cpu`、`ocr-onnx-directml` 三组；未显式选择时，
+`uv sync --locked` 默认安装 dev、OpenVINO 与 ORT DirectML，保留原双引擎行为。
+CPU 与 DirectML 组互斥，不把 CPU 分发当作 DirectML 的后备安装：同一 DirectML 分发已经提供 CPU provider。
+共享 NumPy、OpenCV 与 Pillow 仍是产品依赖，不随 OCR 组移除。三个 OCR 组也声明正式 loader 直接使用的 Loguru，
+不依赖整个产品环境偶然提供 logger；实验统一使用已锁定版本、Python 3.11。
+
+RapidOCR ONNX 1.4.4 上游声明 CPU `onnxruntime>=1.7.0`。本项目仅对该确切版本使用
+uv `dependency-metadata`，保留原 Python 边界及其余八项依赖约束，由所选组显式提供 `onnxruntime`
+命名空间；原 wheel、dist-info 和锁定来源哈希不修改。更改 RapidOCR pin 必须重新核对上游 metadata。
+这只适用于项目 uv 解析/同步，不声称普通 pip 安装或导出 requirements 后再次解析具有相同闭包。
+DirectML/default 的 `uv pip check` 仍按上游 wheel 声明报告 CPU distribution 缺失；仅此已知替代边单列，
+其他依赖错误必须排查，不安装 CPU 补绿，也不修改 dist-info。
+
+项目中普通单库同步使用 `--no-default-groups --group <OCR组>`，仍包含产品依赖；
+CPU 独选必须取消默认组，否则默认 DirectML 与 CPU 冲突并拒绝同步。
+OCR 专项从空的专属目录以 `--only-group` 创建环境，不在已混装环境中卸掉一个库后称为单库验证。
+它只安装所选 OCR 及 build 闭包，不安装产品本体或手柄等非 OCR 链；不是完整应用运行环境。
+
+| `NTE_OCR_PROFILE` | OCR 专项显式选组 |
+| --- | --- |
+| `default` | `--only-group ocr-openvino --only-group ocr-onnx-directml` |
+| `openvino` | `--only-group ocr-openvino` |
+| `onnx_cpu` | `--only-group ocr-onnx-cpu` |
+| `onnx_directml` | `--only-group ocr-onnx-directml` |
+
+例如维护者在源码根用 PowerShell 为 OCR 专项设置独立环境与 profile：
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = "$PWD\build\ocr-env-openvino"
+$env:NTE_OCR_PROFILE = "openvino"
+uv sync --locked --python 3.11 --no-python-downloads --no-build --no-install-project --only-group ocr-openvino --only-group build
+```
+
+其他 profile 只替换专属环境名和表内选组；`--only-group` 不加入 dev 或默认 OCR 组。
+全部 OCR 缺失时非 OCR 产品功能的边界另由对应公共行为测试验证，不从 OCR-only 环境推导完整应用就绪。
+结束专项进程并清除本次 `UV_PROJECT_ENVIRONMENT`/`NTE_OCR_PROFILE` 即可回到原开发环境，
+不将实验文件复制覆盖原环境、不为本专项重复安装手柄驱动。
+依赖隔离须核对实际 distribution 集合、`onnxruntime` 的模块/原生成员与唯一分发 RECORD、provider、
+实际 RapidOCR session 和小输入推理；仅 provider 名称不证明 GPU 已推理。
+真实 hook/collector、共享模型与 frozen 声明分支和独立原生加载是不同证据；单库加载通过不等于
+单目录/单文件 EXE 已可发行。PyInstaller 构建、真实硬件 GPU、游戏扫描与发行体积仍按独立授权验收。
+
 
 OpenVINO 与 ONNX Runtime 共用发行目录 `assets/ocr/models` 下同一套检测、识别和方向分类模型。构建只从已锁定依赖中
 选取一套模型，并按文件大小与 SHA-256 校验；两个 RapidOCR 包自身的 `models/` 不进入发行目录。运行时在创建任一后端前
-解析并复核共享模型，再通过 `det_model_path`、`rec_model_path`、`cls_model_path` 显式注入。模型缺失或内容漂移属于组件
-故障，不回退到包内未知副本；源码环境可读取已安装依赖中通过同一清单校验的模型。
+冻结并校验共享模型与字符字典，通过每个候选私有的 `det_model_path`、`rec_model_path`、`cls_model_path`、
+`rec_keys_path` 显式注入，在构造/预热后再次校验同一组文件身份与 SHA-256。没有永久路径/可变参数缓存；模型缺失或内容漂移属于组件
+故障，不切另一后端掩盖，也不回退到包内未知副本；源码环境只核对本次支持集合中已安装依赖的模型，不读取排除库的副本。
+构建资源模块不导入原生引擎；后端选择、DLL 句柄与取消责任见[识别架构](architecture.md#25-视觉输入与共用识别)。
+字符字典统一为 `assets/ocr/ppocr_keys_v1.txt`，来源、许可证、锁定包和模型绑定见
+[资源来源](../assets/ocr/SOURCE.md)。两后端均使用此文件，不依赖 OpenVINO 包内默认字典或 ONNX metadata 回退。
+代码清单绑定识别模型 SHA-256；字典读取采用同一份前后版本一致的字节，精确复现两库的 rb/readlines/CR-LF 处理。
+构造、预热及每次推理检查实际 CTC 全部顺序，不仅检查字符数量；不兼容接口或顺序漂移属于资源故障。
+构建的通用 assets 收集已包含共享字典，只排除 `rapidocr_openvino/ch_ppocr_rec/ppocr_keys_v1.txt` 的确切副本；
+发行检查要求共享字典、模型绑定及包内重复副本缺席，不批量排除 txt。换模型/库须重新核对 metadata 顺序和输出维数，
+不能只改文件哈希。源码 CTC/metadata 核对不是冻结 EXE、GPU 或实际图片识别验收。
 
 发行包仅裁剪当前 OCR 与截图路径未使用的 OpenCV 视频 FFmpeg DLL，以及 OpenVINO 的 GPU/NPU 和非 ONNX 模型
-frontend；OpenVINO CPU/ONNX frontend、共享模型、ONNX Runtime/DirectML 均保留。桌面端还精确裁剪未使用的
+frontend；选中的 OpenVINO CPU/ONNX frontend 与 ORT 运行库保留，共享模型不按库复制。Pillow 的 AVIF 插件及原生
+编解码模块由收集规则排除，发行校验拒绝其残留；PNG、JPEG、BMP、WebP 和字体渲染依赖保留。桌面端还精确裁剪未使用的
 Qt PDF、QML、Quick、虚拟键盘及其独占插件，保留 Widgets、Qt OpenGL 和软件渲染后备；SciPy 仅裁剪不在
 `scipy.optimize` 当前依赖闭包内的 stats、interpolate、integrate、ndimage 子包。打包脚本在依赖布局变化时停止
-裁剪并要求重新审查，不按通配符清理其他运行库。裁剪后的 OCR 初始化、截图图像解码、Qt 主题及输入法、
+裁剪并要求重新审查，不按通配符清理其他运行库。裁剪只作用于独占的隔离 onedir 候选：先核对根及所有父目录、
+必要成员和完整删除计划的普通文件身份，拒绝链接、联接、重解析点与断链残留；预检失败不修改成员。
+实施阶段按固定计划逐文件删除、从深至浅删除空目录，不递归删除新出现的未知成员；I/O 中断如实报告已删除数量，
+该候选须重建，不伪称原子回退。构建体积按文件实际字节或目录文件字节总和报告 MiB，是逻辑大小而非磁盘分配空间。
+裁剪后的 OCR 初始化、截图图像解码、Qt 主题及输入法、
 MILP/线性分配与正式 Windows 扫描验收分别验证；仅凭安装包体积下降不视为发行验收通过。
 
 安装器从已校验的完整 `dist` 复制到 `build/installer-stage`。仅在统一图鉴图片目录内按文件哈希去重，
 并由 Inno `[Files]` 恢复清单要求的全部路径。暂存前后核对每个文件与映射哈希，运行时不使用图片别名。
 覆盖升级由安装器清除旧版 `_internal/assets/game_ui`，新包仅携带 `data/role_catalog/game_ui`。
 
-`src/integrations/vision` 独占窗口坐标、截图、格位检测、鼠标动作和扫描后状态同步；`src/scanner` 与解析
-Service 负责 OCR、归一化和装备字段。Integration 返回截图、索引、解析结果或诊断，不写业务快照，
-不决定评分和保留规则。
+`src/integrations/vision` 独占窗口坐标、截图、格位检测、鼠标动作和扫描后状态同步；
+`recognition/` 统一扫描与鉴定的 OCR、模型校验、形状模板、分类、词条解析及本批次去重。
+`DroneScanner` 已迁入 `vision/incremental_scan.py`，旧路径删除；`GamepadScanner` 暂留 `src/scanner`。正式鼠标全量入口
+`MouseInventoryScanner` 已在 `vision` 层。解析 Service 编排完整结果的业务提交。
+Integration 返回截图、索引、解析结果或诊断，不写业务快照，不决定评分和保留规则。
+模型资源的单一安装位置与双后端共享规则不因源码归包改变，详见[识别责任](architecture.md#25-视觉输入与共用识别)。
+
+所选词条配置和实际静态 dataset 经 `services/recognition/resources.py` 获取后，批处理、确认、匹配及
+视觉入库沿用同一份中文资料。图片处理器附加实际模板字节哈希/版本和冻结布局，普通解析与强制鉴定共用；
+模板目录只读，正式形状别名重复或解码失败报告具体原因，不覆盖旧池或自动创建空目录。
+完整图片 profile 必须包含模板、布局及 OCR 模型/字典身份；任一文件变化在确认/匹配及最终授权时使该批失效，旧背包保留。
+缓存及手工输入边界见[识别架构](architecture.md#25-视觉输入与共用识别)，不将缓存预算当峰值内存限制。
+视觉投影与完整提交入口归 `services/inventory/`，数据库事务最终授权
+拒绝资源漂移或账号/取消失效；其责任与限制见[识别架构](architecture.md#25-视觉输入与共用识别)。
+初始化模型校验不等于图片确认/持久化时所有识别资源已被一并复核；背包/截图独立结果由提交 Service 编排，不宣称跨资源原子提交。
+
+### 装配与倒带执行 OCR
+
+倒带入口通过组合根注入 `GameInputTarget` 工厂。owner 先隐藏倒带窗口、最小化宿主，worker 沿用旧版
+可取消的 1 秒交接等待，之后才创建目标并调用 `bind_foreground`；不因用户点击时 Calc 在前台而提前终止。
+Integration 按已确认的游戏绝对路径查找唯一顶层窗口，绑定 HWND、PID、进程创建时间、完整程序路径及
+客户区屏幕坐标；仅做只读绑定，不调用 SetForegroundWindow 或 ShowWindow 来改变游戏窗口状态。
+`capture` 只截绑定客户区并在前后校验身份/焦点/几何；不调用通用前台捕获的桌面回退。
+输入 guard 与原账号/工作模式/取消 guard 组合，覆盖随机等待后的移动、按下与按键；OCR 前后复核、
+最后一次等待后复核同一绑定。失效被本次绑定永久记住，重新执行才创建新绑定。
+倒带启用 SendInput 返回数检查，拒绝派发不改走其他路线或重试；释放始终允许，物理收尾后才恢复 UI。
+窗口核验只查询 Win32 进程身份，不连接游戏。系统接受输入仍不等于游戏业务后验确认。
+
+执行生命周期与正式入口见 [架构的共用识别责任](architecture.md#25-视觉输入与共用识别)。
+界面工单和同步执行层只传 `OcrTaskSession`，不另选后端或构造全局引擎；注入已有引擎仅为借用。
+默认引擎首次非空读取才创建，角色文字、OCR 目标及同次倒带余额/价格都复用它。执行输入仍由现有
+OperationGuard 判定授权；取消或模型/解码故障贯穿调用，不当作未匹配或默认余额继续输入。
+局部清理只在同步原生调用返回后发生，既有倒带 UI finally 释放输入和关闭后端；不调用未知的原生
+close API、不将清引用当作强制中断，也不据此承诺全部旧截图/重试路径已改造。
+
+### 增量采集与解析
+
+自动 NEW 标记仅归 `incremental_scan.py` 的本批采集，不是装备正式形状模板，也不作为全量扫描或手工输入前提。
+匹配阈值、去重距离与窗口映射沿用原算法；标记按文件版本与同字节 SHA-256 记录，不在运行中重载新模板。
+半自动不要求标记文件；用户正常结束与停止分开回报。冻结交接及最终资源授权见
+[识别架构](architecture.md#25-视觉输入与共用识别)。
+
+采集前拒绝根目录遗留增量前缀文件，提示先离线解析或清理；真正 PNG 写入排他创建，失败或取消保留原图，
+不自动清空原件。首图比对复用后台解析器，资源故障不降级成普通比对失败。
+增量结果只整理截图，不推进正式库存指针。最终后处理逐项复核轻量取消/代次和 NEW 文件身份；
+部分文件操作已完成时不宣称整批回退。尚未覆盖跨进程采集隔离、进程崩溃恢复及游戏实测。
+
+### 截图暂存与发布
+
+`vision/capture_files.py` 同时供鼠标和虚拟手柄使用。每次采集创建带身份标记的 `.capture-<id>`，
+不清空旧 `temp`、旧失败暂存或根目录图片。Calc streaming 不调用 scanner 的独立发布入口；
+提交 owner/Service 的授权顺序见 [识别架构](architecture.md#25-视觉输入与共用识别)。
+
+- 目录 `.nte-scan-output.lock` 为保留的操作系统租约文件；同输出目录预检、背包提交及发布持续独占，
+  取消不提前释放租约。程序化根目录解析使用同一租约；独立 stage 的采集不共用可清空的固定 temp。
+- 冻结 root/stage 目录身份、标记版本和编号截图版本；源及祖先均为普通路径，拒绝链接/重解析点。
+  正式图片仅精确编号 `raw_drive_0001.png` 等；未知根图片不删，同名冲突在 DB 前拒绝。
+  暂存要求完整连续编号，不把目录任意成员当成截图。
+- 预检空闲空间覆盖小型日志/元数据；同卷移动不复制整套图片。DB 保存后先把冻结旧成员移至
+  本次 `.previous-<id>`，再发布新成员；每一步重验目录、源和目标身份并记相对路径恢复记录。
+- 文件失败逐项精确反向恢复；目标或父目录变化时停止该项，保留确切未恢复步骤与备份。
+  `pending`、`restore_incomplete` 与已保存背包分开表达；文件重试不再创建快照，残缺恢复不自动重试。
+- 成功后仅清理本次已确认的原成员与空目录，未知成员/身份变化或清理失败则保留现场、标记待清理。
+  失败备份及暂存保留供核对，不由下次扫描递归删除；需按本次恢复记录精确处理空间，不能泛清隐藏目录。
+
+此契约覆盖本进程受控失败与恢复尝试；目录/叶文件检查不等于文件系统原子安全证明，
+未实现进程崩溃后的完整自动恢复或 GUI 文件专用重试，不改变游戏输入与扫描后状态管理顺序。
+
+设置页普通截图清理与发布共用输出租约，只处理根图片、直接 `failed` 图片和正式剪贴板临时图片，
+保留对比首图；不递归进入 `.capture-*`、`.previous-*` 或未知子目录。确认计划冻结普通目录及文件身份，
+执行前整体复核、逐删再次核对；确认期间被替换的新成员不沿用旧授权删除，未完成成员保留。
+确认同时冻结账号及 generation；弹窗期间发生切换或同账号重载时撤销旧清理，不删除旧账号文件或刷新新账号页面。
 
 鼠标与虚拟手柄全量扫描最终都提交为统一 `vision` 快照。游戏界面自动装配使用普通鼠标输入 contract；
 页面不创建鼠标后端或虚拟手柄。
@@ -351,6 +578,8 @@ Service 负责 OCR、归一化和装备字段。Integration 返回截图、索�
 | UETools | 游戏侧宿主、插件、SDK 适配及原生证据采集 | 受限 Release 候选交私有集成方；工具 UI、MCP、Dumper 与开发材料不进入 Calc |
 | UnrealExporter 与 Dumper 输出 | 静态导出来源、运行时映射与 SDK 研究材料 | 分别走静态构建或原生开发核验；不是 Calc 可直接分发的组件目录 |
 
+快捷轮盘配套在 v3 角色表中增加 `training_plugin` 与 `training_signature`，两项成套声明且绑定保护元数据；旧五 DLL 包仍可核对，但不声明轮盘能力。新 Core 通过现有原生连接提供 `native_quick_wheel_v2`。
+
 原生交付顺序为 UETools 受限候选 → 私有集成方配套 Core/Loader 与能力核对 → Calc 的
 `third_party/native-capture/component-bundle.json` → 打包暂存 → 游戏部署 → 实机验收。
 静态导出与分析组件分别走本节以外的独立入口，不混入这条原生组件链。
@@ -369,7 +598,7 @@ UETools 的 `tools/build_calc_host.py` 构建受限宿主及签名插件候选�
 
 VMP 保护策略、精确函数选择与构建失败条件由 UETools 的 `docs/vmprotect_release.md`、
 `build/vmprotect_functions.json` 和 `tools/protect_release.py` 维护；Calc 不复制另一份函数名单。
-普通 Release 对本方交付 DLL 按其配置执行保护，Debug 与 DeveloperRelease 不执行。当前工作区随附 v3 候选的五个 DLL 均已通过 VMP 构建和保护回执核验：D3D 整文件打包与资源保护，其余为选定函数保护；具体文件身份以组件清单为准。
+普通 Release 对本方交付 DLL 按其配置执行保护，Debug 与 DeveloperRelease 不执行。当前 v3 交付策略要求全部声明的 DLL 均按精确函数清单保护并移除调试信息；D3D 不启用整文件打包与资源保护。具体文件身份与验证状态以随附组件清单和配套说明为准。
 
 每个 DLL 编入标准 JSON 授权声明；中文为 Unicode 转义，组件身份及声明副本由保护回执和整包哈希绑定。它不是只供 AI 解读的编码，也不代替运行权限。精确字段和读取边界见 UETools 的 `docs/component_notice.md`。
 
@@ -434,6 +663,11 @@ HUD 复用既有 ProcessEvent 分发器，在原回调及采集证据收尾后�
 产品刷新及失败行为见[背包与角色状态同步](reference/work-modes.md#背包与角色状态同步)。
 这些接口须由核对过的配套 Core 与 DLL 共同提供；源码、合成分页响应测试通过不能替代匹配二进制与实机验收。
 
+普通原生同步可复用 `environment.snapshot.v1` 与 `snapshot.changes.v1` 读取家具：环境 raw 分页与最终修订
+复核后，只投影固定家具 ID、整数等级与布尔激活状态，不将缺项补零。已读环境域进入同连接基线供战报复用，
+账号保存确认前保留候选，失败后有界重试。账号家具数值及来源在同一写事务比较并提交，旧版显式记录按手动保护；
+规则见[角色家具加成](features.md)。分析组件 `furniture_attributes_v1` 消费三项常驻家具，构建与清单身份独立于采集组件。
+
 可选 `inventory.all_items.v1` 提供独立物品归档：在 inventory 的 refresh/page/disable 请求中增加
 `scope="all_items"`。它拥有独立冻结快照和分页游标，不覆盖 EQUIP 投影、战报基线或原四域状态。
 Calc 核对 `collectionScope="all_observed_InventoryContainerMap_containers"`、`collectionComplete=true`、
@@ -448,6 +682,10 @@ Integration 从所选 `HTGame.exe` 的安装根定位官方启动器，明确传
 
 ### 插件发行基线与升级复核
 
+安装器保持既有 `installer/output` 输出位置。安装器必须以管理员身份构建：正式编译前检查构建进程完整性，低于 High 的进程先于任何打包步骤请求一次系统管理员确认（UAC），在新的管理员控制台窗口重跑同一命令并在结束时停留以便查看结果（该窗口关闭快速编辑，误点不会进入“选择”模式挂起构建输出）；用户取消则明确失败，不创建输出目录、不改系统临时目录；构建进程只将该输出目录的 Low 标签修正为可继承的 Medium，不抬高整个目录或工作区。管理员安装器的当次成品至少为 High（防止普通权限进程篡改，Windows 只允许管理员进程设置该标签），不能将显式 Medium 当作已满足管理员执行等级；编译后修正该成品的 mandatory label 并回读，失败不报告 `Installer complete`。修复不改 EXE 字节、DACL、所有者或其他产物。维护者的虚拟环境入口若受低等级标签限制，须在本机构建环境维护其入口后重启构建；运行时源码不调整解释器权限。未知发布者的签名提示与此门禁独立。
+
+安装完成页勾选运行时，通过 Shell 的 `runas` 请求启动主程序，并将工作目录显式设为安装目录，不只继承安装器进程的权限状态。保留原有当前安装用户身份、完成页选择、非等待启动和静默安装不启动规则；不传入应用内部的管理员重启标记，不连带执行游戏操作。成品属性检查、生成的启动声明与真实安装后启动分别验收。
+
 应用显示版本以 `src/app/version.py` 的 `__version__` 为准。日期测试包采用 `主版本.次版本.修订.TYYMMDD`，应用、安装器显示和文件名保留完整标签；Windows 数字资源版本只使用三段基线并补 `.0`，Python 包元数据从同一显示版本派生为 `.devYYMMDD`。更新比较先比较三段基线，同一基线的测试包按日期排序，正式版高于该基线全部测试包。同日再次构建仍须通过清单及文件哈希区分产物。
 
 发行组件的上游版本、提交、输入摘要、许可证、文件 SHA-256、公共签名、ABI 与协议必须进入组件来源记录。
@@ -456,6 +694,93 @@ Integration 从所选 `HTGame.exe` 的安装根定位官方启动器，明确传
 发布准备同时核对独立抓包入口与原生整包的 Core 字节一致，并实际执行抓包入口握手，拒绝丢失
 `capture_wait_v1` 或 `buff_snapshot_v1` 的候选。原生能力由配套 DLL 的隔离握手另行核对；抓包握手
 不能代替原生业务验证，角色资源及库存投影仍需对应的专项用例与真实游戏验收。
+
+### Calc 更新与安装器派发
+
+`features/settings/updates/` 拥有更新界面、请求与计时器，`integrations/updates/mirror.py` 拥有 HTTPS、
+私有暂存目录及文件凭据；群聊和外部下载入口归 `features/settings/support.py`，不混入账号生命周期。
+请求冻结账号及代次，切换和退出先撤销，再等已有线程物理退场；旧请求不写新账号偏好或派发安装器。
+流读取包括 EOF、文件发布以及最终逐块校验均检查取消。文件凭据冻结本次安装包的路径、文件身份与摘要，
+派发前复核；这是防下载后替换的本地一致性检查，不是发行签名或远端可信校验和。
+完整性校验与单次派发共用后台任务，不在界面线程全量读取安装包；派发权限消费后不自动重发。
+失败或取消只清理本次仍归己的临时文件，不覆盖可运行旧版本。下载完成、安装器进程启动和安装完成是不同状态。
+
+
+### 免安装 ZIP 与平台候选构建
+
+当前为候选实现，真实 ZIP 和平台验收状态见[免安装方案](roadmap/portable-distribution.md)；源码专项通过不等于平台收录完成。安装器与免安装 ZIP 共用 `build_exe.py` 的干净 onedir，资源、OCR、独立组件和许可统一由 `tools/release/app_bundle_validation.py` 校验。`onedir-files.json` 是该次构建在发行目录外生成的精确白名单，运行过或被改动的目录不再视为干净构建输入。
+
+```powershell
+# 三条命令共用同一输出根；后两条只制包，不再次编译。
+python build_exe.py --output-root build/portable-candidate
+python tools/release/build_portable.py --output-root build/portable-candidate
+python tools/release/build_portable.py --output-root build/portable-candidate `
+  --profile kokodayo --update-channel platform --data-policy external `
+  --data-root-key ndc-kokodayo
+```
+
+`data_root_key` 是同一平台产品跨版本稳定的本机定位键，不包含版本或绝对路径；后续版本保持不变。平台已有发行时另传 `--previous-platform-version <已发布版本>`，执行严格递增检查；未提供时不声称完成平台版本校验。KoKodayo 的目录删除证据和外部数据策略依据集中在上述方案，不从安装目录名猜测平台身份。
+
+输出到所选根的 `dist/portable/`：一个带唯一后缀的 ZIP、同名 `.zip.json` 报告和 `.zip.sha256` 摘要；不覆盖已有包。ZIP 只有固定 `NTE_Drive_Calc/` 外层目录，平台入口为 `./NTE_Drive_Calc/NTE_Drive_Calc.exe`。报告区分源 onedir 构建与当前 ZIP 构建身份、压缩/展开大小、数据策略和未完成的平台验证。当前门禁限制 KoKodayo 为三段数字版本和保守十进制 1 GB；不改写测试版标签或裁掉必需功能来通过门禁。
+
+`distribution.json` 声明发行方式、更新渠道及数据策略；`release-files.json` 记录精确文件路径、大小、SHA-256 和引导身份。清单及哈希证明包内一致性，不替代可信下载来源或签名。压缩包不含账号、运行配置、日志或恢复点；复制过程中再次核对来源，发布前流式验证完整成员及摘要。旧 onedir 不写入便携标识，仍能供同版本安装器消费。
+
+更新控制器由组合根注入渠道：`installer` 沿既有 Mirror 链，`manual` 与 `platform` 不发起安装器检查、下载或派发，分别显示手动 ZIP 与平台更新说明。不猜测平台深链，不把安装器地址当作便携下载地址。
+
+### 便携数据迁入与恢复
+
+启动校验兼容旧版导入曾遗留的 `default_2`、`default_3` 等分叉账号：仅在内部仍为 `default`、
+目录/索引有效、名称一致且 schema 受支持时提示修复，默认取消。确认并退出其他旧版后，先在当前数据根的
+`maintenance/account-identity-recovery/` 一致性备份待修库与原索引，再按登记身份事务修正 profile 标识；
+不改账号目录、活动账号、库存、配装或战报。备份失败不写原库，中途失败撤销本次已改标识并保留恢复记录。
+其他身份冲突、缺库和未来 schema 仍停止启动，不猜测绑定或创建替代账号；恢复点含私有数据，不随发行包外发。
+
+这些命令使用完整便携包中的 EXE，执行结束即退出，不启动主窗口；不要求用户另外安装 Python。所有路径参数均须使用用户实际选择的绝对路径。运行前退出旧、新 NDC 及其自有任务；未接入数据锁的历史版本必须人工确认已退出。
+
+| 场景 | 操作与边界 |
+| --- | --- |
+| 首次使用手动包 | 数据生成于程序目录内 `userdata`；要迁入旧数据时，先迁入、后首次打开主窗口，避免先生成默认账号 |
+| 首次使用平台包 | 首次启动选择程序目录外的固定空目录；也可显式执行下面的选根命令。定位记录保存在本机 LocalAppData；程序目录被平台重建后仍沿用该位置 |
+| 已有数据迁入 | 来源是含 `accounts`、`config` 的旧数据根，不是单个账号数据库。目标须尚未建立账号；不自动合并两份账号集合。原数据保留，旧 Loader 执行物不迁入 |
+| 迁入中断 | 已完整暂存、仅发布中断时可显式继续；尚未完整暂存时按错误提示重试原迁入，不把半成品当作新账号 |
+| 数据恢复 | 先核对 `maintenance/data-recovery/<恢复点ID>/record.json` 与对应版本；恢复前另存当前新版数据，再恢复指定旧数据。恢复后使用与该数据兼容的完整程序包 |
+
+```powershell
+# $exe、$externalDataRoot、$oldDataRoot 由用户填写实际绝对路径。
+& $exe --portable-data-root $externalDataRoot
+& $exe --migrate-data-from $oldDataRoot --confirm-source-closed
+# 仅在提示已有完整暂存迁入时使用：
+& $exe --resume-data-import
+# 明确确认覆盖当前数据；当前数据会先另存恢复点：
+& $exe --restore-data-recovery $recoveryId --confirm-replace-current-data
+```
+
+选根命令只用于声明 `external` 的平台包；手动包省略该步骤。已有选根记录损坏时恢复原记录或明确选择原数据目录，不重新选空目录掩盖问题。迁入后在设置的环境检测中核对本机游戏路径并明确确认，再恢复有外部副作用的能力；迁入本身不部署组件、不改注册表。恢复点包含账号私有数据，只在本机保管，不随 ZIP、故障附件或发布资料外发。
+
+上述命令处理数据，不修复旧目录的混版运行库，也不清理引导 DLL。无清单旧发行的程序目录接管仍须先完成[方案中的前置维护](roadmap/portable-distribution.md#43-旧文件清理和首次接管)，不得靠删除账号或维护记录绕过启动检查。
+
+### 无清单旧发行的前置接管
+
+候选工具 `tools/maintenance/Invoke-LegacyTakeover.ps1` 使用 Windows 自带 PowerShell 5.1；它不加载目标程序、运行安装器或修改注册表。当前精确基线见同目录 `legacy_profiles/2.3.1-post-refactor-candidate.json`，仅对应已核对的那一份旧构建，不代表全部同版本或历史安装包。脚本、基线及摘要应由可信发布渠道一起取得；摘要检查不替代来源可信度。
+
+顺序：退出旧程序及自有进程 → 保留原包与数据备份 → 在独立暂存目录完整解压新包 → 将新发行文件完整覆盖到原位置但先不启动 → 在目标目录外执行 `Plan` → 核对后执行 `Apply` → 如需迁入旧账号，完成上一节的数据迁入 → 启动新程序验收。脚本、基线、完整新包及恢复目录须保留在目标程序加载链之外。
+
+```powershell
+# 变量由用户填写实际绝对路径；$profileSha 是可信渠道给出的精确基线摘要。
+$takeover = @{ Profile=$profile; ProfileSha256=$profileSha; TargetRoot=$target;
+  NewPackageRoot=$newPackage; BackupRoot=$backup; ApplicationStopped=$true }
+& $tool @takeover -Mode Plan
+& $tool @takeover -Mode Apply
+# 仅恢复本次清理的退休文件；$recovery 是输出 RECOVERY 后的确切目录。
+& $tool -Mode Rollback -Profile $profile -ProfileSha256 $profileSha `
+  -TargetRoot $target -BackupRoot $recovery -ApplicationStopped
+```
+
+清理范围仅为精确旧清单减新清单，且目标旧文件字节仍须匹配；未知加载文件、修改、占用、链接或新包身份不一致时停止。程序根的普通 `unins000.exe` 仅作为不被 NDC 自动调用的原卸载文件保留，不执行、不删除，也不据此证明卸载登记有效；其他未知可执行文件不因此获准接管。账号、配置、外部数据根和游戏目录不属于清理范围。
+
+首次接管会逐文件核对完整新包和目标目录，实际大包预检可能持续数分钟；等待当前命令结束，不并发重复执行。它不在日常启动或普通有清单更新中重复运行。
+
+`Apply` 在删除前保存外置逐文件恢复材料；`Rollback` 仅在目标仍匹配本次完整新包时恢复退休文件，不还原已经覆盖的新包其他文件，也不回退用户数据库。它不是整包原子升级或自动降级工具；恢复旧程序仍需对应完整旧包和兼容数据。遇到未覆盖的旧构建应先由维护者核对新基线，不编辑清单跳过哈希或使用通配删除。
 
 ## 4. 静态数据与资源
 
@@ -478,6 +803,7 @@ Integration 从所选 `HTGame.exe` 的安装根定位官方启动器，明确传
 版本更新先在 `build/` 完成候选构建和毕业模板重算，再由
 `tools/game_data/promote_static_release.py` 显式读取仓库外本机配置，核对配置/数据库/manifest dataset、
 当前 schema/importer、全部来源 SHA-256、payload 省略、外键、SQLite 完整性及最终报告后带回滚地晋升。
+主库安装失败时，数据库与 manifest 分别尝试恢复；任一恢复受阻，保留全部旧成员的恢复副本，并在原始错误后报告副本路径、SHA-256 与原不存在的成员。维护者先按这些身份完成恢复，再重试晋升；不得清理仅存恢复副本。正常成功或完整恢复后才清理临时备份，这不代表两个文件具备进程崩溃时的原子提交能力。
 仅对已发行库执行无语义变化的物理压缩时，`tools/game_data/storage_repack.py` 在独立候选目录执行两次
 `VACUUM`，记录原库、原 manifest 和候选哈希，并逐表比较 schema、索引、全部行的多重集、外键与完整性；
 正式晋升入口使用独立的物理压缩 provenance 验证，而不把旧版本 Content 误作本次新增来源。
@@ -487,10 +813,22 @@ Integration 从所选 `HTGame.exe` 的安装根定位官方启动器，明确传
 改写候选。
 禁止直接构建到 `data/`、手工复制候选或只修改 manifest；晋升失败仍视为未完成。静态库和
 `data/manifest.json` 作为同一次晋升产生的原子变更审查，改变规范化输出的 importer 修改必须递增版本。
+本机配置可登记 `export_quality_report` 及其 SHA-256，绑定解包输出目录和失败清单。
+晋升按候选实际登记的来源取交集：解析失败来源默认拒绝晋升。经明确审查允许保留的数据缺口，须在
+`reviewed_blueprint_gaps` 逐文件登记 Content 相对路径、SHA-256 和原因，并在构建时传入
+`--export-quality-config`。导入仅保留来源记录，排除该蓝图的机制投影，指向它的引用标记不可用；
+晋升再次核对隔离结果，将 `partial`、`unknown` 及确切缺口写入发行清单和报告。新增失败或哈希变化
+仍阻断，不得用全局忽略开关、旧版机制或零值补齐。不消费这些资源的独立图鉴可分别验证，不因此
+取得完整战报能力。JSON 可解析、导出器异常为零和 SQLite 完整性均不能替代此检查。
+培养指南中明确的 FName `None` 表示无弧盘推荐，保留指南而不生成假弧盘身份；缺字段或未知非空 ID
+仍失败。弧盘精炼 `NameID`/`NameId`、卡池 `CharacterIDs`/`CharacterIds`、争锋积分 `Score`/`score`
+只兼容已确认的拼写，冲突拒绝；积分缺失保持未知，稀疏精炼曲线严格按来源插值模式取值。
+Blueprint 依赖表排除包内 Outer、ClassDefaultObject、Children 和 FuncMap 的重复自引用；完整来源仍按文件哈希登记，Properties、Super、Template 及跨包引用保留。弧盘入口位于 Calculation 目录时，沿正式 ExecGEs 引用闭包导入带 Buff 属性的子资源；深渊曲线同时进入公共 combat_curve，赛季组件与底层 Buff 求值使用同版来源。
+
 解包后的 `Content` 目录只作为登记来源输入，不按目录做数据库全量覆盖；弧盘常驻属性由已规范化的
 `fork_star_parameter`、精炼曲线、Buff Modifier、施加条件和标签证据重新投影。完整重建继续要求登记的
 DataTable、本地化与 Blueprint 来源闭包；仅需验证解析器或更新候选投影时，维护工具
-`tools/game_data/reproject_fork_permanent_properties.py` 从已登记、不可变的发行基线复制候选，补入精炼直接引用且有 Modifier 证据的计算类 Buff、追加 schema、逐弧盘重投影并生成审查报告，不直接改写输入库或 `data/`。完整重建和该定向重投影都使用当前 importer 身份；后者只经 `fork_reprojection_provenance.json` 对当前发行基线数据库/清单哈希、非目标表逐表逻辑等价、精炼 Buff 增量、全部弧盘来源重算结果和完整性复核后才可通过同一晋升入口。未经这些核对的旧加法升级仍保留其旧 importer 身份，不冒充已导入新证据。
+`tools/game_data/reproject_fork_permanent_properties.py` 从已登记、不可变的发行基线复制候选，补入精炼直接引用且有 Modifier 证据的计算类 Buff、追加 schema、逐弧盘重投影并生成审查报告，不直接改写输入库或 `data/`。定向工具接受已支持的 38 至当前 schema 来源：38 只执行 canonical 39 审查迁移并记录真实版本 39；39 及以上保持原 schema，不附带升级争锋或角色结构，也不把源码最大版本写成已完成迁移。报告同时记录输入和输出 schema。定向重投影不代替整库升级；低于当前 schema 的输出仍受正式晋升的 schema 门禁约束，需另行完整升级后重新核对来源，不能直接发布。完整重建和该定向重投影都使用当前 importer 身份；后者只经 `fork_reprojection_provenance.json` 对当前发行基线数据库/清单哈希、非目标表逐表逻辑等价、精炼 Buff 增量、全部弧盘来源重算结果和完整性复核后才可通过同一晋升入口。未经这些核对的旧加法升级仍保留其旧 importer 身份，不冒充已导入新证据。
 来源缺少战斗 Blueprint 时，可用 `build_role_catalog.py` 构建独立 `role_page` 目录，或用
 `build_reference_catalog.py` 构建包含角色、弧盘、装备、怪物和玩法的 `reference` 图鉴。
 每次 `reference` 候选构建完成前和正式晋升预检时，均须核对 `gold` 养成别名精确指向 `Gold`、
@@ -503,11 +841,24 @@ DataTable、本地化与 Blueprint 来源闭包；仅需验证解析器或更新
 战报组件；多个配置可正式共用同一 Buff，不推断开放时间。
 运行时能力边界见 [功能文档](features.md#4-计算角色配置与自建角色)。
 `build_role_catalog_assets.py` 生成角色包图片；`build_reference_catalog_assets.py` 额外按默认时装正式绑定
-生成立绘，并按图鉴引用生成装备和怪物图片。包 manifest 和数据库均记录用途；图片清单绑定 dataset、数据库哈希及每张图片哈希。正式晋升仍只能走
+生成立绘，并按图鉴引用生成装备和怪物图片。两种图片构建入口均调用 `build_role_skill_assets.py`，按 `character_skill → gameplay_ability_catalog.icon_path` 的正式关系收录主动技能原图，多个技能 ID 引用同一原图时仅保存一个物理文件。包 manifest 和数据库均记录用途；图片清单绑定 dataset、数据库哈希及每张图片哈希。数据版本变更的正式晋升仍只能走
 `promote_static_release.py --target-dir data/role_catalog`，按来源哈希及现有完整性门禁验证，暂存并整体替换
 数据库、manifest 和清单内图片，失败恢复上一完整包；未知旧文件和待恢复备份阻止替换。角色包不得晋升到
 主 `data/`，完整游戏库不得晋升到角色目录。打包入口校验整包并只纳入声明的文件。
 运行时只在目录整包缺失时使用原完整库；已安装包用途或哈希不符时报错。安装后重新启动应用选定新的目录身份。
+
+若同版资源包确实缺少正式引用的角色头像或立绘，可向参考图片构建入口传入
+`--unavailable-character-images` 逐项审查文件。每项必须包含 `group`、`character_id`、
+`source_asset_path` 与 `reason`，精确匹配当前正式绑定，且对应图片确实不存在。
+构建清单记录 `unavailable_character_images`，仅省略该图片映射，不删除角色资料或替换为其他角色图片。
+技能图片不接受此例外；重复审查、过期绑定、实际存在的图片或其他资源组仍阻止构建。
+
+维护者明确接受稍后补齐展示图时，`defer_optional_role_images.py` 只对 `build/` 中候选的正式角色头像／立绘逐项确认延期，核对同版正式绑定及来源文件确实缺失。
+图片清单保留 `unresolved_assets`，并以精确对应的 `deferred_optional_assets` 表达接受范围；运行时仍核对角色属于当前数据库、缺项没有替代映射、其余全部文件哈希有效。
+未确认的残缺包、技能图片、未知身份、路径冲突或损坏文件继续阻止安装。延期图片返回空，不补造游戏素材，也不赋予养成或伤害数值；补源后重建并同时清除已解决的缺项与延期记录。
+
+维护者明确指定同一角色的其他展示图片作临时替代时，由 `substitute_role_images.py` 在隔离候选中原样复制 PNG，记录 `temporary_substitutions`，绑定缺失默认源、实际选定源、SHA-256 和可见说明；不冒充默认外观素材已补齐。它只允许已有延期记录中的角色头像／立绘，保持数据库与 dataset 身份不变，仍经正式图鉴晋升事务安装。
+Calc 在角色、图鉴、队伍头像提示和配装分享中标记临时替代。宽画布头像只在显示时去透明空边并等比居中，原始素材像素不改。默认外观的同版正式图片补齐后重建，改回正式映射并移除缺项、延期和临时记录；不把图片外观解释为分析模型、养成、技能、装备或时装数值变化。
 
 manifest 从 schema v30 起必须记录并严格核对 `database.size_bytes`；schema v29 旧清单仅在读取时按实际文件
 大小校验并提示迁移。体积统一按 `1 MiB = 1,048,576 bytes`：95 MiB（99,614,720 bytes）默认阻断，只有完成
@@ -530,12 +881,31 @@ Key。主窗口首屏进入事件循环后延迟以无鉴权 GET 在后台获取
 的默认时装 `CharacterID → PortraitImg` 关系构建，不靠文件名猜角色。基础图片构建工具只默认输出到
 `build/game_ui` 候选，不能代替图鉴整包晋升。缺失来源保持显式 unresolved，不用相似图片占位。
 
+角色技能图片放在公共图片目录的 `skills/`，由 `GameUiAssetCatalog.skill_icon(SkillID)` 提供给配装分享；不从 `assets/loadout_share` 或本机原始资源目录回退读取。技能原图保持 PNG 内容不变，清单记录正式 ID 映射、原始游戏路径、尺寸、字节数、来源和文件 SHA-256。版本维护要求见 `AGENTS.md`；新图鉴候选构建包含技能步骤，缺正式路径、缺图片或同名来源冲突时停止生成。
+
+分享发布素材使用完整、未修改的 MiSans Bold 4.009 静态字体，保留版权及官方许可，不裁剪用户自定义
+名称需要的字符。`tools/release/optimize_share_assets.py` 仅从原始提取包和已核对 SHA-256 的静态字体构建
+独立候选：评级图分别按 48／54／92 像素从原图生成，练度横幅按实际裁切参数预生成，清单同时记录来源
+原始哈希、处理参数和发行哈希。字体版本、原图或渲染尺寸改变时重新审查并生成候选，不对已优化纹理
+反复缩放。确认字符覆盖、字形/布局、评级及横幅像素和两个分享出口后，按候选与原文件哈希安装；
+原文件和回滚证据保留在发行包之外。字体/纹理优化不改变评分口径，不在运行时下载资源。
+
+仅维护技能图片时，先将当前完整角色包复制到 `build/<candidate>`，执行 `python tools/game_data/build_role_skill_assets.py --source <同版Content目录> --candidate-dir build/<candidate>`。核对后增加 `--target-dir data/role_catalog`，通过 `promote_role_catalog.py` 的 `promote_role_skill_assets` 入口安装；它要求数据库字节、数据集、用途和目录身份清单不变，其他资源组及逐文件来源不变，全部正式主动技能有图且来源对应，随后复用正式角色包的暂存、校验、整体替换与失败回滚。此入口不更新数据库，不放行版本或来源不一致的静态数据变更。
+
 账号 schema 变化新增迁移并覆盖新建、升级、失败回滚和重试。DAO 独占 SQL；快照清理走公开 DAO 并
 保护所有引用。
 
+### 角色上线注解维护
+
+仅修正已核实官方公告的开池日期时，使用 `tools/game_data/refresh_character_release_metadata.py` 在新的隔离候选目录构建；`--promote` 经 `promote_static_release.py::promote_character_release_metadata` 正式入口安装独立图鉴。候选必须从当前图鉴重放唯一允许的注解修改，全部 SQLite 表逐值、schema、外键、公共图片及其来源/哈希均需通过。元数据修订单独登记，不把旧目录冒充新版 schema/importer，不替换主战斗 dataset；完整数值、技能或图片更新仍走原完整晋升门禁。
+
+本次三条日期与证据分别为：[黑羽 2026-09-24](https://yh.wanmei.com/news/gamebroad/20260923/264278.html)、[明音凛 2026-10-15](https://yh.wanmei.com/news/gamebroad/20261014/264537.html)、[曳尔沐 2026-11-05](https://yh.wanmei.com/news/gamebroad/20261104/264869.html)。明音凛原始六月展示字段不改；Exe 的未来展示时间不补成已开池日期。
+
+安装前保全数据库与目录/图片清单，晋升中出错整包恢复。已登记图片的 Windows 路径身份大小写不敏感；真正非托管文件仍阻止晋升并保留原目录，不按文件名猜归属。数据变更后旧页面和预览需重新打开或重新生成。
+
 ## 5. 新页面和公共组件
 
-在 `src/features/<feature>/` 实现 Page/View 与 Controller，由 `src/ui/navigation.py` 注册导航，通过组合根
+在 `src/features/<feature>/` 实现 Page/View 与 Controller，由 `src/ui/main_window/navigation.py` 注册导航，通过组合根
 注入窄 dependencies。快捷入口使用导航 key，不使用堆叠页数字。跨功能复用先建立 Service、不可变 contract
 或组合根公共组件，不经 MainWindow 字段和其他 Controller 转发。
 

@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
-
 from pathlib import Path
 
+from src.domain.localization.catalog import localized_text
 from src.features.static_catalog.contracts import (
     CatalogDetail,
     CatalogDomain,
@@ -21,7 +20,7 @@ from src.features.static_catalog.providers._adapter_common import (
     validate_release_identity,
     validate_release_path,
 )
-from src.services.static_catalog_formula_service import (
+from src.services.static_catalog.formulas.service import (
     CounterfactualSupportEntry,
     FormulaEntry,
     StaticCatalogFormulaDomain,
@@ -140,13 +139,12 @@ class StaticCatalogFormulaProvider(_FormulaProviderBase):
                     ),
                     CatalogField(
                         "适用条件",
-                        tr("；").join(tr(item) for item in formula.applicable_when)
-                        or tr("不可用"),
+                        "；".join(formula.applicable_when) or "不可用",
                         CatalogValueSource.PROJECT_ANNOTATION,
                     ),
                     CatalogField(
                         "限制",
-                        tr("；").join(tr(item) for item in formula.limitations) or tr("无"),
+                        "；".join(formula.limitations) or "无",
                         CatalogValueSource.PROJECT_ANNOTATION,
                     ),
                 ),
@@ -231,7 +229,7 @@ class StaticCatalogCounterfactualProvider(_FormulaProviderBase):
             ).casefold()
         )
         return self._page(
-            tuple(self._item(entry) for entry in matched),
+            tuple(self._item(entry, text_catalog=getattr(self, 'text_catalog', None)) for entry in matched),
             offset=offset,
             limit=limit,
         )
@@ -281,18 +279,18 @@ class StaticCatalogCounterfactualProvider(_FormulaProviderBase):
                     ),
                     CatalogField(
                         "覆盖对象",
-                        tr("；").join(entry.covered_entities) or tr("无"),
+                        "；".join(entry.covered_entities) or "无",
                         CatalogValueSource.PROJECT_ANNOTATION,
                     ),
                     CatalogField(
                         "缺口代码",
-                        tr("；").join(entry.gap_codes) or tr("无"),
+                        "；".join(entry.gap_codes) or "无",
                         CatalogValueSource.PROJECT_ANNOTATION,
                         bool(entry.gap_codes),
                     ),
                     CatalogField(
                         "生产消费者",
-                        tr("；").join(entry.consumer_entries) or tr("无生产入口"),
+                        "；".join(entry.consumer_entries) or "无生产入口",
                         CatalogValueSource.PROJECT_ANNOTATION,
                     ),
                 ),
@@ -311,14 +309,15 @@ class StaticCatalogCounterfactualProvider(_FormulaProviderBase):
             ),
         )
         return CatalogDetail(
-            item=self._item(entry),
+            item=self._item(entry, text_catalog=getattr(self, 'text_catalog', None)),
             sections=sections,
             notes=tuple(notes),
         )
 
     @classmethod
-    def _item(cls, entry: CounterfactualSupportEntry) -> CatalogItem:
-        subtitle = f"{entry.category} · 生产状态 {entry.status}"
+    def _item(cls, entry: CounterfactualSupportEntry, *, text_catalog=None) -> CatalogItem:
+        subtitle = localized_text(text_catalog, "static_catalog.counterfactual.item.subtitle", "{category} · 生产状态 {status}",
+                                  category=f"{entry.category}", status=f"{entry.status}")
         if entry.key == "native_counterfactual_core":
             subtitle += " · C++ 独立差分验证，非生产入口"
         return CatalogItem(

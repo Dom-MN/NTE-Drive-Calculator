@@ -1,0 +1,6 @@
+{
+  "name": "cpufeatures",
+  "version": "0.2.17",
+  "license": "MIT OR Apache-2.0",
+  "repository": "https://github.com/RustCrypto/utils"
+}

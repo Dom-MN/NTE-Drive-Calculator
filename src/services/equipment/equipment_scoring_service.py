@@ -1,0 +1,81 @@
+# 提供不依赖页面的驱动、卡带词条评分入口。
+"""Public equipment-stat scoring boundary shared by feature presenters."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+
+from src.optimizer.scoring import ScoringEngine
+
+
+@dataclass(frozen=True)
+class _DriveScoreInput:
+    """适配展示词条到工坊评分器所需的最小驱动对象。"""
+
+    sub_stats: dict[str, float]
+    area: int
+    quality: str
+    item_type: str = "drive"
+
+
+@dataclass(frozen=True)
+class _TapeScoreInput:
+    """适配展示词条到工坊评分器所需的最小卡带对象。"""
+
+    main_stats: str
+    sub_stats: dict[str, float]
+    quality: str
+    main_value: float | None
+    item_type: str = "tape"
+    area: int = 15
+
+
+def prepare_equipment_stat_scores(engine: ScoringEngine, items, profiles) -> None:
+    """展示批量预热仍消费与单件方法一致的词条顺序、实际主值和品质，不派生第二套评分。"""
+    inputs = []
+    for item in items:
+        stats = {str(name): 0.0 for name in item['sub_stats']}
+        if item['item_type'] == 'tape':
+            inputs.append(_TapeScoreInput(str(item['main_stats']), stats, str(item['quality']), item['main_value']))
+        else:
+            inputs.append(_DriveScoreInput(stats, int(item['area']), str(item['quality'])))
+    engine.prepare_scores(inputs, profiles=profiles)
+
+
+def score_drive_stats(
+    engine: ScoringEngine,
+    *,
+    sub_stat_names: Iterable[str],
+    area: int,
+    weights: Mapping[str, float],
+    quality: str = "Gold",
+) -> float:
+    """Score one drive from normalized stat names and its occupied area."""
+
+    item = _DriveScoreInput(sub_stats={str(name): 0.0 for name in sub_stat_names},
+                            area=int(area), quality=str(quality))
+    engine.prepare_scores([item], profiles=[{"key": "profile", "weights": dict(weights)}])
+    return engine.calculate_drive_score(item, dict(weights), engine.max_theoretical_weight(dict(weights)))
+
+
+
+def score_tape_stats(
+    engine: ScoringEngine,
+    *,
+    main_stat_name: str,
+    sub_stat_names: Iterable[str],
+    weights: Mapping[str, float],
+    quality: str = "Gold",
+    main_weights: Mapping[str, float] | None = None,
+    main_value: float | None = None,
+) -> float:
+    """Score one tape from normalized main/sub-stat names."""
+
+    normalized_weights = dict(weights)
+    mains = dict(main_weights) if main_weights is not None else None
+    item = _TapeScoreInput(main_stats=str(main_stat_name), sub_stats={str(name): 0.0 for name in sub_stat_names},
+                           quality=str(quality), main_value=main_value)
+    engine.prepare_scores([item], profiles=[{"key": "profile", "weights": normalized_weights, "main_weights": mains}])
+    return engine.calculate_cartridge_score(item, normalized_weights,
+                                            engine.max_theoretical_weight(normalized_weights), mains)

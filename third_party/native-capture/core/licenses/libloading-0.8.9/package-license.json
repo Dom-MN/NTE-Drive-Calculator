@@ -1,0 +1,6 @@
+{
+  "name": "libloading",
+  "version": "0.8.9",
+  "license": "ISC",
+  "repository": "https://github.com/nagisa/rust_libloading/"
+}

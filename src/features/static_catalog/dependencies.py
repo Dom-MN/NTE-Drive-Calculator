@@ -3,29 +3,32 @@
 
 from __future__ import annotations
 
+from src.ui.common.text_catalog import resolve_text_catalog
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from src.domain.localization.catalog import TextCatalog
 from src.features.static_catalog.contracts import StaticCatalogProvider
-from src.features.static_catalog.domain_pages import build_character_catalog_page
-from src.features.static_catalog.domain_pages.combat_mechanics_page import (
+from src.features.static_catalog.domain_pages.characters.page import build_character_catalog_page
+from src.features.static_catalog.domain_pages.mechanics.page import (
     CombatMechanicsCatalogPage,
     build_combat_mechanics_catalog_page,
 )
-from src.features.static_catalog.domain_pages.equipment_page import (
+from src.features.static_catalog.domain_pages.equipment.page import (
     EquipmentCatalogPage,
     build_equipment_catalog_page,
 )
-from src.features.static_catalog.domain_pages.fork_page import (
+from src.features.static_catalog.domain_pages.forks.page import (
     ForkCatalogPage,
     build_fork_catalog_page,
 )
-from src.features.static_catalog.domain_pages.monster_page import (
+from src.features.static_catalog.domain_pages.monsters.page import (
     build_monster_catalog_page,
 )
 from src.features.static_catalog.page import StaticCatalogDomainPageSpec
 from src.features.static_catalog.providers.character import CharacterCatalogProvider
+from src.features.static_catalog.providers.reference_character import ReferenceCharacterProvider
 from src.features.static_catalog.providers.fork import ForkCatalogProvider
 from src.features.static_catalog.providers.formula_provider import (
     StaticCatalogCounterfactualProvider,
@@ -34,20 +37,20 @@ from src.features.static_catalog.providers.formula_provider import (
 from src.features.static_catalog.providers.misc_provider import StaticCatalogMiscProvider
 from src.features.static_catalog.providers.monster_provider import StaticCatalogMonsterProvider
 from src.features.static_catalog.providers.overview import StaticCatalogOverviewProvider
-from src.services.static_catalog_character_service import StaticCatalogCharacterService
-from src.services.static_catalog_character_release_metadata import (
+from src.services.static_catalog.characters.service import StaticCatalogCharacterService
+from src.services.static_catalog.characters.release_metadata import (
     CharacterReleaseMetadataService,
 )
-from src.services.static_catalog_monster_service import StaticCatalogMonsterService
-from src.services.static_catalog_terminology_service import (
+from src.services.static_catalog.monsters.service import StaticCatalogMonsterService
+from src.services.static_catalog.common.terminology import (
     StaticCatalogTerminologyService,
 )
-from src.storage.sqlite.static_catalog_character_queries import (
+from src.storage.sqlite.catalog.static_catalog_character_queries import (
     StaticCatalogCharacterQueries,
 )
 from src.storage.sqlite.static_game_data_dao import StaticGameDataDao
-from src.ui.equipment_presentation import EquipmentPresentation
-from src.integrations.role_catalog_release import RoleCatalogRelease
+from src.ui.equipment.equipment_presentation import EquipmentPresentation
+from src.integrations.static_catalog.role_catalog_release import RoleCatalogRelease
 
 
 InventorySnapshotLoader = Callable[[], tuple[str, int, Mapping[str, Any]]]
@@ -67,12 +70,13 @@ def _close_owned_components(
     if errors:
         raise RuntimeError(
             f"关闭{label}时有 {len(errors)} 个组件失败"
-        ) from errors[0]
+        ) from errors[0]  # ui-text: internal
 
 
 def build_static_catalog_providers(
     database_path: str | Path,
     *, role_catalog: RoleCatalogRelease | None = None,
+    text_catalog=None,
 ) -> tuple[StaticCatalogProvider, ...]:
     """Build each narrow provider against one immutable release database path."""
 
@@ -82,15 +86,17 @@ def build_static_catalog_providers(
     terminology = StaticCatalogTerminologyService(terminology_dao)
     providers: list[StaticCatalogProvider] = []
     try:
-        overview = StaticCatalogOverviewProvider(str(reference_path))
+        overview = StaticCatalogOverviewProvider(str(reference_path), text_catalog=text_catalog)
         role_path = role_catalog.database_path if role_catalog else path
-        character = CharacterCatalogProvider(role_path)
-        fork = ForkCatalogProvider(role_path)
+        character = CharacterCatalogProvider(role_path, text_catalog=text_catalog)
+        fork = ForkCatalogProvider(role_path, text_catalog=text_catalog)
         providers.extend((overview, character, fork))
+        reference_characters = ReferenceCharacterProvider(path)
+        providers.append(reference_characters)
         misc_items: list[StaticCatalogProvider] = []
         for key in ("equipment", "skills", "effects", "assets", "sources"):
             domain_path = path if key == "effects" else reference_path
-            provider = StaticCatalogMiscProvider(domain_path, domain_path.with_name("manifest.json"), domain_key=key)
+            provider = StaticCatalogMiscProvider(domain_path, domain_path.with_name("manifest.json"), domain_key=key, text_catalog=text_catalog)
             misc_items.append(provider)
             providers.append(provider)
         misc = tuple(misc_items)
@@ -107,6 +113,7 @@ def build_static_catalog_providers(
             overview,
             character,
             fork,
+            reference_characters,
             monster_provider,
             *misc,
             formula,
@@ -130,6 +137,7 @@ def build_static_catalog_domain_pages(
     equipment_inventory_loader: InventorySnapshotLoader | None = None,
     open_catalog_link: Callable[[Any], None] | None = None,
     role_catalog: RoleCatalogRelease | None = None,
+    text_catalog: TextCatalog | None = None,
 ) -> tuple[StaticCatalogDomainPageSpec, ...]:
     """Build owned UI registrations without exposing DAO lifetime to MainWindow."""
 
@@ -175,6 +183,7 @@ def build_static_catalog_domain_pages(
             game_ui_asset_root=role_asset_root,
             terminology_service=role_terminology,
             parent=parent,
+            text_catalog=text_catalog,
         )
 
     def close_character_pages() -> None:
@@ -188,6 +197,7 @@ def build_static_catalog_domain_pages(
             game_ui_asset_root=role_asset_root,
             terminology_service=role_terminology,
             parent=parent,
+            text_catalog=text_catalog,
         )
         fork_pages.append(page)
         return page
@@ -215,6 +225,7 @@ def build_static_catalog_domain_pages(
             presentation=equipment_presentation,
             terminology_service=role_terminology if reference_path != path else terminology,
             parent=parent,
+            text_catalog=text_catalog,
         )
         try:
             load_equipment_inventory(page)
@@ -248,6 +259,7 @@ def build_static_catalog_domain_pages(
             open_catalog_link=open_catalog_link or (lambda _link: None),
             terminology_service=terminology,
             parent=parent,
+            text_catalog=text_catalog,
         )
         mechanics_pages.append(page)
         return page
@@ -263,38 +275,38 @@ def build_static_catalog_domain_pages(
     specs = [
         StaticCatalogDomainPageSpec(
             domain_key="character",
-            title="角色图鉴",
+            title=resolve_text_catalog(text_catalog).render('ui.static_catalog.build_static_catalog_domain_pages.caption'),
             build=build_character_page,
             close=close_character_pages,
         ),
         StaticCatalogDomainPageSpec(
             domain_key="fork",
-            title="弧盘图鉴",
+            title=resolve_text_catalog(text_catalog).render('ui.static_catalog.build_static_catalog_domain_pages.caption_2'),
             build=build_fork_page,
             close=close_fork_pages,
         ),
     ]
     specs.append(StaticCatalogDomainPageSpec(
         domain_key="equipment",
-        title="空幕与驱动",
+        title=resolve_text_catalog(text_catalog).render('ui.static_catalog.build_static_catalog_domain_pages.caption_3'),
         build=build_equipment_page,
         close=close_equipment_pages,
         refresh=refresh_equipment_pages,
     ))
     specs.append(StaticCatalogDomainPageSpec(
         domain_key="monsters",
-        title="怪物与玩法",
+        title=resolve_text_catalog(text_catalog).render('ui.static_catalog.build_static_catalog_domain_pages.caption_4'),
         build=lambda parent: build_monster_catalog_page(
             service=monster_service,
             terminology_service=role_terminology if reference_path != path else terminology,
             game_ui_asset_root=reference_asset_root,
-            parent=parent,
+            parent=parent, catalog=text_catalog,
         ),
         close=monster_service.close,
     ))
     specs.append(StaticCatalogDomainPageSpec(
         domain_key="combat_mechanics",
-        title="战斗机制图鉴",
+        title=resolve_text_catalog(text_catalog).render('ui.static_catalog.build_static_catalog_domain_pages.caption_5'),
         build=build_mechanics_page,
         close=close_mechanics_pages_and_terminology,
     ))

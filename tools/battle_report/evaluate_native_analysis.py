@@ -181,8 +181,8 @@ def _dataset_version(database: Path) -> str:
 def _load_analysis(database: Path, static_database: Path, account: str,
                    record_id: int, mode: str, client: Any = None,
                    progress_metrics: dict[str, float] | None = None) -> tuple[Any, float]:
-    from src.services.battle_report_history_service import BattleReportHistoryService
-    from src.services.battle_report_persistence_service import (
+    from src.services.battle_report.history.service import BattleReportHistoryService
+    from src.services.battle_report.persistence import (
         BattleReportPersistenceDependencies,
     )
 
@@ -237,7 +237,7 @@ def _load_analysis(database: Path, static_database: Path, account: str,
 def _evaluate_case(record: Mapping[str, Any], mode: str, frozen_database: Path,
                    static_database: Path, account: str, executable: Path,
                    dataset_version: str, scratch: Path) -> dict[str, Any]:
-    from src.integrations.nte_analysis_core import NteAnalysisCoreClient
+    from src.integrations.analysis_core.nte_analysis_core import NteAnalysisCoreClient
 
     record_id = int(record["record_id"])
     result: dict[str, Any] = {

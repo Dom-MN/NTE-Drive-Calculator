@@ -145,11 +145,10 @@ class BuffImportMixin:
             ORDER BY asset_path
             """
         ))
-        # Some fork star BuffObjects are classified as calculation assets by
-        # their directory, but expose Buff modifier fields. Import only those
-        # explicitly linked objects through the existing Buff contract.
-        assets.extend(
-            (path, name, "buff", character_id, source_file_id)
+        # 精炼入口和它通过 ExecGEs 触发的子 Buff 都可能位于 calculation 目录。
+        # 只沿正式 GE 引用闭包接收具备 Buff 属性的资源，不将同目录计算类当作 Buff。
+        candidates = {
+            str(path).casefold(): (path, name, "buff", character_id, source_file_id)
             for path, name, character_id, source_file_id in self.connection.execute(
                 """
                 SELECT asset_path, asset_name, character_id, source_file_id
@@ -159,14 +158,33 @@ class BuffImportMixin:
                       SELECT 1 FROM combat_blueprint_semantic_property AS semantic
                       WHERE semantic.source_asset_path = asset.asset_path
                         AND semantic.property_name IN (
-                            'Modifiers', 'CustomApplicationModifierInfos'
+                            'Modifiers', 'CustomApplicationModifierInfos', 'BuffEventEffectData'
                         )
                   )
                 ORDER BY asset_path
                 """
             )
-            if str(path).casefold() in fork_buff_paths
-        )
+        }
+        pending = [str(asset[0]) for asset in assets] + list(fork_buff_paths)
+        visited: set[str] = set()
+        while pending:
+            path = pending.pop()
+            key = path.casefold()
+            if key in visited:
+                continue
+            visited.add(key)
+            if key in candidates:
+                asset = candidates[key]
+                assets.append(asset)
+                path = str(asset[0])
+            for semantic in _semantic_rows(self.connection, path):
+                if semantic["property_name"] != "BuffEventEffectData":
+                    continue
+                for event in semantic["value"]:
+                    for effect in event.get("ExecGEs", ()):
+                        target = _object_asset_path(effect.get("GEClass"))
+                        if target is not None and target.casefold() in candidates:
+                            pending.append(target)
         assets.sort(key=lambda asset: str(asset[0]).casefold())
         available = {str(asset[0]).casefold() for asset in assets}
         for asset in assets:

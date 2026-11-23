@@ -1,8 +1,10 @@
-# 从 MainWindow 抽离的控制器方法。
-"""Compatibility-installed MainWindow controller."""
+# 投影环境检测和部署意图；账号代次与权限失效时丢弃旧结果。
+"""现有窗口环境入口：探测与文件操作委托 Integration，界面只解释结果。"""
 
 from __future__ import annotations
 
+from src.ui.common.enum_text import ui_enum_text
+from src.ui.common.text_catalog import plain_label, plain_tooltip, resolve_text_catalog
 from typing import Any, cast
 
 from PySide6.QtCore import QTimer
@@ -13,24 +15,22 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QInputDialog,
-    QLabel,
     QMessageBox,
     QPlainTextEdit,
     QVBoxLayout,
 )
 
-from src.i18n import tr
 from src.app.workers import WorkerThread
 from src.ui.controllers.native_plugin_deployment_ui import refresh_native_plugin_status, deploy_native_plugin_from_settings
 from src.observability.context import OperationContext
 from src.observability.operation import log_event
-from src.services.equipment_plugin_deployment import (
+from src.integrations.components.environment import (
     EquipmentPluginDeploymentError,
     find_game_executables,
     game_process_running,
     npcap_installation_present,
 )
-from src.services.nte_core_diagnostics import (
+from src.integrations.components.core_diagnostics import (
     capture_device_names,
     collect_nte_core_diagnostics,
     format_nte_core_diagnostics,
@@ -63,6 +63,7 @@ def _new_environment_operation(
 
 
 def _environment_result_acceptor(self, operation: OperationContext, capability: str):
+    """只投递一次，且复核账号、代次、操作修订和对应能力。"""
     revision = self.work_mode_service.operation_revision
     delivered = False
 
@@ -94,19 +95,19 @@ def _refresh_equipment_plugin_status(self):
     stop_button = getattr(self, "_equipment_plugin_stop_button", None)
     if stop_button is not None:
         stop_button.setEnabled(True)
-        stop_button.setText(tr("清理游戏目录"))
+        stop_button.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('settings.page.build_environment_card.equipment_plugin_stop_button'))
     label = getattr(self, "_npcap_status_label", None)
     if label is not None:
         label.setText(
-            tr("Npcap：已检测到") if npcap_installation_present()
-            else tr("Npcap：未检测到（请选择官方安装程序安装）")
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.refresh_equipment_plugin_status.label') if npcap_installation_present()
+            else resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.refresh_equipment_plugin_status.label_2')
         )
     refresh_native_plugin_status(self)
 
 
 def _select_equipment_plugin_game_executable(self):
     selected, _ = QFileDialog.getOpenFileName(
-        self, tr("选择游戏主程序"), "", "HTGame.exe (HTGame.exe)"
+        self, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.select_equipment_plugin_game_executable.selected'), "", "HTGame.exe (HTGame.exe)"
     )
     if selected:
         self._equipment_plugin_game_executable_edit.setText(selected)
@@ -121,7 +122,7 @@ def _detect_equipment_plugin_game_executable(self):
     button = getattr(self, "_equipment_plugin_detect_button", None)
     if button is not None:
         button.setEnabled(False)
-        button.setText(tr("正在检测…"))
+        button.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.settings.init.overview'))
     worker = WorkerThread(target=find_game_executables, parent=self)
     self._equipment_plugin_detection_worker = worker
     operation = _new_environment_operation(self, "game_detection")
@@ -144,7 +145,7 @@ def _detect_equipment_plugin_game_executable(self):
     def finish(candidates):
         if button is not None:
             button.setEnabled(True)
-            button.setText(tr("自动检测"))
+            button.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('settings.page.build_environment_card.equipment_plugin_detect_button'))
         if not context_is_current():
             log_event(
                 "INFO",
@@ -164,18 +165,14 @@ def _detect_equipment_plugin_game_executable(self):
         if not choices:
             QMessageBox.information(
                 self,
-                tr("检测游戏位置"),
-                tr("已检查异环安装注册表和常见游戏库目录，但未找到 HTGame.exe。"
-                "你可以手动填写或选择文件，定位步骤如下：\n\n"
-                "1. 右键点击桌面游戏图标，选择“打开文件所在位置”。\n"
-                "2. 进入 Client\\WindowsNoEditor\\HT\\Binaries\\Win64，找到 HTGame.exe。\n"
-                "3. 右键点击 HTGame.exe，选择“复制文件地址”，再粘贴到游戏主程序方框。"),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.failed.qmessagebox'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.finish.qmessagebox')),
             )
             return
         selected = choices[0]
         if len(choices) > 1:
             selected, accepted = QInputDialog.getItem(
-                self, tr("选择游戏位置"), tr("检测到多个 HTGame.exe，请选择正在使用的游戏："),
+                self, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.finish.selected_accepted'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.finish.selected_accepted_2')),
                 choices, 0, False,
             )
             if not accepted:
@@ -187,7 +184,7 @@ def _detect_equipment_plugin_game_executable(self):
     def failed(error):
         if button is not None:
             button.setEnabled(True)
-            button.setText(tr("自动检测"))
+            button.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('settings.page.build_environment_card.equipment_plugin_detect_button'))
         if not context_is_current():
             log_event(
                 "INFO",
@@ -205,10 +202,8 @@ def _detect_equipment_plugin_game_executable(self):
         )
         QMessageBox.warning(
             self,
-            tr("检测游戏位置"),
-            tr("状态：自动定位游戏失败。\n"
-            "原因：未核对到唯一可用的游戏主程序。\n"
-            "下一步：在当前环境设置中手动选择 HTGame.exe，然后重新检测。"),
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.failed.qmessagebox'),
+            plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.failed.qmessagebox_2')),
         )
 
     worker.result_ready.connect(finish)
@@ -225,7 +220,7 @@ def _show_npcap_status(self):
         return
     if npcap_installation_present():
         QMessageBox.information(
-            self, tr("Npcap 状态"), tr("已检测到 Npcap，背包同步环境已满足该项依赖。")
+            self, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.show_npcap_status.qmessagebox'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.show_npcap_status.qmessagebox_2'))
         )
         return
     self.operation_unavailable(
@@ -241,7 +236,7 @@ def _require_environment_diagnostics(self, *, packet: bool, label: str) -> bool:
     try:
         self.work_mode_service.require(capability)
     except PermissionError as error:
-        QMessageBox.warning(self, tr("环境检测"), str(error))
+        QMessageBox.warning(self, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.require_environment_diagnostics.qmessagebox'), ui_enum_text(getattr(self, 'text_catalog', None), str(error)))
         return False
     return True
 
@@ -251,12 +246,12 @@ def _diagnose_nte_core(self):
         return
     current_worker = getattr(self, "_nte_core_diagnostic_worker", None)
     if current_worker is not None and current_worker.isRunning():
-        QMessageBox.information(self, tr("nte-core 诊断"), tr("诊断正在进行，请稍候。"))
+        QMessageBox.information(self, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.diagnose_nte_core.qmessagebox'), plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.diagnose_nte_core.qmessagebox_2')))
         return
     button = getattr(self, "_nte_core_diagnostic_button", None)
     if button is not None:
         button.setEnabled(False)
-        button.setText(tr("诊断中…"))
+        button.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.diagnose_nte_core.button'))
     capability = "diagnostics" if self.work_mode_service.allowed("diagnostics") else "packet_capture"
 
     def collect():
@@ -279,7 +274,7 @@ def _diagnose_nte_core(self):
             return
         if button is not None:
             button.setEnabled(True)
-            button.setText(tr("诊断 nte-core"))
+            button.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('settings.page.build_environment_card.nte_core_diagnostic_button'))
         if not accept_result():
             return
         if result.get("error"):
@@ -298,7 +293,7 @@ def _diagnose_nte_core(self):
         if not (self.work_mode_service.allowed("packet_capture") or self.work_mode_service.allowed("diagnostics")):
             return
         self._show_nte_core_diagnostic_report(
-            format_nte_core_diagnostics(result),
+            format_nte_core_diagnostics(result, text_catalog=getattr(self, 'text_catalog', None)),
             devices,
             allow_manual_device_selection=bool(
                 devices
@@ -312,7 +307,7 @@ def _diagnose_nte_core(self):
             return
         if button is not None:
             button.setEnabled(True)
-            button.setText(tr("诊断 nte-core"))
+            button.setText(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('settings.page.build_environment_card.nte_core_diagnostic_button'))
         if not accept_result():
             return
         log_event(
@@ -340,12 +335,11 @@ def _show_nte_core_diagnostic_report(
     allow_manual_device_selection: bool = False,
 ) -> None:
     dialog = QDialog(self)
-    dialog.setWindowTitle(tr("nte-core 诊断结果"))
+    dialog.setWindowTitle(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.show_nte_core_diagnostic_report.dialog'))
     dialog.resize(720, 510)
     layout = QVBoxLayout(dialog)
-    hint = QLabel(
-        tr("报告仅保留抓包所需的核心、Npcap 驱动、网卡和 DLL 线索；"
-        "不会启动抓包、保存原始数据或显示 IP/MAC 地址。")
+    hint = plain_label(
+        resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.show_nte_core_diagnostic_report.hint')
     )
     hint.setWordWrap(True)
     layout.addWidget(hint)
@@ -357,7 +351,7 @@ def _show_nte_core_diagnostic_report(
     if devices and allow_manual_device_selection:
         select_device_button = cast(
             QAbstractButton,
-            actions.addButton("高级排障…", QDialogButtonBox.ActionRole),
+            actions.addButton(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.show_nte_core_diagnostic_report.actions_2'), QDialogButtonBox.ActionRole),
         )
 
         def select_capture_device() -> None:
@@ -365,9 +359,8 @@ def _show_nte_core_diagnostic_report(
                 return
             proceed = QMessageBox.question(
                 dialog,
-                tr("高级排障"),
-                tr("手动指定网卡会覆盖自动选择，并可能导致同步失败。"
-                "仅在自动选择反复失败时继续。"),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.select_capture_device.proceed'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.select_capture_device.proceed_2')),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
@@ -375,8 +368,8 @@ def _show_nte_core_diagnostic_report(
                 return
             selected, accepted = QInputDialog.getItem(
                 dialog,
-                "手动指定抓取网卡",
-                "选择诊断确认的网卡：",
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.select_capture_device.selected_accepted'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.select_capture_device.selected_accepted_2')),
                 devices,
                 0,
                 False,
@@ -387,8 +380,8 @@ def _show_nte_core_diagnostic_report(
             if capture_device_edit is None:
                 QMessageBox.warning(
                     self,
-                    tr("高级排障"),
-                    tr("未找到“抓取网卡”设置，请重新打开设置页面后重试。"),
+                    resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.select_capture_device.proceed'),
+                    plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.select_capture_device.qmessagebox_2')),
                 )
                 return
             capture_device_edit.setText(selected)
@@ -397,14 +390,14 @@ def _show_nte_core_diagnostic_report(
                 save_diagnostics()
             QMessageBox.information(
                 self,
-                tr("高级排障"),
-                tr("已保存抓取网卡；重新启动同步后生效。"),
+                resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.select_capture_device.proceed'),
+                plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.select_capture_device.qmessagebox')),
             )
 
         select_device_button.clicked.connect(select_capture_device)
     copy_button = cast(
         QAbstractButton,
-        actions.addButton(tr("复制诊断"), QDialogButtonBox.ActionRole),
+        actions.addButton(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.show_nte_core_diagnostic_report.actions'), QDialogButtonBox.ActionRole),
     )
     copy_button.clicked.connect(lambda: QApplication.clipboard().setText(report))
     actions.rejected.connect(dialog.reject)
@@ -418,7 +411,7 @@ def _deploy_equipment_plugin(self):
     try:
         self.work_mode_service.require("native_load")
     except PermissionError as error:
-        QMessageBox.warning(self, tr("部署游戏内组件"), str(error))
+        QMessageBox.warning(self, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.deploy_equipment_plugin.qmessagebox_3'), ui_enum_text(getattr(self, 'text_catalog', None), str(error)))
         return
     executable = self.work_mode_service.settings.game_executable
     if not executable.strip():
@@ -427,13 +420,13 @@ def _deploy_equipment_plugin(self):
     try:
         running = game_process_running()
     except EquipmentPluginDeploymentError as error:
-        QMessageBox.warning(self, tr("部署装备插件"), str(error))
+        QMessageBox.warning(self, resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.deploy_equipment_plugin.qmessagebox'), ui_enum_text(getattr(self, 'text_catalog', None), str(error)))
         return
     if running:
         QMessageBox.warning(
             self,
-            tr("部署装备插件"),
-            tr("检测到游戏正在运行。\n请完全退出游戏后再部署插件。"),
+            resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.deploy_equipment_plugin.qmessagebox'),
+            plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.controllers.deploy_equipment_plugin.qmessagebox_2')),
         )
         return
     deploy_native_plugin_from_settings(self)

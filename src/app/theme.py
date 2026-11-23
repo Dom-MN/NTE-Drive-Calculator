@@ -1,23 +1,20 @@
 # 定义深色和浅色主题样式与调色板。
-"""Shared visual theme constants."""
+"""共享三主题、评分颜色和对话框默认设置，不改业务状态。"""
 
 from __future__ import annotations
 
 import ctypes
+import re
 import sys
 
-from src.i18n import tr
 from PySide6.QtCore import QObject, QEvent
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QMessageBox
 
 from src.app.window_geometry import fit_dialog_to_available_screen
 
-# S/SS and SSS/ACE deliberately use the opposite emphasis tiers.  All scoring
-# surfaces import these shared values so that the grade meaning stays visual
-# consistent between allocation, calculation, identification and replacement.
+# 所有评分界面复用同一等级颜色；这里只统一展示，不重算评分。
 GRADE_COLORS = {"ACE": "#f0883e", "SSS": "#f0883e", "SS": "#ffa726", "S": "#ffa726", "A": "#7ec8e3", "B": "#5b9bd5", "C": "#4a7fb5", "D": "#3d5a80"}
-GRADE_BGS = {"ACE": "#f0883e30", "SSS": "#f0883e20", "SS": "#ffa72618", "S": "#ffa72618", "A": "#7ec8e318", "B": "#5b9bd515", "C": "#4a7fb512", "D": "#3d5a8010"}
 
 DARK_STYLE = """
 QMainWindow{background:#0d1117;border:1px solid #21262d;border-radius:10px}
@@ -67,8 +64,11 @@ QPushButton#allocationFilterHelp{background:transparent;border:1px solid #30363d
 QPushButton#allocationFilterHelp:hover{background:#1f6feb33;color:#58a6ff;border-color:#58a6ff}
 QPushButton#btnDanger{background:#da3633;color:#fff;border:1px solid #f85149}
 QPushButton#btnDanger:hover{background:#f85149}
-QPushButton#btnAction{background:#1f6feb33;color:#58a6ff;border:1px solid #1f6feb;font-size:12px;padding:5px 12px}
-QPushButton#btnAction:hover{background:#1f6feb66}
+QPushButton#btnAction{background:#161b22;color:#58a6ff;border:1px solid #1f6feb;font-size:12px;padding:5px 12px}
+QPushButton#btnAction:hover{background:#21262d}
+QPushButton#btnAction:pressed{background:#0d1f35}
+QPushButton#btnAction:focus{border:2px solid #58a6ff}
+QPushButton#btnAction:disabled{background:#161b22;color:#6e7681;border-color:#30363d}
 QPushButton#btnSm{font-size:11px;padding:4px 8px;min-width:28px;min-height:24px}
 QPushButton#btnHelp{background:transparent;border:1px solid #30363d;border-radius:10px;color:#8b949e;font-size:11px;font-weight:700;padding:2px 7px;min-width:20px;max-width:20px;min-height:20px;max-height:20px}
 QPushButton#btnHelp:hover{background:#1f6feb33;color:#58a6ff;border-color:#58a6ff}
@@ -187,24 +187,38 @@ BLACK_COLOR_MAP = {
 _DARK_FROM_BLACK_COLOR_MAP = {value: key for key, value in BLACK_COLOR_MAP.items()}
 
 
-def _map_light_colors(style: str) -> str:
-    for src, dst in LIGHT_COLOR_MAP.items():
+_RGBA_HEX = re.compile(r"#([0-9a-fA-F]{6})([0-9a-fA-F]{2})(?![0-9a-fA-F])")
+
+
+def _qt_alpha_colors(style: str) -> str:
+    """样式底稿的八位色是 RGBA；Qt 八位十六进制是 ARGB，统一输出无歧义 rgba。"""
+    def convert(match):
+        rgb, alpha = match.groups()
+        return f"rgba({int(rgb[:2], 16)},{int(rgb[2:4], 16)},{int(rgb[4:], 16)},{int(alpha, 16)})"
+    return _RGBA_HEX.sub(convert, style)
+
+
+_LIGHT_STYLE_MAP = {_qt_alpha_colors(k): _qt_alpha_colors(v) for k, v in LIGHT_COLOR_MAP.items()}
+_DARK_STYLE_MAP = {_qt_alpha_colors(k): _qt_alpha_colors(v) for k, v in _DARK_COLOR_MAP.items()}
+
+
+def _map_style_colors(style: str, mapping: dict[str, str]) -> str:
+    style = _qt_alpha_colors(style)
+    for src, dst in mapping.items():
         style = style.replace(src, dst)
     return style
+
+
+def _map_light_colors(style: str) -> str:
+    return _map_style_colors(style, _LIGHT_STYLE_MAP)
 
 
 def _map_dark_colors(style: str) -> str:
-    for src, dst in _DARK_COLOR_MAP.items():
-        style = style.replace(src, dst)
-    for src, dst in _DARK_FROM_BLACK_COLOR_MAP.items():
-        style = style.replace(src, dst)
-    return style
+    return _map_style_colors(_map_style_colors(style, _DARK_STYLE_MAP), _DARK_FROM_BLACK_COLOR_MAP)
 
 
 def _map_black_colors(style: str) -> str:
-    for src, dst in BLACK_COLOR_MAP.items():
-        style = style.replace(src, dst)
-    return style
+    return _map_style_colors(style, BLACK_COLOR_MAP)
 
 
 def _build_light_style() -> str:
@@ -212,6 +226,7 @@ def _build_light_style() -> str:
     return _map_light_colors(style)
 
 
+DARK_STYLE = _qt_alpha_colors(DARK_STYLE)
 LIGHT_STYLE = _build_light_style()
 BLACK_STYLE = _map_black_colors(DARK_STYLE)
 STYLE = DARK_STYLE
@@ -261,16 +276,19 @@ def themed_style(style: str, app: QApplication | None = None) -> str:
         return _map_light_colors(style)
     if theme == "black":
         return _map_black_colors(style)
-    return style
+    return _qt_alpha_colors(style)
 
 
 def theme_color(dark_color: str, app: QApplication | None = None) -> str:
     theme = current_theme_name(app)
     if theme == "light":
-        return LIGHT_COLOR_MAP.get(dark_color, dark_color)
-    if theme == "black":
-        return BLACK_COLOR_MAP.get(dark_color, dark_color)
-    return dark_color
+        color = LIGHT_COLOR_MAP.get(dark_color, dark_color)
+    elif theme == "black":
+        color = BLACK_COLOR_MAP.get(dark_color, dark_color)
+    else:
+        color = dark_color
+    # QColor 接口仍用 Qt 原生 ARGB，不能传入仅 QSS 识别的 rgba() 文本。
+    return "#" + color[7:] + color[1:7] if _RGBA_HEX.fullmatch(color) else color
 
 
 def theme_rgba(dark_color: str, alpha: float, app: QApplication | None = None) -> str:
@@ -279,7 +297,7 @@ def theme_rgba(dark_color: str, alpha: float, app: QApplication | None = None) -
 
 
 def refresh_inline_theme_styles(root, app: QApplication | None = None) -> None:
-    """Re-map existing inline widget styles after the app theme changes."""
+    """复用控件首次记录的样式底稿，切主题时不累积重复颜色转换。"""
     theme = current_theme_name(app)
     widgets = [root, *root.findChildren(QObject)] if root is not None else []
     for widget in widgets:
@@ -297,7 +315,7 @@ def refresh_inline_theme_styles(root, app: QApplication | None = None) -> None:
         elif theme == "black":
             widget.setStyleSheet(_map_black_colors(base))
         else:
-            widget.setStyleSheet(base)
+            widget.setStyleSheet(_qt_alpha_colors(base))
 
 
 def apply_theme_palette(app: QApplication, theme: str | None = "black") -> None:
@@ -374,9 +392,6 @@ def _standard_button_value(button) -> int:
     return int(getattr(button, "value", button))
 
 
-# Source strings only. They are translated in localize_standard_buttons at
-# call time: this module is imported before set_language() runs, so a
-# module-level tr() here would resolve against the default language.
 STANDARD_BUTTON_TEXT = {
     _standard_button_value(QDialogButtonBox.Ok): "确定",
     _standard_button_value(QDialogButtonBox.Cancel): "取消",
@@ -398,7 +413,7 @@ def apply_title_bar_theme(widget, theme: str | None = None) -> None:
         hwnd = int(widget.winId())
         value = ctypes.c_int(0 if theme_name(theme or current_theme_name()) == "light" else 1)
         dwm = ctypes.windll.dwmapi
-        # Windows 11 uses 20; older Windows 10 builds use 19.
+        # 先尝试 Windows 11 属性，再兼容旧 Windows 10；失败只跳过标题栏着色。
         for attribute in (20, 19):
             if dwm.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(value), ctypes.sizeof(value)) == 0:
                 break
@@ -406,39 +421,53 @@ def apply_title_bar_theme(widget, theme: str | None = None) -> None:
         return
 
 
-def localize_standard_buttons(widget) -> None:
+def localize_standard_buttons(widget, catalog=None) -> None:
+    from src.ui.common.enum_text import ui_enum_text
+    catalog = getattr(widget, "text_catalog", None) or catalog
     for box in widget.findChildren(QDialogButtonBox):
         for button in box.buttons():
+            if button.property('_nte_explicit_text'):
+                continue
             text = STANDARD_BUTTON_TEXT.get(_standard_button_value(box.standardButton(button)))
             if text:
-                button.setText(tr(text))
+                button.setText(ui_enum_text(catalog, text))
     if isinstance(widget, QMessageBox):
         for button in widget.buttons():
+            if button.property('_nte_explicit_text'):
+                continue
             try:
                 standard = widget.standardButton(button)
             except Exception:
                 continue
             text = STANDARD_BUTTON_TEXT.get(_standard_button_value(standard))
             if text:
-                button.setText(tr(text))
+                button.setText(ui_enum_text(catalog, text))
 
 
 class _DialogPolishFilter(QObject):
+    def __init__(self, parent, catalog=None):
+        super().__init__(parent)
+        self.catalog = catalog
+
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Show and isinstance(obj, QDialog):
+        # 标签页内的 QDialog 使用父布局坐标；按屏幕居中或创建原生标题栏会把内容移出视口。
+        if event.type() == QEvent.Show and isinstance(obj, QDialog) and obj.isWindow():
             theme = current_theme_name()
             if obj.property("_nte_dialog_theme") != theme:
                 obj.setProperty("_nte_dialog_theme", theme)
                 obj.setStyleSheet(current_style_sheet() + "\n" + obj.styleSheet())
-            localize_standard_buttons(obj)
+            localize_standard_buttons(obj, self.catalog)
             apply_title_bar_theme(obj, theme)
             fit_dialog_to_available_screen(obj)
         return False
 
 
-def install_dialog_defaults(app: QApplication) -> None:
+def install_dialog_defaults(app: QApplication, *, catalog=None) -> None:
+    """每个 QApplication 只安装一次默认中文按钮、主题和屏幕限位。"""
     if getattr(app, "_nte_dialog_defaults_installed", False):
+        if catalog is not None:
+            app._nte_dialog_polish_filter.catalog = catalog
         return
     app._nte_dialog_defaults_installed = True
-    app._nte_dialog_polish_filter = _DialogPolishFilter(app)
+    app._nte_dialog_polish_filter = _DialogPolishFilter(app, catalog)
     app.installEventFilter(app._nte_dialog_polish_filter)

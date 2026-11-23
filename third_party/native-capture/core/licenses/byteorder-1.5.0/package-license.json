@@ -1,0 +1,6 @@
+{
+  "name": "byteorder",
+  "version": "1.5.0",
+  "license": "Unlicense OR MIT",
+  "repository": "https://github.com/BurntSushi/byteorder"
+}

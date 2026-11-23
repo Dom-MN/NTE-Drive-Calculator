@@ -1,0 +1,6 @@
+{
+  "name": "zlib-rs",
+  "version": "0.6.6",
+  "license": "Zlib",
+  "repository": "https://github.com/trifectatechfoundation/zlib-rs"
+}

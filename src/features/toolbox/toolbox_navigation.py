@@ -3,19 +3,19 @@
 
 from __future__ import annotations
 
-from src.i18n import tr
-
+from src.ui.common.text_catalog import plain_tooltip, resolve_text_catalog
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox, QStackedWidget, QWidget
 
-from src.features.toolbox.cultivation_page import CultivationCalculatorPage
-from src.services.cultivation_planner_service import CultivationPlannerService
-from src.services.cultivation_history_service import CultivationHistoryService
-from src.services.cultivation_owned_material_import import ImportedOwnedMaterials
-from src.services.rewind_shape_recommendation_service import (
+from src.app.page_tasks import delete_when_page_tasks_finish
+from src.features.toolbox.cultivation.page import CultivationCalculatorPage
+from src.services.progression.planner_service import CultivationPlannerService
+from src.services.progression.history_service import CultivationHistoryService
+from src.services.progression.owned_material_import import ImportedOwnedMaterials
+from src.services.rewind.recommendation import (
     RewindShapeRecommendationService,
 )
 
@@ -43,6 +43,7 @@ class ToolboxDependencies:
     operation_generation: Callable[[], object] | None = None
     operation_entry: Callable[[str, str], bool] | None = None
     operation_unavailable: Callable[[str, str, str], None] | None = None
+    rewind_target_factory: Callable[[], object] | None = None
     cultivation_context_identity: Callable[[], object] | None = None
     cultivation_asset_root: Callable[[], Path] | None = None
     cultivation_material_importer: Callable[[], ImportedOwnedMaterials] | None = None
@@ -62,7 +63,9 @@ class CultivationToolboxNavigation:
         home: QWidget,
         dependencies: ToolboxDependencies,
         dialog_parent: QWidget,
+        text_catalog=None,
     ) -> None:
+        self.text_catalog = resolve_text_catalog(text_catalog)
         self.stack = stack
         self.home = home
         self.dependencies = dependencies
@@ -88,14 +91,15 @@ class CultivationToolboxNavigation:
                     history_service=history_service,
                     asset_root=(self.dependencies.cultivation_asset_root()
                                 if self.dependencies.cultivation_asset_root is not None else None),
+                    text_catalog=getattr(self, 'text_catalog', None), defer_initial_load=True,
                 )
             except Exception as exc:
                 if history_service is not None:
                     history_service.close()
                 QMessageBox.warning(
                     self.dialog_parent,
-                    tr("养成计算器"),
-                    tr("读取养成数据失败：{exc}", exc=exc),
+                    resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.toolbox.open.qmessagebox'),
+                    plain_tooltip(resolve_text_catalog(getattr(self, 'text_catalog', None)).render('ui.toolbox.open.qmessagebox_2', exc=f'{exc}')),
                 )
                 return
             self.page.back_requested.connect(self.show_home)
@@ -120,7 +124,7 @@ class CultivationToolboxNavigation:
         page.shutdown()
         self.show_home()
         self.stack.removeWidget(page)
-        page.deleteLater()
+        delete_when_page_tasks_finish(page)
         self.page = None
 
     def _identity(self) -> object | None:
