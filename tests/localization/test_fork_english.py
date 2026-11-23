@@ -100,7 +100,8 @@ def test_composed_chips_and_labels_are_projected_piece_by_piece():
     base = make_catalog(json.loads((LOCALES / "zh-CN.json").read_text(encoding="utf-8")))
     english = make_catalog(json.loads((LOCALES / "en-US.json").read_text(encoding="utf-8")), base=base)
     terms = {"「守卫王国」": "Kingdom's Guard", "倾陷强度": "Break Intensity", "防御力": "DEF",
-             "攻击力": "ATK", "弥散性的朦白": "Diffusive Haze", "鬼郎丸头锤": "Kiroumaru Headbutt"}
+             "攻击力": "ATK", "弥散性的朦白": "Diffusive Haze", "鬼郎丸头锤": "Kiroumaru Headbutt",
+             "残虹": "Zankou", "黑羽": "Blackbird"}
     try:
         projection.set_display_catalog(english, game_terms=terms)
         assert projection.project("<b>「守卫王国」</b>") == "<b>Kingdom's Guard</b>"
@@ -109,6 +110,10 @@ def test_composed_chips_and_labels_are_projected_piece_by_piece():
         assert projection.project("1. 弥散性的朦白") == "1. Diffusive Haze"
         assert projection.project("普通攻击：鬼郎丸头锤") == "Basic Attack: Kiroumaru Headbutt"
         assert projection.project("好感十级（攻击力 +5%）") == "Affinity level 10 (ATK +5%)"
+        assert projection.project("残虹、黑羽") == "Zankou, Blackbird"
+        sentence = base.render("auto.features.static_catalog.menu.module.ac95b79d")
+        assert projection.project(f"战斗机制  ·  {sentence}").endswith(
+            english.render("auto.features.static_catalog.menu.module.ac95b79d"))
         assert projection.project("没有登记 的 文字") == "没有登记 的 文字"
     finally:
         projection.set_display_catalog(None)

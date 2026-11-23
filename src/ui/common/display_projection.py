@@ -141,8 +141,9 @@ def _project_cached(value: str) -> str:
 # then at spaces and punctuation; each piece is projected only if it is exactly a registered line or
 # game term. Full-width punctuation becomes ASCII once no Chinese is left.
 _TAG = re.compile(r"(<[^>]+>)")
-_DELIMITER = re.compile(r"(\s*[|·；：，（）()]\s*|\s+)")
-_ASCII_PUNCTUATION = (("：", ": "), ("；", "; "), ("，", ", "), ("（", " ("), ("）", ")"))
+# 先按强分隔（竖线、间隔点、空白）切段，段内仍未命中时再按句内标点切，避免把已登记整句从逗号处拆散。
+_DELIMITERS = (re.compile(r"(\s*[|·•]\s*|\s+)"), re.compile(r"(\s*[；：，、（）()]\s*)"))
+_ASCII_PUNCTUATION = (("：", ": "), ("；", "; "), ("，", ", "), ("、", ", "), ("（", " ("), ("）", ")"))
 
 
 def _project_piece(piece: str) -> str:
@@ -160,8 +161,11 @@ def _project_pieces(value: str) -> str:
         parts = _TAG.split(value)
         projected = [part if i % 2 or not part else _project_piece(part) for i, part in enumerate(parts)]
         return "".join(projected)
-    parts = _DELIMITER.split(value)
-    if len(parts) == 1:
+    for delimiter in _DELIMITERS:
+        parts = delimiter.split(value)
+        if len(parts) > 1:
+            break
+    else:
         return value
     projected = [part if i % 2 or not part else _project_piece(part) for i, part in enumerate(parts)]
     if projected == parts:
