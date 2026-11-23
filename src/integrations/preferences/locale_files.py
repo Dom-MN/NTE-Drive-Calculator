@@ -54,6 +54,23 @@ def enum_text(catalog: TextCatalog | None, value):
     return value
 
 
+def bundled_game_terms(locale: str) -> dict[str, str]:
+    """Fork: the game's own wording for official game text in ``locale``, or empty.
+
+    Generated from the game's string tables by tools/i18n/build_game_terms.py; a missing or invalid
+    file only means game data stays Chinese, never a failed start.
+    """
+    if not valid_locale(locale) or locale == BASE_LOCALE:
+        return {}
+    try:
+        payload = read_catalog_file(bundled_root() / "assets" / "locales" / "game_terms" / f"{locale}.json")
+    except CatalogError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {zh: en for zh, en in payload.items() if isinstance(zh, str) and isinstance(en, str) and en}
+
+
 def read_catalog_file(path: Path) -> object:
     try:
         with path.open("rb") as stream:
@@ -91,23 +108,45 @@ class LocaleFiles:
             raise CatalogError("invalid_path")
         return target
 
+    def _bundled_patch(self, locale: str) -> Path | None:
+        """Fork: a language patch shipped in the release, used when no local patch overrides it."""
+        if not valid_locale(locale) or locale == BASE_LOCALE:
+            return None
+        path = self.bundled_dir / f"{locale}.json"
+        return path if path.is_file() else None
+
     def load(self, locale: str) -> TextCatalog:
         if locale == BASE_LOCALE:
             return self.base
-        catalog = make_catalog(read_catalog_file(self._target(locale)), base=self.base)
+        target = self._target(locale)
+        if not target.exists() and (bundled := self._bundled_patch(locale)) is not None:
+            target = bundled
+        catalog = make_catalog(read_catalog_file(target), base=self.base)
         if catalog.locale != locale:
             raise CatalogError("locale_mismatch")
         return catalog
 
+    def _bundled_patches(self, local: set[str]) -> list[TextCatalog]:
+        """Fork: release-shipped patches; a local patch of the same locale takes their place."""
+        catalogs = []
+        for path in sorted(self.bundled_dir.glob("*.json")):
+            if path.stem == BASE_LOCALE or path.stem in local or self._bundled_patch(path.stem) is None:
+                continue
+            try:
+                catalogs.append(self.load(path.stem))
+            except CatalogError:
+                continue
+        return catalogs
+
     def available(self) -> tuple[TextCatalog, ...]:
-        catalogs = [self.base]
         if not self.patch_dir.exists():
-            return tuple(catalogs)
+            return tuple([self.base] + self._bundled_patches(set()))
         if self.patch_dir.resolve().parent != self._allowed_root:
             raise CatalogError("invalid_path")
         files = sorted(self.patch_dir.glob("*.json"))
         if len(files) > MAX_LOCAL_CATALOGS:
             raise CatalogError("too_many_catalogs")
+        catalogs = [self.base] + self._bundled_patches({path.stem for path in files})
         for path in files:
             try:
                 catalogs.append(self.load(path.stem))

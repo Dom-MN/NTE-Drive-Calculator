@@ -168,7 +168,9 @@ def test_unselected_bad_json_is_skipped_and_corrupt_preferences_have_bounded_fal
         bad.write_bytes(data)
         restarted = LanguageSettingsService(service.preferences, service.files)
         assert restarted.startup().catalog.locale == "zh-CN"
-        assert [c.locale for c in restarted.choices()] == ["zh-CN"]
+        # Fork: the release also ships an English patch, so the bad local patch is the thing to check.
+        choices = [c.locale for c in restarted.choices()]
+        assert choices[0] == "zh-CN" and "de-DE" not in choices
         with pytest.raises(CatalogError, match="invalid_json"):
             restarted.install(bad)
         service.preferences.path.parent.mkdir(parents=True, exist_ok=True)

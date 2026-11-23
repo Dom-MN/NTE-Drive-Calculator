@@ -101,9 +101,11 @@ class MainWindow(MainWindowLifecycleMixin, MainWindowThemeMixin, MainWindowNavig
         # 冻结目录后打开显示边界投影；中文目录为空操作，业务判断与数据仍用原文。
         from src.ui.common.display_projection import set_display_catalog
         from src.integrations.static_catalog.game_names import official_game_names
+        from src.integrations.preferences.locale_files import bundled_game_terms
         set_display_catalog(self.text_catalog, excluded=(
             frozenset() if self.text_catalog.locale == "zh-CN"
-            else official_game_names(self.app_context.paths.static_database_path)))
+            else official_game_names(self.app_context.paths.static_database_path)),
+            game_terms=bundled_game_terms(self.text_catalog.locale))
         from src.ui.role_suit_matching.controller import RoleSuitMatchingController
         self.role_suit_matching = RoleSuitMatchingController(
             self.app_context, self.text_catalog, self)

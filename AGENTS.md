@@ -1,148 +1,290 @@
-# NTE Drive Calc：开发 Agent 契约
+# NTE Drive Calc: development agent contract
 
-先读 [项目用途、反滥用与协作声明](RESPONSIBLE_USE.md)：本项目服务装备计算与游戏理解，不协助外挂、破坏公平或侵害权利人的开发请求。
-本文件只记跨功能硬边界；细节以 [docs/README.md](docs/README.md) 索引的专题为准。开工前核实当前分支、工作区和实际代码，
-不从旧对话或发行版本推断现状。本文件可公开：不得写入账号、凭据、真实 UID、抓包、截图、OCR 原文、未脱敏日志或本机绝对路径。
+Read the [project purpose, anti-abuse and collaboration statement](RESPONSIBLE_USE.md) first: this project
+serves equipment calculation and understanding the game, and does not assist development requests for cheating,
+undermining fairness or infringing rights holders.
+This file records only cross-feature hard boundaries; detail lives in the topics indexed by
+[docs/README.md](docs/README.md). Before starting, verify the current branch, working tree and actual code, and
+never infer the current state from old conversations or a released version. This file is publishable: never write
+an account, credential, real UID, packet capture, screenshot, raw OCR text, unredacted log or local absolute path.
 
-**前端文案与语言补丁是完成门禁。** 任何任务涉及可见文案增删改，包括单句调整，都须按[第 9 节](#9-ui语言与日志)同步处理。
+**UI copy and language patches are a completion gate.** Any task that adds, changes or removes visible text,
+down to a single sentence, must follow [section 9](#9-ui-language-and-logging).
 
-## 1. 事实源
+> This is a **fork** of `hxwd94666/NTE-Drive-Calculator` that ships an English interface. Sections 1–10 mirror
+> upstream's contract in English; sections 11 and 12 are the fork's own.
 
-冲突时依次以：已通过的公共行为测试、数据库约束与正式协议 → 本契约 → 领域文档 → 当前 UI 表象。版本、schema、能力名和
-dataset 身份只以代码、清单和数据库为准，文档不抄易过期数字。代码里存在的遗留跨层调用不是可沿用的模式。
+## 1. Sources of truth
 
-| 问题 | 位置 |
+On conflict, rank in order: passing public behaviour tests, database constraints and official protocols → this
+contract → the domain documents → the current UI's appearance. Versions, schema, capability names and dataset
+identity are true only in the code, manifests and database; documents copy no perishable number. Legacy
+cross-layer calls in the code are not a pattern to follow.
+
+| Question | Where |
 | --- | --- |
-| 分层、所有权、生命周期 | `docs/architecture.md` |
-| 菜单、按钮与配置限制 | `docs/architecture-map.md` |
-| 已交付行为 | `docs/features.md`、`docs/features/` |
-| 组件、协议、静态构建、发行 | `docs/integrations.md` |
-| 公式、字段、格式 | `docs/reference/` |
-| 未完成能力 | `docs/roadmap.md`、`docs/roadmap/` |
-| 真实 Windows 验收 | `docs/validation/windows.md` |
+| Layering, ownership, lifecycle | `docs/architecture.md` |
+| Menus, buttons and configuration limits | `docs/architecture-map.md` |
+| Delivered behaviour | `docs/features.md`, `docs/features/` |
+| Components, protocols, static builds, releases | `docs/integrations.md` |
+| Formulas, fields, formats | `docs/reference/` |
+| Unfinished capabilities | `docs/roadmap.md`, `docs/roadmap/` |
+| Real Windows acceptance | `docs/validation/windows.md` |
 
-改文档时覆盖原章节、删除失效内容，一个事实只留一处；已交付进 features，未完成进 roadmap，一次性调查不入库。
+Editing a document overwrites the original section and deletes what is stale; one fact lives in one place.
+Delivered work goes into features, unfinished work into the roadmap, and one-off investigations stay out of the
+repository.
 
-## 2. 产品语义边界
+## 2. Product semantic boundaries
 
-| 领域 | 必守边界 |
+| Domain | Boundary that must hold |
 | --- | --- |
-| 账号 | 数据按账号隔离；切换前停止旧任务并推进账号代次 `generation` |
-| 工作模式 | 离线/低风险/中风险/开发四种；下拉仅为草稿，确认才生效；降级先撤销副作用权限。细则见 `docs/reference/work-modes.md` |
-| 同步 | 自动同步只启动同步，不连带战报、装配、弃置、锁定或插件；切换账号后关闭，须在新账号显式开启 |
-| 计算 | 输入全部冻结；保存只消费该次预览，不用“最新状态”补齐 |
-| 角色同步 | 只覆盖本次返回且已证实的字段；缺失、未知、试用角色保留原值 |
-| 配装 | `slot_id` 是身份，`slot_name` 只展示；每份方案保留自己的来源快照与冻结评分 |
-| 仓库与鉴定 | 视觉来源不读写游戏锁/弃置；鉴定不写背包与配装；“弃置”只设游戏标记，不删装备 |
-| 扫描与输入 | 完整结果一次提交；取消、数量异常或输入失败不留半成品；接入应用级停止键并释放输入设备 |
-| 外部写操作 | 计划 → 冻结 → 派发 → 后验确认；指令接受不是成功；结果未知时停止后续，不自动重发 |
-| 战报 | 原始事实不可改；派生结果带版本与来源；未知不伪装为零、倍率一或“完整” |
-| 插件 | 各卡独立维护状态；关闭插件不启停战报 |
-| 工具 | 资料库只读；养成计算器不写角色档案、背包或活力推测 |
-| 环境 | 路径、文件、进程、连接、握手、能力声明、业务就绪是不同状态，分别判断 |
+| Accounts | Data is isolated per account; switching stops the old tasks and advances the account `generation` first |
+| Work modes | Offline / low risk / medium risk / development; the combo box is only a draft and takes effect on confirmation; a downgrade revokes side-effect permission first. Details in `docs/reference/work-modes.md` |
+| Sync | Automatic sync starts only sync — never battle reports, assembly, discard, lock or plugins; it turns off on account switch and must be explicitly turned on for the new account |
+| Calculation | Every input is frozen; saving consumes only that preview and never fills gaps from "the latest state" |
+| Character sync | Overwrites only fields this run returned and proved; missing, unknown and trial characters keep their old values |
+| Loadouts | `slot_id` is the identity and `slot_name` is display only; each plan keeps its own source snapshot and frozen scores |
+| Warehouse and appraisal | A vision source never reads or writes the game's lock/discard; appraisal writes neither inventory nor loadout; "discard" only sets the game flag and deletes no equipment |
+| Scanning and input | A complete result commits once; cancellation, a count anomaly or an input failure leaves nothing half-finished; hooks into the application stop key and releases input devices |
+| External writes | Plan → freeze → dispatch → confirm afterwards; an accepted command is not success; with an unknown result, stop what follows and resend nothing automatically |
+| Battle reports | Raw facts are immutable; derived results carry a version and provenance; unknown never poses as zero, a multiplier of one or "complete" |
+| Plugins | Each card keeps its own state; turning a plugin off never starts or stops a battle report |
+| Tools | The catalogue is read-only; the growth calculator writes no character profile, inventory or stamina estimate |
+| Environment | Path, file, process, connection, handshake, declared capability and business readiness are different states, judged separately |
 
-## 3. 架构与身份
+## 3. Architecture and identity
 
-Windows 10/11、Python 3.11、PySide6；入口 `main.py`，组合根 `src/ui/app.py`；依赖以 `pyproject.toml`/`uv.lock` 为准，
-版本以 `src/app/version.py` 为准。依赖方向：
+Windows 10/11, Python 3.11, PySide6; entry point `main.py`, composition root `src/ui/app.py`; dependencies come
+from `pyproject.toml`/`uv.lock` and the version from `src/app/version.py`. Dependency direction:
 
 ```text
-UI Page/View → Controller → Application Service → Domain/Optimizer 或 DAO/Integration
+UI Page/View → Controller → Application Service → Domain/Optimizer or DAO/Integration
 ```
 
-- UI 只拥有控件和可丢弃的展示状态；Controller 管 worker、取消与导航，不写公式、SQL 或数据兼容。
-- Service 冻结请求并编排事务；Domain 纯计算，不碰 Qt、文件、进程或数据库；DAO 独占 schema、SQL、迁移与备份；
-  Integration 独占进程、文件、协议、OCR、输入和系统探测。
-- `AppContext`、`EquipmentPresentation`、全局热键和共享原生会话由组合根创建并显式注入；不引入服务定位器、
-  动态挂载 MainWindow、跨 Feature 私有调用或长期新旧双入口。
-- 跨层只用正式 `character_id`、`item_id`、`suit_id`、`shape_id`、`property_id`、装备 UID 和 `slot_id`；中文名只展示。
-- 迁移模块时同步更新动态导入、测试 patch、资源和构建引用并删除旧入口，不留兼容壳。
+- UI owns only widgets and discardable display state; Controller handles workers, cancellation and navigation, and
+  writes no formula, SQL or data compatibility.
+- Service freezes requests and orchestrates transactions; Domain computes purely and touches no Qt, file, process
+  or database; DAO exclusively owns schema, SQL, migrations and backups; Integration exclusively owns processes,
+  files, protocols, OCR, input and system probing.
+- `AppContext`, `EquipmentPresentation`, the global hotkeys and the shared native session are created by the
+  composition root and injected explicitly; no service locator, no dynamic attachment to MainWindow, no
+  cross-feature private call and no lasting old/new dual entry point.
+- Across layers use only the official `character_id`, `item_id`, `suit_id`, `shape_id`, `property_id`, equipment
+  UID and `slot_id`; Chinese names are display only.
+- When moving a module, update dynamic imports, test patches, resources and build references together and delete
+  the old entry point; leave no compatibility shell.
 
-本仓库是 Calc 产品与集成端。`nte-core.exe`（采集与游戏交互）和 `nte-analysis-core.exe`（Rust 计算/分析）是独立组件，
-只按带版本、来源、清单和 SHA-256 的成套包消费，不复制私有源码、不以旁路替代正式协议。源码合入、构建、组件晋升、
-打包和真实游戏验收互不替代。
+This repository is Calc's product and integration side. `nte-core.exe` (capture and game interaction) and
+`nte-analysis-core.exe` (Rust calculation/analysis) are independent components, consumed only as complete bundles
+with a version, provenance, manifest and SHA-256; never copy private source or bypass the official protocol. A
+source merge, a build, a component promotion, packaging and real-game acceptance never substitute for one another.
 
-## 4. 数据域与账号生命周期
+## 4. Data domains and account lifecycle
 
-| 数据 | 规则 |
+| Data | Rule |
 | --- | --- |
-| `data/game_static.sqlite3` | 发行主静态，运行时只读 |
-| `data/role_catalog/` | 独立图鉴目录，用途身份 `role_page`/`reference`，不自动替代战报 dataset |
-| `config/` | 本机偏好，不随账号导入导出 |
-| `accounts/<id>/user_data.sqlite3` | 当前账号私有数据，只由当前账号上下文访问 |
-| `data/app_shared.sqlite3` | 仅 contract 明许的旧迁移共享数据 |
-| `build/`、临时目录 | 可重建产物，不是事实源，不外发 |
+| `data/game_static.sqlite3` | The main release static data; read-only at runtime |
+| `data/role_catalog/` | The standalone catalogue, purpose identity `role_page`/`reference`; never automatically replaces the battle-report dataset |
+| `config/` | Local preferences; never carried by an account import or export |
+| `accounts/<id>/user_data.sqlite3` | The current account's private data, reached only through the current account context |
+| `data/app_shared.sqlite3` | Only legacy migration data the contract explicitly allows |
+| `build/`, temporary directories | Rebuildable output; not a source of truth and never sent out |
 
-- 长任务创建时冻结账号、generation、路径、dataset、`snapshot_id`、配置版本、目标 `slot_id`、锁快照和取消 token；
-  回调、保存、写库和外部指令前复核，过期结果静默丢弃。账号切换、模式降级和退出先撤权再有界等待任务结束。
-- 只有本次任务从零获取并导入新角色数据，或用户明确要求升级数据库版本时，Agent 才可提升数据库版本。
-  其他任务须沿用现有数据库 schema 版本、`PRAGMA user_version` 和迁移目标版本。
-- SQLite 迁移只追加，已发布迁移不改义；schema/payload/协议变化覆盖新建、升级、失败回滚和重试。多表写入用单一事务；
-  JSON 写临时文件后原子替换；活库备份用一致性备份，不复制 WAL/SHM。
-- 账号导出不含日志、缓存、抓包、凭据和其他账号数据；导入先校验格式、路径、重复成员、总量和用户库，暂存迁移后原子切换，
-  失败保留原账号。删除、覆盖、清理按正式身份与所有权执行。
+- A long task freezes, when created, the account, generation, paths, dataset, `snapshot_id`, configuration
+  version, target `slot_id`, lock snapshot and cancellation token; it re-checks them before callbacks, saves,
+  database writes and external commands, and discards stale results silently. Account switching, mode downgrade
+  and exit revoke permission first, then wait a bounded time for tasks to finish.
+- An agent may raise the database version only when the task itself acquires and imports new character data from
+  scratch, or the user explicitly asks for a database version upgrade. Every other task keeps the existing schema
+  version, `PRAGMA user_version` and migration target version.
+- SQLite migrations are append-only and a published migration never changes meaning; a schema/payload/protocol
+  change covers a new database, upgrading, failure rollback and retry. Multi-table writes go in one transaction;
+  JSON is written to a temporary file and replaced atomically; a live database is backed up consistently, never by
+  copying WAL/SHM.
+- An account export contains no logs, caches, captures, credentials or other accounts' data; an import validates
+  format, paths, duplicate members, total size and the user database first, then stages, migrates and switches
+  atomically, keeping the original account on failure. Deletion, overwriting and cleanup act by official identity
+  and ownership.
 
-## 5. 来源能力与静态数据
+## 5. Source capability and static data
 
-- 库存当前指针只指向完整稳定的不可变快照；任务开始时解析一次 `snapshot_id`，方案读自己的 `source_snapshot_id`。
-  `unknown`、`partial`、`complete=false`、缺页和映射冲突都不提交正式集合，不用旧快照、固定件数或默认零补齐。
-- 来源能力由公开 helper 判定：`nte_core` 在证据成立时提供正式 UID、角色实例、装备关系、锁/弃置和原生写入；抓包可给完整库存与
-  战报事实但不伪造原生能力；视觉来源只做分析、鉴定和普通鼠标装配。历史快照、战报冻结子集、毕业模板和编辑副本都不是当前库存。
-- 主静态只经 `tools/game_data/` 在 `build/` 构建候选，再由 `tools/game_data/promote_static_release.py` 校验后原子晋升；
-  不直接覆盖 `data/`，规范化语义变化时递增 importer 版本。图鉴与技能图片走 `promote_role_catalog.py`，步骤见
-  `docs/integrations.md` 与 `skills/nte-game-update/`。新弧盘/套装的常驻属性须逐件审查证据，不以描述、模板或零值补造。
+- The inventory's current pointer only ever points at a complete, stable, immutable snapshot; a task resolves
+  `snapshot_id` once at the start and a plan reads its own `source_snapshot_id`. `unknown`, `partial`,
+  `complete=false`, a missing page and a mapping conflict never commit the official set, which is never filled from
+  an old snapshot, a fixed count or a default zero.
+- Source capability is decided by the public helper: `nte_core` supplies official UIDs, character instances,
+  equipment relationships, lock/discard and native writes when the evidence holds; packet capture can give a
+  complete inventory and battle-report facts but never fakes native capability; a vision source only analyses,
+  appraises and does ordinary mouse assembly. A historical snapshot, a battle-report frozen subset, a graduation
+  template and an edit copy are none of them the current inventory.
+- The main static database is built only as a candidate under `build/` by `tools/game_data/` and promoted
+  atomically by `tools/game_data/promote_static_release.py` after validation; never overwrite `data/` directly,
+  and increment the importer version when normalisation semantics change. Catalogue and skill images go through
+  `promote_role_catalog.py`, with steps in `docs/integrations.md` and `skills/nte-game-update/`. Permanent stats of
+  a new Arc or set are reviewed piece by piece against evidence, never fabricated from descriptions, templates or
+  zero.
 
-## 6. 计算、评分与配装
+## 6. Calculation, scoring and loadouts
 
-- 分配求解、装备基础评分、直伤与边际、伤害后处理、战报分析和队伍轴伤毕业都在 `nte-analysis-core.exe` 中执行；Python 负责
-  冻结请求、能力核对、结果复核、保存与展示。组件缺少所需能力时明确报错，不回退 Python 公式。`ScoringEngine` 只是适配层，
-  不复制公式。
-- 计算产生不可变 `WeightedAllocationPreview`，保存只消费它并复核冻结边界。同一真实 UID 全局只能消费一次；锁定 UID 先排除；
-  虚拟占位得分为零，不参与锁定、借出或装配。单角色失败不中断其他角色；取消不覆盖旧方案。
-- 直伤优先/轴伤优先只在完整角色优先基线的副本上做独立后处理，不改上游请求、权重或基础评分，不宣称全局最高伤害。
-- 保存方案的 `assignment_scores` 是冻结事实；计算后改权重不重新解释已有预览，旧方案缺分才按同引擎重算。
-- 角色有效面板（等级/突破、弧盘、常驻属性、好感、家具、觉醒、技能等级、暴击上下限）只在角色面板公共服务计算，
-  计算、毕业率和配装汇总消费同一投影；条件效果不进常驻面板。
-- Calc 方案锁不是游戏锁；锁定方案不得删除、覆盖、归档或借出 UID。扫描管理与仓库管理各自拥有配置、匹配域与草稿，不跨域互写。
+- Allocation solving, equipment base scoring, direct damage and marginals, damage post-processing, battle-report
+  analysis and team axis-damage graduation all run in `nte-analysis-core.exe`; Python freezes requests, checks
+  capability, re-verifies results, saves and displays. A component missing a required capability reports an
+  explicit error and never falls back to a Python formula. `ScoringEngine` is only an adapter and copies no formula.
+- A calculation produces an immutable `WeightedAllocationPreview`; saving consumes only it and re-checks the frozen
+  boundaries. A real UID is consumed only once globally; locked UIDs are excluded first; a virtual placeholder
+  scores zero and takes no part in locking, lending or assembly. One character's failure never interrupts the
+  others; cancellation never overwrites an old plan.
+- Direct-damage-first and axis-damage-first run only as independent post-processing on a copy of the complete
+  character-priority baseline; they never change the upstream request, weights or base scores, and never claim a
+  global damage maximum.
+- A saved plan's `assignment_scores` are a frozen fact; changing weights after a calculation does not reinterpret
+  an existing preview, and only an old plan missing scores is recomputed through the same engine.
+- The effective character panel (level/ascension, Arc, permanent stats, affinity, furniture, awakenings, skill
+  levels, CRIT floor and cap) is computed only in the shared character panel service, and calculation, graduation
+  rate and loadout summaries consume the same projection; conditional effects never enter the permanent panel.
+- A Calc plan lock is not the game's lock; a locked plan must not be deleted, overwritten, archived or lend out its
+  UIDs. Scan management and warehouse management each own their configuration, matching scope and drafts, and
+  never write into each other.
 
-## 7. 战报
+## 7. Battle reports
 
-采集层只保存 Core 给出的事实，不从摘要猜暴击、Buff、护盾、治疗、队伍或场景。开始时冻结账号代次、dataset 和来源能力；
-原生采集在每半场首击冻结队伍与装备证据，首次结算冻结后重试不换输入。原始快照不可改；编辑副本只参与重放与反事实。
-战报页面只经分析组件的只读接口，缺清单、哈希、协议或能力时不回退 Python 读库。导入导出格式见 `docs/reference/battle-report-package.md`。
+The capture layer saves only the facts Core gave and never guesses crits, Buffs, shields, healing, the team or the
+scene from a summary. At the start it freezes the account generation, dataset and source capability; native capture
+freezes team and equipment evidence at each half's first hit, and once the first settlement is frozen a retry never
+changes the input. Raw snapshots are immutable; an edit copy takes part only in replay and counterfactuals. The
+battle-report page goes only through the analysis component's read-only interface, and a missing manifest, hash,
+protocol or capability never falls back to reading the database from Python. The import/export format is in
+`docs/reference/battle-report-package.md`.
 
-## 8. 组件、权限与发行
+## 8. Components, permissions and releases
 
-- 组件晋升记录上游版本、提交、许可和 SHA-256；DLL、Loader、脚本、资源和协议成套替换。私有交付不含源码、PDB、账号数据、
-  凭据、抓包和敏感日志。
-- 游戏路径必须是校验过的 `HTGame.exe` 绝对路径；部署只管当前发行包内已核对组件，游戏运行或权限不足时等待，不强关游戏；
-  清理按记录目录和确切文件名，不递归扫盘。
-- GUI 须以 High 完整性运行：不足时只请求一次 `runas` 重启，仍不足即停止并引导从开始菜单或桌面快捷方式启动，不改系统安全设置。
-  安装器须由管理员构建（Inno Setup 6 及以上），成品标为 High。
-- 免安装发行明确程序域与数据根，更新失败保留可运行旧版本；Mirror 更新链不记录鉴权 URL、Token 或 CDK。
+- A component promotion records the upstream version, commit, licence and SHA-256; DLL, Loader, scripts,
+  resources and protocol are replaced as a set. A private delivery contains no source, PDB, account data,
+  credentials, captures or sensitive logs.
+- The game path must be a verified absolute path to `HTGame.exe`; deployment manages only components verified in
+  the current release bundle, waits when the game is running or permission is insufficient, and never force-closes
+  the game; cleanup acts by recorded directory and exact file name and never scans disks recursively.
+- The GUI must run at High integrity: when it is insufficient, request a `runas` restart once; if still
+  insufficient, stop and guide the user to start from the Start menu or desktop shortcut, and never change system
+  security settings. The installer must be built as an administrator (Inno Setup 6 or later), with the product
+  marked High.
+- The portable release states its program domain and data root explicitly; a failed update keeps the old runnable
+  version; the mirror update chain never records an authenticated URL, token or CDK.
 
-## 9. UI、语言与日志
+## 9. UI, language and logging
 
-- 前端文案增改删必须在同一变更里维护实际调用方、`assets/locales/zh-CN.json` 和 `docs/examples/locales/qps-ploc.json`，
-  核对两份目录的稳定 key 与命名参数。移除文案时按兼容约定处理旧 key。展示端用注入的 `TextCatalog.render`，
-  或登记整句原文由显示边界统一投影（只在 Qt 显示时替换，源码与数据层禁止替换文本）。
-  业务分支按稳定 ID，不依赖译文；游戏正式名称、角色/槽位名、协议字段、日志事件码不登记、不翻译；拼接句用 key 加命名参数，
-  服务层无目录时由显示边界按登记模板整行投影。内部诊断标注 `# ui-text: internal`；覆盖门禁基线为空，新增未登记中文直接失败。
-  细则见 `docs/features/localization.md`。
-- 新弹窗用 `src.app.window_geometry` 按屏幕可用区域限位并居中；颜色与状态同时适配原色、黑、白三主题。
-- 延迟回调（如 `QTimer.singleShot`）必须绑定 owner 上下文，窗口销毁后回调不再执行。
-- 文案区分等待、不可用、故障、已保存、已部署、已确认；RPC 接受不写“完成”。
-- 日志只记生命周期、冻结身份、状态迁移、错误码和耗时（见 `docs/reference/logging-events.md`）；不记账号显示名、完整 UID 列表、
-  完整 RPC、OCR 原文、截图、CDK、Token、鉴权 URL、原始逐击或完整伤害表。
+- Adding, changing or removing UI copy must, in the same change, maintain the actual callers,
+  `assets/locales/zh-CN.json` and `docs/examples/locales/qps-ploc.json`, checking the stable keys and named
+  parameters of both catalogues. Removing copy follows the compatibility convention for old keys. Display code uses
+  the injected `TextCatalog.render`, or registers the whole Chinese sentence for the display boundary to project
+  (replacement happens only at Qt display; source and data layers must never replace text). Business branches use
+  stable IDs and never depend on translations; official game names, character/slot names, protocol fields and log
+  event codes are never registered or translated; concatenated sentences use a key with named parameters, and where
+  a service has no catalogue the display boundary projects the registered template line by line. Internal
+  diagnostics carry `# ui-text: internal`; the coverage gate's baseline is empty, so new unregistered Chinese fails
+  directly. Details in `docs/features/localization.md`.
+- A new dialog uses `src.app.window_geometry` to stay within the screen's available area and centre; colours and
+  states work in the original, black and white themes.
+- A delayed callback (such as `QTimer.singleShot`) must be bound to an owner context, so it never runs after the
+  window is destroyed.
+- Copy distinguishes waiting, unavailable, fault, saved, deployed and confirmed; an accepted RPC is never written as
+  "complete".
+- Logs record only lifecycle, frozen identity, state transitions, error codes and durations (see
+  `docs/reference/logging-events.md`); never an account display name, a complete UID list, a complete RPC, raw OCR
+  text, a screenshot, a CDK, a token, an authenticated URL, raw per-hit data or a complete damage table.
 
-## 10. 开发与完成定义
+## 10. Development and definition of done
 
-- 改文件前看 `git status`，保留他人未提交改动；缺陷先复现再修最小原因；纯文档任务不改生产代码。
-- `src/`、`tools/`、`tests/` 的 Python 文件不超过 800 行（超限存量只拆分或收缩）；新文件首行写中文摘要；新 `type: ignore`
-  带错误码和原因；关键中文注释解释身份、单位、时序、资源所有权和失败策略。
-- Ruff `E9/F63/F7/F821/F401` 是硬门禁；新依赖同步 `pyproject.toml` 与 `uv.lock`；测试入口 `tools/quality/run_tests.py`（`core`/`full`）。
-- 默认不编译、不运行测试；获授权后只执行授权范围，未运行项如实说明。失败要区分本次新增、既有失败与环境原因，不删测或跳过掩盖缺陷。
-- 行为测试覆盖计算、持久化、迁移、账号隔离、完整性、取消、后验确认、权限和可操作性；不固化颜色、像素或私有控件结构。
-  UI 用例只回收本例创建的窗口，并先等待其后台线程结束（`tests/support/qt_cleanup.py`）。
-- 不提交账号库、WAL/SHM、日志、截图、PCAP、OCR 临时文件、构建/安装器产物或本机 SDK。提交、推送、发布、安装器构建、
-  组件部署和真实游戏操作都须用户明确授权；发布准备入口 `tools/release/prepare_release.py` 只核对并输出手工命令。
+- Look at `git status` before changing files and keep others' uncommitted changes; reproduce a defect before fixing
+  its smallest cause; a pure documentation task changes no production code.
+- Python files under `src/`, `tools/` and `tests/` stay within 800 lines (oversized existing files are only split
+  or shrunk); a new file's first line is a Chinese summary; a new `type: ignore` carries the error code and reason;
+  key Chinese comments explain identity, units, timing, resource ownership and failure strategy.
+- Ruff `E9/F63/F7/F821/F401` is a hard gate; a new dependency updates `pyproject.toml` and `uv.lock` together; the
+  test entry point is `tools/quality/run_tests.py` (`core`/`full`).
+- By default do not compile or run tests; with authorisation run only what was authorised and report honestly what
+  was not run. Separate new failures from existing ones and from environment causes; never delete or skip a test to
+  mask a defect.
+- Behaviour tests cover calculation, persistence, migration, account isolation, integrity, cancellation,
+  after-the-fact confirmation, permissions and operability; they never pin colours, pixels or private widget
+  structure. A UI test cleans up only windows it created, after waiting for their background threads
+  (`tests/support/qt_cleanup.py`).
+- Never commit account databases, WAL/SHM, logs, screenshots, PCAP, OCR temporary files, build/installer output or
+  a local SDK. Committing, pushing, releasing, building an installer, deploying components and operating the real
+  game all need the user's explicit authorisation; the release preparation entry point
+  `tools/release/prepare_release.py` only checks and prints the manual commands.
+
+## 11. Fork: the English interface
+
+Upstream registers all UI text in `assets/locales/zh-CN.json` and projects translations at the Qt display boundary
+(`src/ui/common/display_projection.py`), with foreign languages delivered as language patch JSON files. It leaves
+game data in Chinese under every language. The fork uses that system as is and adds two things:
+
+| File | What it is | How it is produced |
+| --- | --- | --- |
+| `assets/locales/en-US.json` | The English language patch, shipped in the release and offered without importing | `python tools/i18n/build_en_patch.py` |
+| `assets/locales/game_terms/en-US.json` | Chinese game text → the game's own English (names, skills, set effects, awakenings, monsters) | `python tools/i18n/build_game_terms.py --locres <export>` |
+
+The fork's code footprint is deliberately small, so upstream merges stay cheap:
+
+- `src/integrations/preferences/locale_files.py` — `LocaleFiles` also offers patches shipped in
+  `assets/locales/`, with a local patch of the same locale taking precedence; `bundled_game_terms()` loads the map.
+- `src/ui/common/display_projection.py` — `set_display_catalog(..., game_terms=)`; a line the catalogue does not
+  own is looked up in the game-term map. Game names upstream excludes from UI projection are exactly what this map
+  covers.
+- `src/ui/app.py` — passes `bundled_game_terms(locale)` into `set_display_catalog`.
+- `tests/localization/test_fork_english.py` pins all of the above; `test_language_settings_service.py` has one
+  assertion adjusted because English is now always offered.
+
+**The English patch.** `build_en_patch.py` fills each catalogue key, in precedence: an entry already in the patch
+that still validates (hand translations are never overwritten); the translation memory
+`locales/translation_memory.en.json`, keyed by Chinese source text, on an exact match; the same memory with
+placeholders renamed by position when only the parameter names differ; the glossary for a bare game term. Anything
+that would fail the catalogue's checks (a `{count:,}` format spec, a stray brace, a parameter mismatch) is left out
+to fall back to Chinese. Translate by editing `en-US.json` directly; the translation memory is the pre-2.4.0
+English and only seeds keys.
+
+**Game terms are never invented.** The map comes only from the game's own string tables: the UEExtractor CSV of
+`pakchunk0-Windows` plus its patch, where the `source` column is the English, joined by the string-table key the
+static database stores next to each `X_zh` column, or by an id convention (monster manual ids, Arc descriptions).
+A coinage that reads well is still wrong: 蚀心 is `Heartwrench`, not "Mindrot". Hand-verified terms live in
+`locales/glossary.en.json`: verified ones under `_meta.official_terms`, unfound ones under
+`_meta.unverified_terms`, never mixed. Check new glossary entries with
+`python tools/quality/verify_terms.py --locres <export>`. The export is game content and is never committed.
+Regenerate the map whenever the static database changes.
+
+Fork gates, on top of section 10: `python -m pytest tests/localization -q`, and
+`python tools/i18n/build_en_patch.py --check` (exit 1 means the patch is stale against the catalogue).
+
+## 12. Fork: upstream synchronisation
+
+Branch roles:
+
+- `main` is a pristine mirror of `upstream/main`. Never commit to it — that keeps `--ff-only` working.
+- `fork/main` carries the fork's additions and is the branch that gets built and released.
+
+Per upstream release:
+
+```bash
+git fetch upstream
+git checkout main && git merge --ff-only upstream/main
+git checkout fork/main && git merge main
+```
+
+**Merge, never rebase**, and keep `git config --global rerere.enabled true` on. Conflicts can now arise only in
+the files listed in section 11; resolve them by keeping upstream's change and re-applying the fork's few lines.
+After merging:
+
+1. Run `python tools/i18n/build_en_patch.py`. It fills new keys from the translation memory, drops keys upstream
+   removed, and reports coverage; translate the remaining new keys in `en-US.json`.
+2. If the static database changed, regenerate the game-term map from a current locres export.
+3. Run the section 10 gates and the fork gates above, and separate failures that also occur on pristine `main`.
+4. Re-translate `AGENTS.md` sections 1–10 from upstream's version; this file is maintained in English, so
+   upstream's edits always arrive as whole sections.
+
+History: until 2.3.2 the fork wrapped call sites in its own `tr()`/`display_term()` and kept a source-keyed
+catalogue, and each sync cost tens of conflicting files (2.3.0: 63 files, 171 hunks; 2.3.2: 39 files, 100 hunks).
+Upstream 2.4.0 introduced its own catalogue and display projection, and merging the old approach would have meant
+230 files and 1,392 hunks. The fork therefore took upstream's tree as is and re-attached only the English patch
+and the game-term hook.

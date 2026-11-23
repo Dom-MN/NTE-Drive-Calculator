@@ -27,6 +27,9 @@ from src.integrations.preferences.locale_files import bundled_text_catalog, lite
 
 _active: TextCatalog | None = None
 _keys: dict[str, str] = {}
+# Fork: official game text (names, skills, set effects…) in the game's own English. Upstream leaves
+# game data Chinese; this map comes only from the game's string tables (tools/i18n/build_game_terms.py).
+_game_terms: dict[str, str] = {}
 # (key, 整行正则, 最长字面片段, 字面长度)：按字面长度降序，先试更具体的模板。
 _templates: list[tuple[str, re.Pattern[str], str, int]] = []
 _installed = False
@@ -61,18 +64,24 @@ def _compile_templates(excluded: frozenset[str]) -> list[tuple[str, re.Pattern[s
     return compiled
 
 
-def set_display_catalog(catalog: TextCatalog | None, *, excluded: frozenset[str] = frozenset()) -> None:
+def set_display_catalog(
+    catalog: TextCatalog | None, *, excluded: frozenset[str] = frozenset(),
+    game_terms: dict[str, str] | None = None,
+) -> None:
     """组合根在目录冻结后调用；中文目录或空值关闭投影。
 
     excluded 为正式游戏名称：即使与某条界面原文同字也不投影，保持游戏数据原样。
+    game_terms (fork) maps official game text to the game's own wording in this language; a game
+    name the catalogue excludes is shown from this map instead of staying Chinese.
     """
-    global _active, _keys, _templates
+    global _active, _keys, _templates, _game_terms
     _project_cached.cache_clear()
     if catalog is None or catalog.locale == BASE_LOCALE:
-        _active, _keys, _templates = None, {}, []
+        _active, _keys, _templates, _game_terms = None, {}, [], {}
         return
     _keys = {text: key for text, key in literal_keys().items() if text.strip() not in excluded}
     _templates = _compile_templates(excluded)
+    _game_terms = dict(game_terms or {})
     _active = catalog
     _install_once()
 
@@ -107,6 +116,9 @@ def _project_cached(value: str) -> str:
     key = _keys.get(value)
     if key is not None:
         return _active.render(key)
+    term = _game_terms.get(value)
+    if term is not None:
+        return term
     if "\n" in value:
         lines = value.split("\n")
         projected = [_project_cached(line) if line else line for line in lines]
@@ -114,6 +126,8 @@ def _project_cached(value: str) -> str:
     stripped = value.strip()
     if stripped != value and stripped in _keys:
         return value.replace(stripped, _active.render(_keys[stripped]), 1)
+    if stripped != value and stripped in _game_terms:
+        return value.replace(stripped, _game_terms[stripped], 1)
     templated = _match_template(stripped)
     if templated is not None:
         return value.replace(stripped, templated, 1) if stripped != value else templated
