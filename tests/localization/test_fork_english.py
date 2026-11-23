@@ -91,3 +91,24 @@ def test_painted_cards_and_bare_set_names_are_projected():
         assert painted("暴击率") == painted("CRIT Rate")
     finally:
         projection.set_display_catalog(None)
+
+
+def test_composed_chips_and_labels_are_projected_piece_by_piece():
+    # 卡片词条、觉醒序号、技能类型前缀等由代码拼接，整行无法匹配时逐段投影。
+    from src.ui.common import display_projection as projection
+
+    base = make_catalog(json.loads((LOCALES / "zh-CN.json").read_text(encoding="utf-8")))
+    english = make_catalog(json.loads((LOCALES / "en-US.json").read_text(encoding="utf-8")), base=base)
+    terms = {"「守卫王国」": "Kingdom's Guard", "倾陷强度": "Break Intensity", "防御力": "DEF",
+             "攻击力": "ATK", "弥散性的朦白": "Diffusive Haze", "鬼郎丸头锤": "Kiroumaru Headbutt"}
+    try:
+        projection.set_display_catalog(english, game_terms=terms)
+        assert projection.project("<b>「守卫王国」</b>") == "<b>Kingdom's Guard</b>"
+        assert projection.project("倾陷强度 180") == "Break Intensity 180"
+        assert projection.project("防御力% <b>17.5</b>") == "DEF% <b>17.5</b>"
+        assert projection.project("1. 弥散性的朦白") == "1. Diffusive Haze"
+        assert projection.project("普通攻击：鬼郎丸头锤") == "Basic Attack: Kiroumaru Headbutt"
+        assert projection.project("好感十级（攻击力 +5%）") == "Affinity level 10 (ATK +5%)"
+        assert projection.project("没有登记 的 文字") == "没有登记 的 文字"
+    finally:
+        projection.set_display_catalog(None)

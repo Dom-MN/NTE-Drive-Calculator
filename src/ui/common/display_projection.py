@@ -131,7 +131,47 @@ def _project_cached(value: str) -> str:
     templated = _match_template(stripped)
     if templated is not None:
         return value.replace(stripped, templated, 1) if stripped != value else templated
+    if _game_terms and _CJK.search(value):
+        return _project_pieces(value)
     return value
+
+
+# Fork: cards and chips build lines from pieces ("<b>「name」</b>", "stat value", "1. awakening",
+# "skill type：name", "text | name"). A line that matched nothing whole is split into HTML text nodes,
+# then at spaces and punctuation; each piece is projected only if it is exactly a registered line or
+# game term. Full-width punctuation becomes ASCII once no Chinese is left.
+_TAG = re.compile(r"(<[^>]+>)")
+_DELIMITER = re.compile(r"(\s*[|·；：，（）()]\s*|\s+)")
+_ASCII_PUNCTUATION = (("：", ": "), ("；", "; "), ("，", ", "), ("（", " ("), ("）", ")"))
+
+
+def _project_piece(piece: str) -> str:
+    # “防御力%”式的词条标签：译名称本体再补回 %，与中文卡片同样表明数值是百分比。
+    core = piece.strip()
+    if len(core) > 1 and core.endswith("%"):
+        name = _project_cached(core[:-1])
+        if name != core[:-1]:
+            return piece.replace(core, f"{name}%", 1)
+    return _project_cached(piece)
+
+
+def _project_pieces(value: str) -> str:
+    if "<" in value and _TAG.search(value):
+        parts = _TAG.split(value)
+        projected = [part if i % 2 or not part else _project_piece(part) for i, part in enumerate(parts)]
+        return "".join(projected)
+    parts = _DELIMITER.split(value)
+    if len(parts) == 1:
+        return value
+    projected = [part if i % 2 or not part else _project_piece(part) for i, part in enumerate(parts)]
+    if projected == parts:
+        return value
+    text = "".join(projected)
+    if not _CJK.search(text):
+        for wide, ascii_text in _ASCII_PUNCTUATION:
+            text = text.replace(wide, ascii_text)
+        text = re.sub(r"(?<=\S) {2,}", " ", text).replace("( ", "(").rstrip() + text[len(text.rstrip()):]
+    return text
 
 
 def _game_term(value: str) -> str | None:
