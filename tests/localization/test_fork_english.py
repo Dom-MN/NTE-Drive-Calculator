@@ -63,3 +63,31 @@ def test_projection_shows_game_names_in_english_and_leaves_unknown_text_alone():
         assert projection.project(base.render("common.cancel")) == english.render("common.cancel")
     finally:
         projection.set_display_catalog(None)
+
+
+def test_painted_cards_and_bare_set_names_are_projected():
+    # 仓库卡片等自绘控件直接调用 QPainter.drawText，且卡带名去掉了数据库里的「」。
+    from PySide6.QtCore import QRect, Qt
+    from PySide6.QtGui import QImage, QPainter
+    from PySide6.QtWidgets import QApplication
+
+    from src.ui.common import display_projection as projection
+
+    QApplication.instance() or QApplication([])
+    base = make_catalog(json.loads((LOCALES / "zh-CN.json").read_text(encoding="utf-8")))
+    english = make_catalog(json.loads((LOCALES / "en-US.json").read_text(encoding="utf-8")), base=base)
+
+    def painted(text: str) -> QImage:
+        image = QImage(200, 30, QImage.Format_ARGB32)
+        image.fill(0)
+        painter = QPainter(image)
+        painter.drawText(QRect(0, 0, 200, 30), Qt.AlignLeft, text)
+        painter.end()
+        return image
+
+    try:
+        projection.set_display_catalog(english, game_terms={"「失落光芒」": "Lost Radiance", "暴击率": "CRIT Rate"})
+        assert projection.project("失落光芒") == "Lost Radiance"
+        assert painted("暴击率") == painted("CRIT Rate")
+    finally:
+        projection.set_display_catalog(None)

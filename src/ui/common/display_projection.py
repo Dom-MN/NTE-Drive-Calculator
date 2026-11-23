@@ -15,7 +15,7 @@ from functools import lru_cache, wraps
 import re
 from string import Formatter
 
-from PySide6.QtGui import QAction, QStandardItem
+from PySide6.QtGui import QAction, QPainter, QStandardItem
 from PySide6.QtWidgets import (
     QAbstractButton, QCheckBox, QComboBox, QGroupBox, QLabel, QLineEdit, QListWidgetItem, QMenu, QMessageBox,
     QProgressDialog, QPushButton, QRadioButton, QTableWidget, QTableWidgetItem, QTabWidget, QToolButton,
@@ -116,7 +116,7 @@ def _project_cached(value: str) -> str:
     key = _keys.get(value)
     if key is not None:
         return _active.render(key)
-    term = _game_terms.get(value)
+    term = _game_term(value)
     if term is not None:
         return term
     if "\n" in value:
@@ -126,12 +126,20 @@ def _project_cached(value: str) -> str:
     stripped = value.strip()
     if stripped != value and stripped in _keys:
         return value.replace(stripped, _active.render(_keys[stripped]), 1)
-    if stripped != value and stripped in _game_terms:
-        return value.replace(stripped, _game_terms[stripped], 1)
+    if stripped != value and (term := _game_term(stripped)) is not None:
+        return value.replace(stripped, term, 1)
     templated = _match_template(stripped)
     if templated is not None:
         return value.replace(stripped, templated, 1) if stripped != value else templated
     return value
+
+
+def _game_term(value: str) -> str | None:
+    # Fork: the static database stores set/Arc names as 「X」, but cards strip the brackets before drawing.
+    term = _game_terms.get(value)
+    if term is None and not value.startswith("「"):
+        term = _game_terms.get(f"「{value}」")
+    return term
 
 
 def _texts(values):
@@ -186,6 +194,8 @@ def _install_once() -> None:
     for cls in (QLabel, QPushButton, QCheckBox, QRadioButton, QToolButton, QGroupBox, QAction, QMenu,
                 QTableWidgetItem, QListWidgetItem, QTreeWidgetItem, QStandardItem, QProgressDialog, QMessageBox):
         cls.__init__ = _wrap_all_str(cls.__init__)
+    # Fork: painted cards (warehouse, catalogue, timelines) draw text directly; project every str argument.
+    QPainter.drawText = _wrap_all_str(QPainter.drawText)
     QWidget.setToolTip = _wrap_args(QWidget.setToolTip, {0})
     QWidget.setWindowTitle = _wrap_args(QWidget.setWindowTitle, {0})
     QLineEdit.setPlaceholderText = _wrap_args(QLineEdit.setPlaceholderText, {0})
